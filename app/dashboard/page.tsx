@@ -76,7 +76,7 @@ export default function DashboardPage() {
         </div>
         <p className="max-w-3xl text-sm leading-6 text-slate-400">
           Type tasks like “Create a landing page”, “Fix login bug”, or “Redesign this website” from the workspace.
-          Meldex AI reads local files, drafts a plan, applies safe edits, lists changed files, and asks before destructive actions.
+          Meldex AI reads local files, applies safe edits, lists changed files, and runs build checks with automatic repair attempts.
         </p>
       </Panel>
     </SectionShell>

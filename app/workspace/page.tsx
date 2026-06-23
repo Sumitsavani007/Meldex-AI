@@ -37,6 +37,7 @@ export default function WorkspacePage() {
   const [newPath, setNewPath] = useState("src/app.tsx");
   const [task, setTask] = useState("Create a landing page");
   const [logs, setLogs] = useState<string[]>(["[idle] Workspace ready"]);
+  const [changedFiles, setChangedFiles] = useState<string[]>([]);
   const [status, setStatus] = useState<{ tone: "success" | "error" | "idle"; text: string }>({ tone: "idle", text: "Ready" });
   const files = useMemo(() => flatten(tree).filter((node) => node.type === "file"), [tree]);
 
@@ -138,7 +139,19 @@ export default function WorkspacePage() {
       return;
     }
     setTree(data.tree);
-    setLogs((current) => [`[success] ${data.summary}`, `[changed] ${data.changedFiles.join(", ")}`, ...current]);
+    setChangedFiles(data.changedFiles ?? []);
+    setLogs((current) => {
+      const next = [`[success] ${data.summary}`];
+      if (data.changedFiles?.length) {
+        next.push(`[changed] ${data.changedFiles.join(", ")}`);
+      }
+      if (data.terminalRuns?.length) {
+        for (const run of data.terminalRuns) {
+          next.push(`[terminal] ${run.command} -> exit ${run.code}`);
+        }
+      }
+      return [...next, ...current];
+    });
     setStatus({ tone: "success", text: "Agent task complete" });
   }
 
@@ -222,6 +235,20 @@ export default function WorkspacePage() {
               <Play className="size-4" />
               Run Agent
             </button>
+            <div className="mt-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Changed Files</p>
+              <div className="thin-scrollbar mt-2 max-h-32 overflow-auto rounded-md border border-white/10 bg-slate-950/60 p-2 text-xs text-slate-300">
+                {changedFiles.length ? (
+                  changedFiles.map((file) => (
+                    <p key={file} className="truncate py-0.5">
+                      {file}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-slate-500">No file changes yet.</p>
+                )}
+              </div>
+            </div>
             <p className="mt-3 text-xs leading-5 text-slate-500">
               Destructive actions require confirmation. Current files detected: {files.length}.
             </p>

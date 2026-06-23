@@ -46,11 +46,11 @@ export default function LandingPage() {
               <span className="size-3 rounded-full bg-red-400" />
               <span className="size-3 rounded-full bg-ember" />
               <span className="size-3 rounded-full bg-mint" />
-              <span className="ml-3 text-xs text-slate-500">agent.plan.ts</span>
+              <span className="ml-3 text-xs text-slate-500">agent.actions.json</span>
             </div>
           </div>
           <div className="grid gap-4 p-5">
-            {["Read project files", "Draft implementation plan", "Patch landing page", "Run build checks"].map((item, index) => (
+            {["Read project files", "Apply file edits", "Patch landing page", "Run build checks"].map((item, index) => (
               <div key={item} className="flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3">
                 <span className="grid size-7 place-items-center rounded-md bg-mint/10 text-xs font-semibold text-mint">{index + 1}</span>
                 <span className="text-sm text-slate-200">{item}</span>
@@ -59,7 +59,7 @@ export default function LandingPage() {
             ))}
             <div className="rounded-md bg-slate-950/80 p-4 font-mono text-xs leading-6 text-slate-300">
               <p><span className="text-mint">$</span> npm run dev</p>
-              <p className="text-slate-500">ready - local agent dashboard online</p>
+              <p className="text-slate-500">ready - local agent workspace online</p>
             </div>
           </div>
         </Panel>
@@ -84,7 +84,7 @@ export default function LandingPage() {
               <h2 className="text-lg font-semibold text-white">{tier}</h2>
               <p className="mt-3 text-3xl font-semibold text-white">{index === 0 ? "$0" : index === 1 ? "$19" : "$49"}<span className="text-sm text-slate-500"> /mo</span></p>
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                {index === 0 ? "Local dashboard basics." : index === 1 ? "More agent workflows and team-ready patterns." : "Advanced deployment and automation features."}
+                {index === 0 ? "Local dashboard basics." : index === 1 ? "More agent workflows and file-editing patterns." : "Advanced deployment and automation features."}
               </p>
               <ButtonLink href="/dashboard" variant={index === 1 ? "primary" : "secondary"}>
                 Choose Plan

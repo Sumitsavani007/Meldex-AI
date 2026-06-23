@@ -13,12 +13,17 @@ const root = path.join(process.cwd(), "workspace");
 function safePath(relativePath = "") {
   const normalized = path.normalize(relativePath).replace(/^(\.\.(\/|\\|$))+/, "");
   const absolute = path.join(root, normalized);
+  const rootPrefix = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
 
-  if (!absolute.startsWith(root)) {
+  if (absolute !== root && !absolute.startsWith(rootPrefix)) {
     throw new Error("Path escapes workspace");
   }
 
   return { absolute, relative: normalized === "." ? "" : normalized };
+}
+
+export function getWorkspaceRoot() {
+  return root;
 }
 
 export async function ensureWorkspace() {
