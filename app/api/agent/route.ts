@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const result = await runAgent(body.task, {
       baseUrl: body.baseUrl,
       model: body.model,
-      runCommand: (command, options) => executeTerminalCommand(command, options)
+      runCommand: executeTerminalCommand
     });
 
     return NextResponse.json(result);
