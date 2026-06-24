@@ -16,6 +16,35 @@ body {
   color: #eef3ff;
 }
 
+body::before,
+body::after {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  content: "";
+}
+
+body::before {
+  background:
+    radial-gradient(circle at 18% 16%, rgba(99, 242, 190, 0.18), transparent 28%),
+    radial-gradient(circle at 76% 12%, rgba(154, 164, 255, 0.2), transparent 30%),
+    radial-gradient(circle at 62% 78%, rgba(255, 184, 107, 0.12), transparent 30%),
+    #05070d;
+}
+
+body::after {
+  z-index: -1;
+  opacity: 0.3;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.42) 1px, transparent 1.5px),
+    linear-gradient(115deg, transparent 0 42%, rgba(99, 242, 190, 0.14) 42% 43%, transparent 43% 100%),
+    linear-gradient(65deg, transparent 0 57%, rgba(154, 164, 255, 0.14) 57% 58%, transparent 58% 100%);
+  background-position: 0 0, 0 0, 0 0;
+  background-size: 84px 84px, 220px 220px, 260px 260px;
+  animation: particle-drift 18s ease-in-out infinite alternate;
+}
+
 ::selection {
   background: rgba(99, 242, 190, 0.28);
 }
@@ -41,4 +70,22 @@ body {
 .thin-scrollbar::-webkit-scrollbar-thumb {
   background: #273349;
   border-radius: 999px;
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.025)),
+    rgba(8, 12, 23, 0.82);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  backdrop-filter: blur(22px);
+}
+
+.aurora {
+  background:
+    linear-gradient(105deg, transparent 0%, rgba(99, 242, 190, 0.2) 28%, transparent 42%),
+    linear-gradient(72deg, transparent 8%, rgba(154, 164, 255, 0.22) 48%, transparent 70%),
+    linear-gradient(135deg, rgba(255, 184, 107, 0.14), transparent 42%);
+  filter: blur(28px);
+  animation: aurora-flow 16s ease-in-out infinite alternate;
 }

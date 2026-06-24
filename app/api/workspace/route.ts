@@ -6,9 +6,11 @@ import {
   readWorkspaceFile,
   writeWorkspaceFile
 } from "@/lib/workspace";
+import { checkRateLimit, workspaceWriteSchema } from "@/lib/security";
 
 export async function GET(request: Request) {
   try {
+    checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-read", 120);
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("path");
 
@@ -26,15 +28,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      action?: "file" | "folder";
-      path?: string;
-      content?: string;
-    };
-
-    if (!body.path) {
-      return NextResponse.json({ error: "Path is required." }, { status: 400 });
-    }
+    checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-write", 80);
+    const body = workspaceWriteSchema.parse(await request.json());
 
     if (body.action === "folder") {
       await createWorkspaceFolder(body.path);
@@ -50,6 +45,7 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-delete", 30);
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("path");
 

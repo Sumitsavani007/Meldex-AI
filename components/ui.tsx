@@ -31,7 +31,7 @@ export function SectionShell({ children, className }: { children: React.ReactNod
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("rounded-md border border-white/10 bg-panel/86 shadow-2xl shadow-black/25", className)}>{children}</div>;
+  return <div className={cn("glass-panel rounded-md", className)}>{children}</div>;
 }
 
 export function ActionCard({

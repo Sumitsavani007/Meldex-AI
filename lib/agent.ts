@@ -1,6 +1,7 @@
 import { stat } from "fs/promises";
 import path from "path";
 import { ensureWorkspace, getWorkspaceRoot, listWorkspace, readWorkspaceFile, writeWorkspaceFile } from "@/lib/workspace";
+import { blockedCommandPattern, isSafeCommand } from "@/lib/security";
 
 export type AgentAction =
   | { type: "read_file"; path: string }
@@ -39,19 +40,16 @@ const MAX_TERMINAL_FIX_ATTEMPTS = 5;
 const MAX_CONTEXT_CHARS = 12000;
 const MAX_FILE_CHARS = 16000;
 
-const DANGEROUS_COMMAND_RE = /\b(?:rm\s+-rf|sudo|shutdown|reboot|mkfs|dd)\b/i;
-
 function normalizeCommand(command: string) {
   return command.trim().replace(/\s+/g, " ");
 }
 
 export function isDangerousCommand(command: string) {
-  return DANGEROUS_COMMAND_RE.test(command);
+  return blockedCommandPattern.test(command);
 }
 
 export function isAllowedCommand(command: string) {
-  const normalized = normalizeCommand(command);
-  return ["npm install", "npm run dev", "npm run build", "npm test"].includes(normalized);
+  return isSafeCommand(normalizeCommand(command));
 }
 
 export function readJsonEnvelope(content: string) {
@@ -313,7 +311,11 @@ export async function runAgent(task: string, options?: { baseUrl?: string; model
   const changedFiles = new Set<string>();
   const readFiles: Record<string, string> = {};
   const terminalRuns: TerminalRun[] = [];
-  const logs: string[] = [`[agent] ${task.trim()}`];
+  const logs: string[] = [
+    `[planner] ${task.trim()}`,
+    "[architect] Mapping workspace context and implementation boundaries",
+    "[coder] Preparing safe file actions"
+  ];
   let summary = "";
 
   if (relevantFiles.length) {
@@ -365,6 +367,7 @@ export async function runAgent(task: string, options?: { baseUrl?: string; model
 
   const runCommand = options?.runCommand;
   if (runCommand && changedFiles.size > 0) {
+    logs.push("[tester] Running npm run build with auto-fix enabled");
     const buildResult = await runCommand("npm run build", { autoFix: true });
     terminalRuns.push(buildResult);
     for (const filePath of buildResult.changedFiles ?? []) {
@@ -380,6 +383,8 @@ export async function runAgent(task: string, options?: { baseUrl?: string; model
     if (!buildResult.fixed && buildResult.code !== 0) {
       summary = summary || "Applied file changes, but npm run build still reports errors after the fix loop.";
     } else {
+      logs.push("[reviewer] Build passed and changed files were recorded");
+      logs.push("[devops] Workspace is ready for deployment packaging");
       summary = summary || "Applied file changes and verified the workspace with npm run build.";
     }
   }

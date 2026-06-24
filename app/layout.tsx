@@ -5,8 +5,8 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
-  title: "Meldex AI | Build. Fix. Deploy.",
-  description: "A Codex-style local AI coding agent dashboard powered by Ollama."
+  title: "Meldex AI | Plan. Build. Debug. Deploy.",
+  description: "A production-grade AI SaaS platform for planning, generating, editing, running, debugging, improving, and deploying software."
 };
 
 const navItems = [
@@ -20,7 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body className="min-h-screen bg-ink font-sans antialiased">
-        <div className="pointer-events-none fixed inset-0 grid-sheen opacity-45" />
+        <div className="pointer-events-none fixed inset-0 grid-sheen opacity-35" />
         <div className="relative flex min-h-screen flex-col">
           <header className="sticky top-0 z-30 border-b border-white/10 bg-ink/84 backdrop-blur-xl">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 </span>
                 <span>
                   <span className="block text-sm font-semibold tracking-wide text-white">Meldex AI</span>
-                  <span className="block text-xs text-slate-400">Build. Fix. Deploy.</span>
+                  <span className="block text-xs text-slate-400">Plan. Build. Deploy.</span>
                 </span>
               </Link>
               <nav className="hidden items-center gap-1 md:flex">

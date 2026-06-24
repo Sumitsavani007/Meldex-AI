@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Editor from "@monaco-editor/react";
 import { Bot, File, Folder, FolderPlus, Play, Save, TerminalSquare, Trash2 } from "lucide-react";
 import { Panel, SectionShell, StatusPill } from "@/components/ui";
+import { allowedCommands } from "@/lib/security";
 
 type WorkspaceNode = {
   name: string;
@@ -50,7 +52,7 @@ export default function WorkspacePage() {
   const [terminalRuns, setTerminalRuns] = useState<TerminalRun[]>([]);
   const [status, setStatus] = useState<{ tone: "success" | "error" | "idle"; text: string }>({ tone: "idle", text: "Ready" });
   const files = useMemo(() => flatten(tree).filter((node) => node.type === "file"), [tree]);
-  const safeCommands = ["npm install", "npm run dev", "npm run build", "npm test"];
+  const safeCommands = allowedCommands;
 
   async function refreshTree() {
     const response = await fetch("/api/workspace");
@@ -230,13 +232,29 @@ export default function WorkspacePage() {
               <Trash2 className="size-4" />
             </button>
           </div>
-          <textarea
-            value={content}
-            onChange={(event) => setContent(event.target.value)}
-            spellCheck={false}
-            className="thin-scrollbar min-h-[600px] flex-1 resize-none border-0 bg-slate-950/70 p-4 font-mono text-sm leading-6 text-slate-100 focus:ring-0"
-            placeholder="// Create or open a file to start editing"
-          />
+          <div className="min-h-[600px] flex-1 bg-slate-950/70">
+            <Editor
+              height="100%"
+              value={content}
+              path={selectedPath || "untitled.tsx"}
+              theme="vs-dark"
+              onChange={(value) => setContent(value ?? "")}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineHeight: 22,
+                padding: { top: 16, bottom: 16 },
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                automaticLayout: true
+              }}
+            />
+          </div>
+          {!selectedPath && (
+            <div className="border-t border-white/10 bg-slate-950/70 px-4 py-3 text-xs text-slate-500">
+              Create or open a file to start editing with Monaco.
+            </div>
+          )}
         </Panel>
 
         <div className="grid gap-4">

@@ -1,22 +1,16 @@
 import { NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 import { executeTerminalCommand } from "@/lib/terminal";
+import { agentRequestSchema, checkRateLimit } from "@/lib/security";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      task?: string;
-      baseUrl?: string;
-      model?: string;
-    };
+    checkRateLimit(request.headers.get("x-forwarded-for") || "local-agent", 12);
+    const body = agentRequestSchema.parse(await request.json());
 
-    if (!body.task?.trim()) {
-      return NextResponse.json({ error: "Task is required." }, { status: 400 });
-    }
-
-    const result = await runAgent(body.task, {
+    const result = await runAgent(body.task.trim(), {
       baseUrl: body.baseUrl,
       model: body.model,
       runCommand: executeTerminalCommand

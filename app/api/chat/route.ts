@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { chatRequestSchema, checkRateLimit } from "@/lib/security";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -7,15 +8,16 @@ type ChatMessage = {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      messages?: ChatMessage[];
+    checkRateLimit(request.headers.get("x-forwarded-for") || "local-chat", 40);
+    const body = chatRequestSchema.parse(await request.json()) as {
+      messages: ChatMessage[];
       baseUrl?: string;
       model?: string;
     };
 
     const baseUrl = body.baseUrl?.trim() || "http://localhost:11434";
     const model = body.model?.trim() || "qwen3-coder:30b";
-    const messages = body.messages ?? [];
+    const messages = body.messages;
 
     if (!messages.length) {
       return NextResponse.json({ error: "No chat messages were provided." }, { status: 400 });
