@@ -4,7 +4,7 @@ import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Users, Package, BarChart3, Settings, LogsIcon, Shield, Activity, Layers } from "lucide-react";
+import { Users, Package, BarChart3, Settings, LogsIcon, Shield, Activity, Layers, MonitorCheck } from "lucide-react";
 
 const adminSections = [
   { href: "/admin/users", label: "User Management", icon: Users },
@@ -12,6 +12,7 @@ const adminSections = [
   { href: "/admin/usage", label: "AI Usage", icon: BarChart3 },
   { href: "/admin/logs", label: "System Logs", icon: LogsIcon },
   { href: "/admin/audit", label: "Audit Logs", icon: Shield },
+  { href: "/admin/system", label: "System Diagnostics", icon: MonitorCheck },
   { href: "/admin/settings", label: "Settings", icon: Settings }
 ];
 
