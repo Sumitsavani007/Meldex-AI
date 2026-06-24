@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
-import { webSearch } from "@/lib/search";
+import { advancedSearch } from "@/lib/search-brain";
+import { generateAnswer } from "@/lib/answer-brain";
 
 export async function GET(request: Request) {
   try {
@@ -16,8 +17,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Missing query parameter 'q'" }, { status: 400 });
     }
 
-    const result = await webSearch(q);
-    return NextResponse.json(result);
+    const searchResult = await advancedSearch(q);
+    const answerResult = await generateAnswer(q, searchResult);
+
+    return NextResponse.json({
+      answer: answerResult.answer,
+      sources: answerResult.sources,
+      confidence: answerResult.confidence,
+      searchQueries: answerResult.searchQueries,
+      provider: answerResult.provider,
+      checkedAt: answerResult.checkedAt,
+      cacheHit: answerResult.cacheHit,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Search failed";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -31,14 +42,24 @@ export async function POST(request: Request) {
 
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-search", 20);
 
-    const body = (await request.json()) as { query?: string };
+    const body = (await request.json()) as { query?: string; model?: string };
     const q = body.query?.trim();
     if (!q) {
       return NextResponse.json({ error: "Missing 'query' in request body" }, { status: 400 });
     }
 
-    const result = await webSearch(q);
-    return NextResponse.json(result);
+    const searchResult = await advancedSearch(q);
+    const answerResult = await generateAnswer(q, searchResult, body.model);
+
+    return NextResponse.json({
+      answer: answerResult.answer,
+      sources: answerResult.sources,
+      confidence: answerResult.confidence,
+      searchQueries: answerResult.searchQueries,
+      provider: answerResult.provider,
+      checkedAt: answerResult.checkedAt,
+      cacheHit: answerResult.cacheHit,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Search failed";
     return NextResponse.json({ error: message }, { status: 500 });

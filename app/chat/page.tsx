@@ -30,11 +30,15 @@ import remarkGfm from "remark-gfm";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+type Confidence = "high" | "medium" | "low" | "unverified";
+
 type ChatMode = "chat" | "agent";
+
+type BrainType = "chat" | "search" | "agent" | "memory" | "project" | "planner" | "reasoner" | "multi_agent" | "math" | "time" | "utility" | "knowledge";
 
 type IntentType = "general_chat" | "coding_agent" | "live_search" | "time_query" | "math_query";
 
-type Source = { title: string; url: string; snippet?: string };
+type Source = { title: string; url: string; snippet?: string; tier?: number };
 
 type Message = {
   id: string;
@@ -42,8 +46,16 @@ type Message = {
   content: string;
   mode?: ChatMode;
   intent?: IntentType;
+  brain?: BrainType;
+  brainLabel?: string;
   sources?: Source[];
   searchProvider?: string;
+  confidence?: Confidence;
+  checkedAt?: string;
+  searchQueries?: string[];
+  reasoning?: { thinking: string; verification: string; confidence: string; totalMs: number };
+  plan?: object;
+  agents?: { agent: string; durationMs: number }[];
 };
 
 type Conversation = {
@@ -213,6 +225,88 @@ function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMo
 }
 
 // ---------------------------------------------------------------------------
+// Active Brain Indicator
+// ---------------------------------------------------------------------------
+const BRAIN_META: Record<string, { label: string; color: string; bg: string }> = {
+  chat:        { label: "CHAT",        color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
+  search:      { label: "SEARCH",      color: "text-sky-300",     bg: "bg-sky-400/10 border-sky-400/20" },
+  agent:       { label: "AGENT",       color: "text-iris",        bg: "bg-iris/10 border-iris/20" },
+  memory:      { label: "MEMORY",      color: "text-amber-300",   bg: "bg-amber-400/10 border-amber-400/20" },
+  project:     { label: "PROJECT",     color: "text-cyan-300",    bg: "bg-cyan-400/10 border-cyan-400/20" },
+  planner:     { label: "PLANNER",     color: "text-purple-300",  bg: "bg-purple-400/10 border-purple-400/20" },
+  reasoner:    { label: "REASONER",    color: "text-orange-300",  bg: "bg-orange-400/10 border-orange-400/20" },
+  multi_agent: { label: "MULTI-AGENT", color: "text-rose-300",    bg: "bg-rose-400/10 border-rose-400/20" },
+  math:        { label: "MATH",        color: "text-emerald-300", bg: "bg-emerald-400/10 border-emerald-400/20" },
+  time:        { label: "UTILITY",     color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
+  utility:     { label: "UTILITY",     color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
+  knowledge:   { label: "KNOWLEDGE",   color: "text-teal-300",    bg: "bg-teal-400/10 border-teal-400/20" },
+};
+
+function ActiveBrainBadge({ brain, label }: { brain?: BrainType; label?: string }) {
+  if (!brain || brain === "chat") return null;
+  const meta = BRAIN_META[brain] ?? BRAIN_META.chat;
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${meta.color} ${meta.bg}`}>
+      {label ?? meta.label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Reasoning Panel (collapsible Think/Verify)
+// ---------------------------------------------------------------------------
+function ReasoningPanel({ reasoning }: { reasoning?: Message["reasoning"] }) {
+  const [open, setOpen] = useState(false);
+  if (!reasoning) return null;
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[10px] text-orange-400/70 transition hover:text-orange-300"
+      >
+        <ChevronRight className={`size-3 transition ${open ? "rotate-90" : ""}`} />
+        Reasoning trace · {(reasoning.totalMs / 1000).toFixed(1)}s · {reasoning.confidence} confidence
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 rounded-lg border border-orange-400/15 bg-orange-950/20 p-3 text-[11px]">
+          <div>
+            <p className="mb-1 font-semibold text-orange-400">💭 Thinking</p>
+            <p className="whitespace-pre-wrap text-slate-400">{reasoning.thinking}</p>
+          </div>
+          <div>
+            <p className="mb-1 font-semibold text-orange-400">✅ Verification</p>
+            <p className="whitespace-pre-wrap text-slate-400">{reasoning.verification}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Agent Pipeline Trace
+// ---------------------------------------------------------------------------
+function AgentTrace({ agents }: { agents?: { agent: string; durationMs: number }[] }) {
+  if (!agents || agents.length === 0) return null;
+  const AGENT_EMOJI: Record<string, string> = {
+    planner: "📋", researcher: "🔍", coder: "💻", tester: "🧪", reviewer: "✅",
+  };
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
+      <span className="text-rose-400/70">Pipeline:</span>
+      {agents.map((a, i) => (
+        <span key={i} className="flex items-center gap-0.5">
+          {i > 0 && <span>→</span>}
+          <span className="rounded border border-rose-400/15 bg-rose-400/5 px-1.5 py-0.5 text-rose-300/70">
+            {AGENT_EMOJI[a.agent] ?? "🤖"} {a.agent} ({(a.durationMs / 1000).toFixed(1)}s)
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Intent Badge
 // ---------------------------------------------------------------------------
 function IntentBadge({ intent, searchProvider }: { intent?: IntentType; searchProvider?: string }) {
@@ -248,6 +342,51 @@ function IntentBadge({ intent, searchProvider }: { intent?: IntentType; searchPr
     );
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Confidence Badge
+// ---------------------------------------------------------------------------
+function ConfidenceBadge({ confidence }: { confidence?: Confidence }) {
+  if (!confidence) return null;
+  const map: Record<Confidence, { label: string; cls: string }> = {
+    high: { label: "High confidence", cls: "border-mint/25 bg-mint/10 text-mint" },
+    medium: { label: "Medium confidence", cls: "border-amber-400/25 bg-amber-400/10 text-amber-300" },
+    low: { label: "Low confidence", cls: "border-orange-400/25 bg-orange-400/10 text-orange-300" },
+    unverified: { label: "Unverified", cls: "border-red-400/25 bg-red-400/10 text-red-300" },
+  };
+  const { label, cls } = map[confidence];
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Search Queries collapsible
+// ---------------------------------------------------------------------------
+function SearchQueriesPanel({ queries }: { queries?: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (!queries || queries.length === 0) return null;
+  return (
+    <div className="mt-1.5">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1 text-[10px] text-slate-600 transition hover:text-slate-400"
+      >
+        <ChevronRight className={`size-3 transition ${open ? "rotate-90" : ""}`} />
+        {queries.length} search {queries.length === 1 ? "query" : "queries"} used
+      </button>
+      {open && (
+        <div className="mt-1.5 space-y-1 rounded-lg border border-white/8 bg-slate-950/60 p-2">
+          {queries.map((q, i) => (
+            <p key={i} className="font-mono text-[10px] text-slate-500">{q}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -323,9 +462,10 @@ function MessageBubble({ message }: { message: Message }) {
         </span>
       )}
       <div className="flex min-w-0 max-w-[85%] flex-col gap-1.5 sm:max-w-[80%] lg:max-w-[70%]">
-        {/* Intent badge above assistant message */}
-        {!isUser && message.intent && message.intent !== "general_chat" && (
-          <div className="flex items-center gap-1.5">
+        {/* Brain + Intent badges above assistant message */}
+        {!isUser && (message.brain || (message.intent && message.intent !== "general_chat")) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ActiveBrainBadge brain={message.brain} label={message.brainLabel} />
             <IntentBadge intent={message.intent} searchProvider={message.searchProvider} />
           </div>
         )}
@@ -417,7 +557,26 @@ function MessageBubble({ message }: { message: Message }) {
         </div>
         {/* Source cards below search messages */}
         {!isUser && message.sources && message.sources.length > 0 && (
-          <SourceCards sources={message.sources} provider={message.searchProvider} />
+          <div className="mt-2 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <ConfidenceBadge confidence={message.confidence} />
+              {message.checkedAt && (
+                <span className="text-[10px] text-slate-600">
+                  Checked at {new Date(message.checkedAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
+            <SourceCards sources={message.sources} provider={message.searchProvider} />
+            <SearchQueriesPanel queries={message.searchQueries} />
+          </div>
+        )}
+        {/* Reasoning trace */}
+        {!isUser && message.reasoning && (
+          <ReasoningPanel reasoning={message.reasoning} />
+        )}
+        {/* Multi-agent pipeline trace */}
+        {!isUser && message.agents && (
+          <AgentTrace agents={message.agents} />
         )}
       </div>
       {isUser && (
@@ -770,9 +929,17 @@ export default function ChatPage() {
           error?: string;
           provider?: ProviderType;
           intent?: IntentType;
+          brain?: BrainType;
+          brainLabel?: string;
           sources?: Source[];
           searchQuery?: string;
           searchProvider?: string;
+          confidence?: Confidence;
+          checkedAt?: string;
+          searchQueries?: string[];
+          reasoning?: { thinking: string; verification: string; confidence: string; totalMs: number };
+          plan?: object;
+          agents?: { agent: string; durationMs: number }[];
         } = await response.json();
 
         if (!response.ok) throw new Error(data.error ?? "Chat request failed");
@@ -785,8 +952,16 @@ export default function ChatPage() {
           content: data.message ?? "No response.",
           mode: "chat",
           intent: data.intent,
+          brain: data.brain,
+          brainLabel: data.brainLabel,
           sources: data.sources,
           searchProvider: data.searchProvider,
+          confidence: data.confidence,
+          checkedAt: data.checkedAt,
+          searchQueries: data.searchQueries,
+          reasoning: data.reasoning,
+          plan: data.plan,
+          agents: data.agents,
         };
         setConversations((prev) =>
           prev.map((c) =>

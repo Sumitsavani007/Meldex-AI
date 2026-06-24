@@ -283,3 +283,44 @@ model AuditLog {
   createdAt DateTime @default(now())
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
+
+// ── Brain v2 tables ───────────────────────────────────────────────────────────
+
+model UserMemory {
+  id        String   @id @default(cuid())
+  userId    String
+  key       String
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([userId, key])
+  @@index([userId])
+}
+
+model ProjectContext {
+  id          String   @id @default(cuid())
+  userId      String
+  projectName String
+  summary     String?  @db.Text
+  recentFiles Json?
+  recentEdits Json?
+  lastActive  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, projectName])
+  @@index([userId])
+}
+
+model ConversationSummary {
+  id             String   @id @default(cuid())
+  userId         String
+  conversationId String   @unique
+  summary        String   @db.Text
+  messageCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
