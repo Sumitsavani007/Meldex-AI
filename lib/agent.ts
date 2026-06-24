@@ -32,8 +32,6 @@ export type AgentRunResult = {
   terminalRuns: TerminalRun[];
 };
 
-const OLLAMA_DEFAULT_URL = "http://localhost:11434";
-const DEFAULT_MODEL = "qwen3-coder:30b";
 const MAX_READS_PER_ROUND = 6;
 const MAX_ACTION_ROUNDS = 5;
 const MAX_TERMINAL_FIX_ATTEMPTS = 5;
@@ -273,37 +271,20 @@ function buildFixPrompt(command: string, result: { stdout: string; stderr: strin
     .join("\n\n");
 }
 
-async function callOllama(prompt: string, baseUrl = OLLAMA_DEFAULT_URL, model = DEFAULT_MODEL) {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      stream: false,
-      messages: [
-        {
-          role: "system",
-          content: "You output strict JSON and never wrap the response in markdown."
-        },
-        { role: "user", content: prompt }
-      ]
-    }),
-    signal: AbortSignal.timeout(120000)
+async function callLLM(prompt: string, modelOverride?: string) {
+  // Import here to avoid circular deps and keep tree-shaking friendly
+  const { generateChatCompletion } = await import("./model-router");
+  return generateChatCompletion({
+    messages: [
+      {
+        role: "system",
+        content: "You output strict JSON and never wrap the response in markdown."
+      },
+      { role: "user", content: prompt }
+    ],
+    model: modelOverride,
+    timeoutMs: 120_000,
   });
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Ollama returned ${response.status}. ${detail || "Check the model name and local server."}`);
-  }
-
-  const data = (await response.json()) as { message?: { content?: string }; response?: string };
-  const content = data.message?.content ?? data.response ?? "";
-
-  if (!content.trim()) {
-    throw new Error("Ollama returned an empty response.");
-  }
-
-  return content;
 }
 
 export async function runAgent(task: string, options?: { baseUrl?: string; model?: string; runCommand?: (command: string, opts?: { autoFix?: boolean }) => Promise<TerminalRun> }) {
@@ -323,7 +304,7 @@ export async function runAgent(task: string, options?: { baseUrl?: string; model
   }
 
   for (let round = 0; round < MAX_ACTION_ROUNDS; round += 1) {
-    const content = await callOllama(buildPrompt(task, tree, snapshots, readFiles, terminalRuns), options?.baseUrl, options?.model);
+    const content = await callLLM(buildPrompt(task, tree, snapshots, readFiles, terminalRuns), options?.model);
     const envelope = readJsonEnvelope(content);
     const actions = Array.isArray(envelope.actions) ? envelope.actions : [];
 
@@ -417,7 +398,7 @@ export async function applyTerminalFixLoop(
     const readFiles: Record<string, string> = {};
 
     for (let round = 0; round < 2; round += 1) {
-      const content = await callOllama(buildFixPrompt(command, lastResult, tree, snapshots, readFiles));
+      const content = await callLLM(buildFixPrompt(command, lastResult, tree, snapshots, readFiles));
       const envelope = readJsonEnvelope(content);
       const actions = Array.isArray(envelope.actions) ? envelope.actions : [];
 

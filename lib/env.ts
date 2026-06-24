@@ -75,6 +75,20 @@ function validateEnv() {
   const DEFAULT_MODEL =
     process.env.DEFAULT_MODEL ?? "qwen3-coder:30b";
 
+  // ── Model router / brain provider ────────────────────────────────────────
+  const MELDEX_BRAIN_PROVIDER =
+    process.env.MELDEX_BRAIN_PROVIDER ?? "local_ollama";
+
+  const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY ?? "";
+  const OPENROUTER_BASE_URL =
+    process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
+  const OPENROUTER_MODEL =
+    process.env.OPENROUTER_MODEL ?? "qwen/qwen3-coder:free";
+
+  const CUSTOM_AI_BASE_URL = process.env.CUSTOM_AI_BASE_URL ?? "";
+  const CUSTOM_AI_API_KEY = process.env.CUSTOM_AI_API_KEY ?? "";
+  const CUSTOM_AI_MODEL = process.env.CUSTOM_AI_MODEL ?? "";
+
   return {
     DATABASE_URL,
     NEXTAUTH_SECRET,
@@ -85,6 +99,13 @@ function validateEnv() {
     GITHUB_SECRET,
     OLLAMA_BASE_URL,
     DEFAULT_MODEL,
+    MELDEX_BRAIN_PROVIDER,
+    OPENROUTER_API_KEY,
+    OPENROUTER_BASE_URL,
+    OPENROUTER_MODEL,
+    CUSTOM_AI_BASE_URL,
+    CUSTOM_AI_API_KEY,
+    CUSTOM_AI_MODEL,
     NODE_ENV: process.env.NODE_ENV ?? "development",
   } as const;
 }

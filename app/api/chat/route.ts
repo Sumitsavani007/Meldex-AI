@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { chatRequestSchema, checkRateLimit } from "@/lib/security";
 import { requireAuth } from "@/lib/role-guard";
-
-type ChatMessage = {
-  role: "system" | "user" | "assistant";
-  content: string;
-};
+import { generateChatCompletion, getActiveProvider, getProviderLabel, ModelRouterError } from "@/lib/model-router";
 
 export async function POST(request: Request) {
   try {
@@ -13,42 +9,39 @@ export async function POST(request: Request) {
     if (error) return error;
 
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-chat", 40);
+
     const body = chatRequestSchema.parse(await request.json()) as {
-      messages: ChatMessage[];
-      baseUrl?: string;
+      messages: { role: "system" | "user" | "assistant"; content: string }[];
       model?: string;
+      // baseUrl kept for backwards-compat with local-dev override; ignored when
+      // server-side provider is openrouter or custom.
+      baseUrl?: string;
     };
 
-    const baseUrl = body.baseUrl?.trim() || "http://localhost:11434";
-    const model = body.model?.trim() || "qwen3-coder:30b";
-    const messages = body.messages;
-
-    if (!messages.length) {
+    if (!body.messages.length) {
       return NextResponse.json({ error: "No chat messages were provided." }, { status: 400 });
     }
 
-    const ollamaResponse = await fetch(`${baseUrl.replace(/\/$/, "")}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: false }),
-      signal: AbortSignal.timeout(60000)
+    const message = await generateChatCompletion({
+      messages: body.messages,
+      model: body.model,
     });
 
-    if (!ollamaResponse.ok) {
-      const detail = await ollamaResponse.text();
-      return NextResponse.json(
-        { error: `Ollama returned ${ollamaResponse.status}. ${detail || "Check the model name and local server."}` },
-        { status: 502 }
-      );
+    return NextResponse.json({
+      message,
+      provider: getActiveProvider(),
+      providerLabel: getProviderLabel(),
+    });
+  } catch (err) {
+    if (err instanceof ModelRouterError) {
+      const status =
+        err.code === "missing_api_key" ? 401 :
+        err.code === "rate_limit" ? 429 :
+        err.code === "invalid_model" ? 400 :
+        err.code === "network_failure" ? 503 : 502;
+      return NextResponse.json({ error: err.message, code: err.code }, { status });
     }
-
-    const data = await ollamaResponse.json();
-    return NextResponse.json({ message: data.message?.content ?? data.response ?? "" });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json(
-      { error: `Unable to reach Ollama. Confirm it is running and accessible. Details: ${message}` },
-      { status: 500 }
-    );
+    const message = err instanceof Error ? err.message : "Chat request failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
