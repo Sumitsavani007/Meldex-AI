@@ -1,7 +1,7 @@
 # =============================================================================
 # Meldex AI — Multi-stage Dockerfile
 # =============================================================================
-# Stage 1  deps     — install production dependencies only
+# Stage 1  deps     — install all dependencies
 # Stage 2  builder  — build the Next.js application
 # Stage 3  runner   — minimal runtime image
 # =============================================================================
@@ -19,7 +19,7 @@ RUN apk add --no-cache libc6-compat openssl
 COPY package.json package-lock.json* ./
 COPY prisma ./prisma/
 
-# Install all deps (including devDeps needed for the build)
+# Install all deps (devDeps needed for build + postinstall runs prisma generate)
 RUN npm ci
 
 # ── Stage 2: build ───────────────────────────────────────────────────────────
@@ -32,13 +32,12 @@ COPY . .
 # Generate Prisma client before building
 RUN npx prisma generate
 
-# Build the Next.js application.
-# DATABASE_URL must be set to a real value at build time only when server
-# components directly query the DB during static generation.  For this project
-# the admin/API routes are all dynamic, so we use a dummy value here.
+# Build with standalone output for a minimal runtime image.
+# Dummy env vars satisfy the build-phase env checks (not used at runtime).
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
 ENV NEXTAUTH_SECRET="build-placeholder-secret"
 ENV NEXTAUTH_URL="http://localhost:3000"
+ENV DOCKER_BUILD="1"
 
 RUN npm run build
 
@@ -50,11 +49,23 @@ RUN apk add --no-cache openssl
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 
-# Copy only what's needed at runtime
-COPY --from=builder /app/public         ./public
-COPY --from=builder /app/prisma         ./prisma
+# Copy standalone Next.js server
+COPY --from=builder /app/public                              ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static     ./.next/static
+
+# Copy Prisma schema + migrations so `prisma migrate deploy` works at startup.
+# The prisma CLI binary is included in the standalone node_modules.
+COPY --from=builder /app/prisma ./prisma
+
+# Ensure prisma CLI is available in the standalone node_modules.
+# The standalone bundle traces runtime deps; prisma CLI is a devDep so we
+# copy just the CLI binary separately.
+COPY --from=deps /app/node_modules/.bin/prisma              ./node_modules/.bin/prisma
+COPY --from=deps /app/node_modules/prisma                   ./node_modules/prisma
+COPY --from=deps /app/node_modules/@prisma                  ./node_modules/@prisma
+
+RUN chown -R nextjs:nodejs ./node_modules/.bin/prisma ./node_modules/prisma ./node_modules/@prisma
 
 USER nextjs
 
@@ -63,5 +74,5 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Run DB migrations then start the server
-CMD ["sh", "-c", "npx prisma migrate deploy && node server.js"]
+# Run DB migrations then start the standalone server
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node server.js"]

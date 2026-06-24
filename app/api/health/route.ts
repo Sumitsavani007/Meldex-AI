@@ -79,7 +79,7 @@ async function checkOllama(): Promise<Check> {
       latencyMs: Date.now() - t0,
       detail: models.length > 0 ? `${models.length} model(s) loaded` : "No models loaded",
     };
-  } catch (e) {
+  } catch {
     return {
       status: "degraded",
       detail: "Ollama unreachable — AI features unavailable",
