@@ -39,6 +39,8 @@ export type CompletionOptions = {
   /** Optional model override.  Falls back to the provider's configured default. */
   model?: string;
   temperature?: number;
+  /** Max tokens to generate. Default: 4096 (keeps within free-tier credit limits). */
+  maxTokens?: number;
   /** Timeout in milliseconds.  Default: 90 000 */
   timeoutMs?: number;
 };
@@ -126,6 +128,7 @@ async function callOpenAICompatible(
       model,
       messages: options.messages,
       temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
     }),
     signal: AbortSignal.timeout(timeout),
   });
@@ -135,6 +138,9 @@ async function callOpenAICompatible(
   }
   if (response.status === 429) {
     throw new ModelRouterError("Rate limit exceeded for this provider. Try again shortly.", "rate_limit", 429);
+  }
+  if (response.status === 402) {
+    throw new ModelRouterError("Insufficient credits for this model. Trying a smaller model...", "rate_limit", 402);
   }
   if (response.status === 404) {
     throw new ModelRouterError(`Model "${model}" not found. Check OPENROUTER_MODEL / CUSTOM_AI_MODEL.`, "invalid_model", 404);
@@ -162,6 +168,14 @@ async function callOpenAICompatible(
   return content;
 }
 
+// Free models to try when the primary model is upstream rate-limited (Venice congestion).
+// These are confirmed free on OpenRouter as of 2026-06.
+const OPENROUTER_FALLBACK_MODELS = [
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "liquid/lfm-2.5-1.2b-instruct:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+];
+
 async function callOpenRouter(options: CompletionOptions): Promise<string> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
@@ -171,13 +185,28 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
     );
   }
   const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  const model = options.model?.trim() || process.env.OPENROUTER_MODEL || "qwen/qwen3-coder:free";
-
-  return callOpenAICompatible(baseUrl, apiKey, model, options, {
-    // OpenRouter recommends these headers for attribution
+  const primaryModel = options.model?.trim() || process.env.OPENROUTER_MODEL || "qwen/qwen3-coder:free";
+  const extraHeaders = {
     "HTTP-Referer": process.env.NEXTAUTH_URL ?? "http://localhost:3000",
     "X-Title": "Meldex AI",
-  });
+  };
+
+  // Try primary model first
+  try {
+    return await callOpenAICompatible(baseUrl, apiKey, primaryModel, options, extraHeaders);
+  } catch (err) {
+    // If primary is rate-limited, silently try fallbacks
+    if (err instanceof ModelRouterError && err.code === "rate_limit") {
+      for (const fallbackModel of OPENROUTER_FALLBACK_MODELS) {
+        try {
+          return await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
+        } catch {
+          // try next
+        }
+      }
+    }
+    throw err;
+  }
 }
 
 async function callCustom(options: CompletionOptions): Promise<string> {

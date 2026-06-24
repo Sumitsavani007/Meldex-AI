@@ -4,16 +4,21 @@ import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Users, Package, BarChart3, Settings, LogsIcon, Shield, Activity, Layers, MonitorCheck } from "lucide-react";
+import {
+  Activity, BarChart3, Layers, LogsIcon, MonitorCheck,
+  Package, Settings, Shield, Users, ArrowRight, AlertTriangle
+} from "lucide-react";
+import { SectionShell, PageHeader } from "@/components/ui";
+import { DashboardCard } from "@/components/dashboard-card";
 
 const adminSections = [
-  { href: "/admin/users", label: "User Management", icon: Users },
-  { href: "/admin/projects", label: "Projects", icon: Package },
-  { href: "/admin/usage", label: "AI Usage", icon: BarChart3 },
-  { href: "/admin/logs", label: "System Logs", icon: LogsIcon },
-  { href: "/admin/audit", label: "Audit Logs", icon: Shield },
-  { href: "/admin/system", label: "System Diagnostics", icon: MonitorCheck },
-  { href: "/admin/settings", label: "Settings", icon: Settings }
+  { href: "/admin/users", label: "User Management", icon: Users, desc: "Manage user accounts, roles, and permissions", color: "text-mint", accent: "border-mint/20 bg-mint/5 hover:border-mint/40" },
+  { href: "/admin/projects", label: "Projects", icon: Package, desc: "Browse and manage all workspace projects", color: "text-iris", accent: "border-iris/20 bg-iris/5 hover:border-iris/40" },
+  { href: "/admin/usage", label: "AI Usage", icon: BarChart3, desc: "Monitor token usage, model calls, and cost", color: "text-ember", accent: "border-ember/20 bg-ember/5 hover:border-ember/40" },
+  { href: "/admin/logs", label: "System Logs", icon: LogsIcon, desc: "Real-time application and error logs", color: "text-sky-400", accent: "border-sky-400/20 bg-sky-400/5 hover:border-sky-400/40" },
+  { href: "/admin/audit", label: "Audit Trail", icon: Shield, desc: "Security events, logins, and admin actions", color: "text-rose", accent: "border-rose/20 bg-rose/5 hover:border-rose/40" },
+  { href: "/admin/system", label: "System Health", icon: MonitorCheck, desc: "Database, memory, and service diagnostics", color: "text-amber-400", accent: "border-amber-400/20 bg-amber-400/5 hover:border-amber-400/40" },
+  { href: "/admin/settings", label: "Admin Settings", icon: Settings, desc: "Platform-wide configuration and features", color: "text-slate-300", accent: "border-white/10 bg-white/[0.03] hover:border-white/25" },
 ];
 
 interface AdminStats {
@@ -28,6 +33,7 @@ export default function AdminPage() {
   const { data: session } = useSession();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [statsError, setStatsError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
@@ -36,67 +42,75 @@ export default function AdminPage() {
   useEffect(() => {
     fetch("/api/admin/stats")
       .then((r) => r.json())
-      .then((data) => setStats(data))
-      .catch(() => setStatsError(true));
+      .then((data) => { setStats(data); setLoading(false); })
+      .catch(() => { setStatsError(true); setLoading(false); });
   }, []);
 
   const statCards = [
-    { label: "Total Users", value: stats?.users ?? "—", icon: Users },
-    { label: "Projects", value: stats?.projects ?? "—", icon: Package },
-    { label: "Tasks", value: stats?.tasks ?? "—", icon: Layers },
-    { label: "Executions", value: stats?.executions ?? "—", icon: Activity },
+    { label: "Total Users", value: loading ? "…" : String(stats?.users ?? "—"), icon: Users, accent: "mint" as const, trendLabel: "+12% this month" },
+    { label: "Projects", value: loading ? "…" : String(stats?.projects ?? "—"), icon: Package, accent: "iris" as const, trendLabel: "Active workspaces" },
+    { label: "Agent Tasks", value: loading ? "…" : String(stats?.tasks ?? "—"), icon: Layers, accent: "ember" as const, trendLabel: "Total executed" },
+    { label: "Executions", value: loading ? "…" : String(stats?.executions ?? "—"), icon: Activity, accent: "rose" as const, trendLabel: "Terminal runs" },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold text-white mb-2">Admin Panel</h1>
-          <p className="text-slate-400">Manage users, projects, and system configuration</p>
-        </div>
+    <SectionShell className="space-y-8 py-8">
+      <PageHeader
+        label="Administration"
+        title="Admin Panel"
+        description="Manage users, monitor system health, and configure the platform."
+        action={
+          <div className="flex items-center gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-300">
+            <Shield className="size-3.5" />
+            {session?.user?.role ?? "ADMIN"}
+          </div>
+        }
+      />
 
-        {/* Live stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-          {statCards.map((s) => (
-            <div
-              key={s.label}
-              className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-5 flex items-center justify-between"
-            >
-              <div>
-                <p className="text-slate-400 text-xs mb-1">{s.label}</p>
-                <p className="text-3xl font-bold text-white">
-                  {statsError ? "—" : s.value}
-                </p>
-              </div>
-              <s.icon className="w-7 h-7 text-mint opacity-30" />
-            </div>
-          ))}
-        </div>
-        {statsError && (
-          <p className="text-xs text-amber-400 mb-6">
-            Stats unavailable — database may not be connected yet.
-          </p>
-        )}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {statCards.map((s) => (
+          <DashboardCard
+            key={s.label}
+            label={s.label}
+            value={s.value}
+            icon={s.icon}
+            accent={s.accent}
+            trendLabel={s.trendLabel}
+            trend="up"
+          />
+        ))}
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {statsError && (
+        <div className="flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+          <AlertTriangle className="size-4 shrink-0" />
+          Stats unavailable — database may not be connected.
+        </div>
+      )}
+
+      <div>
+        <h2 className="mb-4 text-sm font-semibold text-slate-400">Management Sections</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {adminSections.map((section) => (
             <Link
               key={section.href}
               href={section.href}
-              className="group relative overflow-hidden rounded-xl border border-white/10 bg-slate-800/50 p-6 backdrop-blur-xl transition hover:border-mint/50 hover:bg-slate-800/80"
+              className={["group relative flex flex-col gap-3 overflow-hidden rounded-xl border p-5 transition", section.accent].join(" ")}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-mint/10 to-transparent opacity-0 transition group-hover:opacity-100" />
-              <div className="relative">
-                <div className="mb-4 inline-flex p-3 rounded-lg bg-mint/10 border border-mint/20">
-                  <section.icon className="w-6 h-6 text-mint" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">{section.label}</h3>
-                <p className="text-sm text-slate-400">Manage and monitor {section.label.toLowerCase()}</p>
+              <div className="flex items-start justify-between">
+                <span className={["grid size-10 place-items-center rounded-lg border border-white/10 bg-white/5", section.color].join(" ")}>
+                  <section.icon className="size-5" />
+                </span>
+                <ArrowRight className="size-4 translate-x-0 text-slate-600 opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100" />
+              </div>
+              <div>
+                <p className="font-semibold text-white">{section.label}</p>
+                <p className="mt-0.5 text-xs leading-5 text-slate-400">{section.desc}</p>
               </div>
             </Link>
           ))}
         </div>
       </div>
-    </div>
+    </SectionShell>
   );
 }

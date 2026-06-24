@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Bot, File, Folder, FolderPlus, Play, Save, TerminalSquare, Trash2 } from "lucide-react";
-import { Panel, SectionShell, StatusPill } from "@/components/ui";
+import {
+  Bot, File, FileText, Folder, FolderPlus, Play, Save,
+  TerminalSquare, Trash2, Zap, CheckCircle2, XCircle, RefreshCw,
+  ChevronRight, FilePlus
+} from "lucide-react";
+import { StatusPill } from "@/components/ui";
 import { allowedCommands } from "@/lib/security";
 
 type WorkspaceNode = {
@@ -24,17 +28,34 @@ function flatten(nodes: WorkspaceNode[]): WorkspaceNode[] {
   return nodes.flatMap((node) => [node, ...(node.children ? flatten(node.children) : [])]);
 }
 
-function TreeNode({ node, onSelect }: { node: WorkspaceNode; onSelect: (node: WorkspaceNode) => void }) {
+function TreeNode({ node, onSelect, activeFile }: { node: WorkspaceNode; onSelect: (node: WorkspaceNode) => void; activeFile: string }) {
+  const [open, setOpen] = useState(true);
+  const isFolder = node.type === "folder";
+  const isActive = !isFolder && node.path === activeFile;
+
   return (
     <div>
       <button
-        onClick={() => onSelect(node)}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-slate-300 hover:bg-white/7 hover:text-white"
+        onClick={() => { isFolder ? setOpen(!open) : onSelect(node); }}
+        className={[
+          "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs transition",
+          isActive ? "bg-mint/10 text-mint" : "text-slate-400 hover:bg-white/6 hover:text-white"
+        ].join(" ")}
       >
-        {node.type === "folder" ? <Folder className="size-4 text-ember" /> : <File className="size-4 text-slate-500" />}
+        {isFolder
+          ? <Folder className="size-3.5 shrink-0 text-ember" />
+          : <FileText className="size-3.5 shrink-0 text-slate-500" />
+        }
         <span className="truncate">{node.name}</span>
+        {isFolder && (
+          <ChevronRight className={`ml-auto size-3 shrink-0 transition ${open ? "rotate-90" : ""}`} />
+        )}
       </button>
-      {node.children && <div className="ml-4 border-l border-white/10 pl-2">{node.children.map((child) => <TreeNode key={child.path} node={child} onSelect={onSelect} />)}</div>}
+      {isFolder && open && node.children && (
+        <div className="ml-3 border-l border-white/8 pl-2">
+          {node.children.map(child => <TreeNode key={child.path} node={child} onSelect={onSelect} activeFile={activeFile} />)}
+        </div>
+      )}
     </div>
   );
 }
@@ -198,222 +219,206 @@ export default function WorkspacePage() {
   }
 
   return (
-    <SectionShell className="py-6">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm text-mint">Local Workspace</p>
-          <h1 className="mt-1 text-3xl font-semibold text-white">Project Workspace</h1>
+    <div className="flex h-[calc(100vh-64px)] flex-col overflow-hidden bg-slate-900">
+      {/* Top bar */}
+      <div className="flex shrink-0 items-center justify-between border-b border-white/8 bg-slate-950/80 px-4 py-2.5 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <h1 className="text-sm font-semibold text-white">Project Workspace</h1>
+          <StatusPill tone={status.tone}>{status.text}</StatusPill>
         </div>
-        <StatusPill tone={status.tone}>{status.text}</StatusPill>
+        <button
+          onClick={() => refreshTree().catch(e => setStatus({ tone: "error", text: e.message }))}
+          className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-400 transition hover:bg-white/6 hover:text-white"
+        >
+          <RefreshCw className="size-3.5" />
+          Refresh
+        </button>
       </div>
 
-      <div className="grid min-h-[720px] gap-4 xl:grid-cols-[300px_1fr_360px]">
-        <Panel className="overflow-hidden">
-          <div className="border-b border-white/10 p-4">
-            <h2 className="text-sm font-semibold text-white">File Tree</h2>
+      {/* Main 3-column split */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {/* ── Column 1: File Tree ── */}
+        <aside className="flex w-52 shrink-0 flex-col border-r border-white/8 bg-slate-950/60">
+          <div className="flex items-center justify-between border-b border-white/8 px-3 py-2">
+            <span className="text-xs font-semibold text-slate-300">Files</span>
+            <span className="text-xs text-slate-600">{files.length} files</span>
           </div>
-          <div className="thin-scrollbar h-[640px] overflow-auto p-3">
-            {tree.length ? tree.map((node) => <TreeNode key={node.path} node={node} onSelect={openNode} />) : <p className="p-2 text-sm text-slate-500">No files yet.</p>}
+          <div className="thin-scrollbar flex-1 overflow-y-auto p-2">
+            {tree.length
+              ? tree.map(node => <TreeNode key={node.path} node={node} onSelect={openNode} activeFile={selectedPath} />)
+              : <p className="px-2 py-4 text-xs text-slate-600">No files yet.</p>
+            }
           </div>
-        </Panel>
+          {/* Quick create */}
+          <div className="border-t border-white/8 p-2 space-y-1.5">
+            <input
+              value={newPath}
+              onChange={e => setNewPath(e.target.value)}
+              placeholder="path/to/file.tsx"
+              className="w-full rounded-lg border border-white/8 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 placeholder-slate-600 focus:border-mint/40 focus:outline-none"
+            />
+            <div className="grid grid-cols-2 gap-1">
+              <button onClick={() => saveFile(newPath, "")}
+                className="flex items-center justify-center gap-1 rounded-lg bg-mint/10 px-2 py-1.5 text-xs font-medium text-mint transition hover:bg-mint/20">
+                <FilePlus className="size-3" /> File
+              </button>
+              <button onClick={createFolder}
+                className="flex items-center justify-center gap-1 rounded-lg border border-white/8 px-2 py-1.5 text-xs text-slate-400 transition hover:bg-white/6">
+                <FolderPlus className="size-3" /> Folder
+              </button>
+            </div>
+          </div>
+        </aside>
 
-        <Panel className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/10 p-3">
+        {/* ── Column 2: Editor ── */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* Editor toolbar */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-white/8 bg-slate-950/40 px-3 py-2">
             <input
               value={selectedPath}
-              onChange={(event) => setSelectedPath(event.target.value)}
-              placeholder="Select or enter file path"
-              className="min-w-0 flex-1 rounded-md border-white/10 bg-slate-950 text-sm text-slate-100 focus:border-mint focus:ring-mint"
+              onChange={e => setSelectedPath(e.target.value)}
+              placeholder="Select or type file path…"
+              className="min-w-0 flex-1 rounded-lg border border-white/8 bg-transparent px-2 py-1 text-xs text-slate-300 placeholder-slate-600 focus:border-mint/40 focus:outline-none"
             />
-            <button onClick={() => saveFile()} className="grid size-10 place-items-center rounded-md bg-mint text-slate-950" aria-label="Save file">
-              <Save className="size-4" />
+            <button onClick={() => saveFile()}
+              className="flex items-center gap-1.5 rounded-lg bg-mint px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-mint/90">
+              <Save className="size-3.5" /> Save
             </button>
-            <button onClick={deleteSelected} className="grid size-10 place-items-center rounded-md border border-red-400/30 bg-red-400/10 text-red-100" aria-label="Delete file">
-              <Trash2 className="size-4" />
+            <button onClick={deleteSelected}
+              className="flex items-center gap-1.5 rounded-lg border border-rose/25 bg-rose/8 px-3 py-1.5 text-xs text-rose transition hover:bg-rose/15">
+              <Trash2 className="size-3.5" />
             </button>
           </div>
-          <div className="min-h-[600px] flex-1 bg-slate-950/70">
+          {/* Monaco */}
+          <div className="min-h-0 flex-1 bg-slate-950">
             <Editor
               height="100%"
               value={content}
               path={selectedPath || "untitled.tsx"}
               theme="vs-dark"
-              onChange={(value) => setContent(value ?? "")}
+              onChange={value => setContent(value ?? "")}
               options={{
                 minimap: { enabled: false },
-                fontSize: 14,
-                lineHeight: 22,
-                padding: { top: 16, bottom: 16 },
+                fontSize: 13,
+                lineHeight: 21,
+                padding: { top: 12, bottom: 12 },
                 scrollBeyondLastLine: false,
                 wordWrap: "on",
-                automaticLayout: true
+                automaticLayout: true,
+                renderLineHighlight: "gutter",
               }}
             />
           </div>
           {!selectedPath && (
-            <div className="border-t border-white/10 bg-slate-950/70 px-4 py-3 text-xs text-slate-500">
-              Create or open a file to start editing with Monaco.
+            <div className="shrink-0 border-t border-white/8 bg-slate-950 px-4 py-2 text-xs text-slate-600">
+              Open a file from the tree or create a new one.
             </div>
           )}
-        </Panel>
+        </div>
 
-        <div className="grid gap-4">
-          <Panel className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-white">Create</h2>
-            <div className="grid gap-3">
-              <input
-                value={newPath}
-                onChange={(event) => setNewPath(event.target.value)}
-                className="rounded-md border-white/10 bg-slate-950 text-sm text-slate-100 focus:border-mint focus:ring-mint"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => saveFile(newPath, "")} className="inline-flex items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-semibold text-slate-950">
-                  <File className="size-4" />
-                  File
-                </button>
-                <button onClick={createFolder} className="inline-flex items-center justify-center gap-2 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100">
-                  <FolderPlus className="size-4" />
-                  Folder
-                </button>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel className="p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Bot className="size-4 text-mint" />
-              <h2 className="text-sm font-semibold text-white">Agent Mode</h2>
+        {/* ── Column 3: Agent + Terminal ── */}
+        <aside className="thin-scrollbar flex w-72 shrink-0 flex-col gap-0 overflow-y-auto border-l border-white/8 bg-slate-950/60">
+          {/* Agent task */}
+          <div className="border-b border-white/8 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Zap className="size-3.5 text-amber-400" />
+              <h2 className="text-xs font-semibold text-white">Agent Task</h2>
             </div>
             <textarea
               value={task}
-              onChange={(event) => setTask(event.target.value)}
-              className="min-h-24 w-full resize-none rounded-md border-white/10 bg-slate-950 text-sm text-slate-100 focus:border-mint focus:ring-mint"
+              onChange={e => setTask(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-lg border border-white/8 bg-slate-900 px-2.5 py-2 text-xs text-slate-300 placeholder-slate-600 focus:border-amber-400/40 focus:outline-none"
+              placeholder="Describe a build task…"
             />
-            <button onClick={runAgent} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-mint px-3 py-2 text-sm font-semibold text-slate-950">
-              <Play className="size-4" />
-              Run Agent
+            <button onClick={runAgent}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-amber-400 py-2 text-xs font-semibold text-slate-950 transition hover:bg-amber-400/90">
+              <Play className="size-3.5" /> Run Agent
             </button>
-            <div className="mt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Changed Files</p>
-              <div className="thin-scrollbar mt-2 max-h-32 overflow-auto rounded-md border border-white/10 bg-slate-950/60 p-2 text-xs text-slate-300">
-                {changedFiles.length ? (
-                  changedFiles.map((file) => (
-                    <p key={file} className="truncate py-0.5">
-                      {file}
-                    </p>
-                  ))
-                ) : (
-                  <p className="text-slate-500">No file changes yet.</p>
-                )}
-              </div>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-slate-500">
-              Destructive actions require confirmation. Current files detected: {files.length}.
-            </p>
-          </Panel>
+          </div>
 
-          <Panel className="p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Bot className="size-4 text-mint" />
-              <h2 className="text-sm font-semibold text-white">Agent Logs</h2>
+          {/* Changed files */}
+          <div className="border-b border-white/8 p-3">
+            <p className="mb-2 text-xs font-semibold text-slate-400">Changed Files</p>
+            {changedFiles.length ? (
+              <div className="space-y-1">
+                {changedFiles.map(f => (
+                  <div key={f} className="flex items-center gap-1.5 rounded-lg bg-mint/8 px-2 py-1.5 text-xs text-mint">
+                    <CheckCircle2 className="size-3 shrink-0" />
+                    <span className="truncate">{f}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-600">No changes yet.</p>
+            )}
+          </div>
+
+          {/* Agent logs */}
+          <div className="border-b border-white/8 p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Bot className="size-3.5 text-mint" />
+              <p className="text-xs font-semibold text-white">Agent Logs</p>
             </div>
-            <div className="thin-scrollbar h-44 overflow-auto rounded-md bg-slate-950/80 p-3 font-mono text-xs leading-6">
-              {agentLogs.map((log, index) => (
-                <p key={`${log}-${index}`} className={log.includes("error") ? "text-red-200" : log.includes("success") ? "text-mint" : "text-slate-400"}>
-                  {log}
-                </p>
+            <div className="thin-scrollbar h-36 overflow-y-auto rounded-lg bg-black/40 p-2 font-mono text-[11px] leading-5">
+              {agentLogs.map((log, i) => (
+                <p key={`${log}-${i}`} className={
+                  log.includes("error") ? "text-rose" :
+                  log.includes("success") ? "text-mint" :
+                  log.includes("agent") ? "text-amber-400" :
+                  "text-slate-500"
+                }>{log}</p>
               ))}
             </div>
-          </Panel>
+          </div>
 
-          <Panel className="p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <TerminalSquare className="size-4 text-iris" />
-              <h2 className="text-sm font-semibold text-white">Terminal</h2>
+          {/* Terminal */}
+          <div className="p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <TerminalSquare className="size-3.5 text-iris" />
+              <p className="text-xs font-semibold text-white">Terminal</p>
             </div>
-            <div className="grid gap-2">
+            <div className="flex gap-1.5">
               <input
                 value={terminalCommand}
-                onChange={(event) => setTerminalCommand(event.target.value)}
-                list="safe-terminal-commands"
-                className="rounded-md border-white/10 bg-slate-950 text-sm text-slate-100 focus:border-mint focus:ring-mint"
+                onChange={e => setTerminalCommand(e.target.value)}
+                list="safe-commands"
                 placeholder="npm run build"
+                className="min-w-0 flex-1 rounded-lg border border-white/8 bg-slate-900 px-2 py-1.5 text-xs text-slate-300 focus:border-iris/40 focus:outline-none"
               />
-              <datalist id="safe-terminal-commands">
-                {safeCommands.map((command) => (
-                  <option key={command} value={command} />
-                ))}
+              <datalist id="safe-commands">
+                {safeCommands.map(c => <option key={c} value={c} />)}
               </datalist>
-              <div className="grid grid-cols-2 gap-2">
-                {safeCommands.map((command) => (
-                  <button
-                    key={command}
-                    onClick={() => runTerminalCommand(command)}
-                    className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-slate-100 transition hover:bg-white/10"
-                  >
-                    {command}
-                  </button>
-                ))}
-              </div>
-              <button onClick={() => runTerminalCommand()} className="inline-flex items-center justify-center gap-2 rounded-md bg-iris px-3 py-2 text-sm font-semibold text-slate-950">
-                <Play className="size-4" />
-                Run Safe Command
+              <button onClick={() => runTerminalCommand()}
+                className="flex items-center gap-1 rounded-lg bg-iris px-2.5 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-iris/90">
+                <Play className="size-3" />
               </button>
             </div>
-            <div className="mt-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Latest Output</p>
-              <div className="thin-scrollbar mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-slate-950/60 p-2 font-mono text-[11px] leading-5 text-slate-300">
-                {terminalOutput ? (
-                  <>
-                    <p className="text-mint">
-                      [{terminalOutput.code}] {terminalOutput.command}
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-slate-200">
-                      stdout:
-                      {"\n"}
-                      {terminalOutput.stdout || "[empty]"}
-                    </p>
-                    <p className="mt-2 whitespace-pre-wrap text-red-200">
-                      stderr:
-                      {"\n"}
-                      {terminalOutput.stderr || "[empty]"}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-slate-500">No terminal output yet.</p>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {safeCommands.slice(0, 4).map(c => (
+                <button key={c} onClick={() => runTerminalCommand(c)}
+                  className="rounded-md border border-white/8 bg-white/4 px-2 py-1 text-[10px] text-slate-400 transition hover:bg-white/8 hover:text-white">
+                  {c}
+                </button>
+              ))}
+            </div>
+            {/* Terminal output */}
+            {terminalOutput && (
+              <div className="mt-2 rounded-lg border border-white/8 bg-black/50 p-2 font-mono text-[10px] leading-5">
+                <p className={terminalOutput.code === 0 ? "text-mint" : "text-rose"}>
+                  [{terminalOutput.code}] {terminalOutput.command}
+                </p>
+                {terminalOutput.stdout && (
+                  <p className="mt-1 whitespace-pre-wrap text-slate-400">{terminalOutput.stdout.slice(0, 400)}</p>
+                )}
+                {terminalOutput.stderr && (
+                  <p className="mt-1 whitespace-pre-wrap text-rose/80">{terminalOutput.stderr.slice(0, 200)}</p>
                 )}
               </div>
-            </div>
-          </Panel>
-
-          <Panel className="p-4">
-            <h2 className="mb-3 text-sm font-semibold text-white">Terminal Runs</h2>
-            <div className="thin-scrollbar max-h-48 overflow-auto rounded-md bg-slate-950/80 p-3 font-mono text-xs leading-6">
-              {terminalRuns.length ? (
-                terminalRuns.map((run, index) => (
-                  <div key={`${run.command}-${index}`} className="mb-3 border-b border-white/5 pb-3 last:mb-0 last:border-0 last:pb-0">
-                    <p className={run.code === 0 ? "text-mint" : "text-red-200"}>
-                      {run.command} {"->"} exit {run.code}
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap text-slate-400">
-                      stdout:
-                      {"\n"}
-                      {run.stdout || "[empty]"}
-                    </p>
-                    <p className="mt-1 whitespace-pre-wrap text-red-200">
-                      stderr:
-                      {"\n"}
-                      {run.stderr || "[empty]"}
-                    </p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-slate-500">No terminal runs yet.</p>
-              )}
-            </div>
-          </Panel>
-        </div>
+            )}
+          </div>
+        </aside>
       </div>
-    </SectionShell>
+    </div>
   );
 }

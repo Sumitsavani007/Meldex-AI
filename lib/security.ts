@@ -154,6 +154,7 @@ export function validateAPIKey(key: string | undefined): boolean {
 export const chatRequestSchema = z.object({
   baseUrl: z.string().url().optional(),
   model: z.string().min(1).max(120).optional(),
+  mode: z.enum(["chat", "agent"]).optional(),
   messages: z
     .array(
       z.object({

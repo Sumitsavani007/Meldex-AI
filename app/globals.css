@@ -89,3 +89,85 @@ body::after {
   filter: blur(28px);
   animation: aurora-flow 16s ease-in-out infinite alternate;
 }
+
+/* ── Premium utility classes ─────────────────────────────────────── */
+
+.gradient-text {
+  background: linear-gradient(135deg, #63f2be 0%, #9aa4ff 50%, #ffb86b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.surface {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.025);
+  border-radius: 12px;
+}
+
+.surface-hover {
+  transition: border-color 150ms, background-color 150ms;
+}
+.surface-hover:hover {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.input-base {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 12, 23, 0.7);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #eef3ff;
+  outline: none;
+  transition: border-color 150ms;
+}
+.input-base::placeholder { color: #4a5568; }
+.input-base:focus { border-color: rgba(99, 242, 190, 0.5); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.badge-mint  { background: rgba(99, 242, 190, 0.12); color: #63f2be; border: 1px solid rgba(99, 242, 190, 0.22); }
+.badge-iris  { background: rgba(154, 164, 255, 0.12); color: #9aa4ff; border: 1px solid rgba(154, 164, 255, 0.22); }
+.badge-ember { background: rgba(255, 184, 107, 0.12); color: #ffb86b; border: 1px solid rgba(255, 184, 107, 0.22); }
+.badge-rose  { background: rgba(255, 107, 139, 0.12); color: #ff6b8b; border: 1px solid rgba(255, 107, 139, 0.22); }
+.badge-amber { background: rgba(251, 191, 36, 0.12); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.22); }
+
+.card-hover {
+  transition: transform 150ms, box-shadow 150ms, border-color 150ms;
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+}
+
+/* Agent timeline dot */
+.timeline-dot {
+  position: relative;
+  padding-left: 1.25rem;
+}
+.timeline-dot::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.4rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #63f2be;
+}
+.timeline-dot.running::before { background: #ffb86b; animation: neural-pulse 1.4s ease-in-out infinite; }
+.timeline-dot.queued::before  { background: #4a5568; }
+.timeline-dot.error::before   { background: #ff6b8b; }
+
