@@ -1,54 +1,51 @@
-import { auth } from "@/lib/auth";
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+/**
+ * middleware.ts
+ *
+ * Runs in the Edge Runtime — must only import Edge-compatible modules.
+ * Auth logic is provided by the lightweight authConfig (no Prisma/bcryptjs).
+ */
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
 
-// List of protected routes that require authentication
-const protectedRoutes = [
-  "/dashboard",
-  "/chat",
-  "/workspace",
-  "/settings",
-  "/admin",
-];
+const { auth } = NextAuth(authConfig);
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  
-  // Check if the current route is protected
-  const isProtected = protectedRoutes.some((route) =>
-    pathname.startsWith(route)
-  );
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
 
-  if (!isProtected) {
-    return NextResponse.next();
+  // Unauthenticated: redirect to login (authorized callback handles this, but
+  // we keep an explicit redirect to attach the callbackUrl param).
+  if (!req.auth) {
+    const protectedPaths = [
+      "/dashboard",
+      "/chat",
+      "/workspace",
+      "/settings",
+      "/admin",
+    ];
+    const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
+    if (isProtected) {
+      const loginUrl = new URL("/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", pathname);
+      return Response.redirect(loginUrl);
+    }
   }
 
-  // Get the session
-  const session = await auth();
-
-  // If no session and trying to access protected route, redirect to login
-  if (!session) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("callbackUrl", pathname);
-    return NextResponse.redirect(loginUrl);
+  // Admin access check (role guard)
+  if (pathname.startsWith("/admin")) {
+    const role = (req.auth?.user as { role?: string } | undefined)?.role;
+    if (role !== "ADMIN" && role !== "OWNER") {
+      return Response.redirect(new URL("/unauthorized", req.url));
+    }
   }
-
-  // Check admin routes
-  if (pathname.startsWith("/admin") && session.user.role !== "ADMIN" && session.user.role !== "OWNER") {
-    return NextResponse.redirect(new URL("/unauthorized", request.url));
-  }
-
-  return NextResponse.next();
-}
+});
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api/auth (auth endpoints)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Match all request paths except:
+     * - api/auth (NextAuth endpoints)
+     * - _next/static, _next/image (Next.js internals)
+     * - favicon.ico
      */
     "/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
   ],

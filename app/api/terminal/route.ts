@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { executeTerminalCommand } from "@/lib/terminal";
 import { checkRateLimit, isSafeCommand, normalizeCommand, terminalRequestSchema } from "@/lib/security";
+import { requireAuth } from "@/lib/role-guard";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-terminal", 20);
     const body = terminalRequestSchema.parse(await request.json());
     const command = normalizeCommand(body.command);

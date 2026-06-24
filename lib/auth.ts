@@ -52,6 +52,16 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.role = (user as unknown as { role: string }).role || "USER";
       }
+      // On every token refresh, re-read role from DB to pick up role changes.
+      if (!user && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true },
+        });
+        if (dbUser) {
+          token.role = dbUser.role;
+        }
+      }
       return token;
     },
     async session({ session, token }): Promise<Session> {
@@ -102,6 +112,8 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           email: user.email,
           name: user.name,
           image: user.image,
+          // Pass role so the jwt callback can embed it in the token.
+          role: user.role,
         };
       },
     }),

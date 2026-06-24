@@ -7,9 +7,13 @@ import {
   writeWorkspaceFile
 } from "@/lib/workspace";
 import { checkRateLimit, workspaceWriteSchema } from "@/lib/security";
+import { requireAuth } from "@/lib/role-guard";
 
 export async function GET(request: Request) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-read", 120);
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("path");
@@ -28,6 +32,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-write", 80);
     const body = workspaceWriteSchema.parse(await request.json());
 
@@ -45,6 +52,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const { error: authError } = await requireAuth();
+    if (authError) return authError;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-workspace-delete", 30);
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("path");

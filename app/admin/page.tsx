@@ -3,7 +3,8 @@
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Users, Package, BarChart3, Settings, LogsIcon, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Users, Package, BarChart3, Settings, LogsIcon, Shield, Activity, Layers } from "lucide-react";
 
 const adminSections = [
   { href: "/admin/users", label: "User Management", icon: Users },
@@ -14,12 +15,36 @@ const adminSections = [
   { href: "/admin/settings", label: "Settings", icon: Settings }
 ];
 
+interface AdminStats {
+  users: number;
+  projects: number;
+  tasks: number;
+  executions: number;
+  auditLogs: number;
+}
+
 export default function AdminPage() {
   const { data: session } = useSession();
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [statsError, setStatsError] = useState(false);
 
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }
+
+  useEffect(() => {
+    fetch("/api/admin/stats")
+      .then((r) => r.json())
+      .then((data) => setStats(data))
+      .catch(() => setStatsError(true));
+  }, []);
+
+  const statCards = [
+    { label: "Total Users", value: stats?.users ?? "—", icon: Users },
+    { label: "Projects", value: stats?.projects ?? "—", icon: Package },
+    { label: "Tasks", value: stats?.tasks ?? "—", icon: Layers },
+    { label: "Executions", value: stats?.executions ?? "—", icon: Activity },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 p-8">
@@ -28,6 +53,29 @@ export default function AdminPage() {
           <h1 className="text-4xl font-bold text-white mb-2">Admin Panel</h1>
           <p className="text-slate-400">Manage users, projects, and system configuration</p>
         </div>
+
+        {/* Live stats */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          {statCards.map((s) => (
+            <div
+              key={s.label}
+              className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-5 flex items-center justify-between"
+            >
+              <div>
+                <p className="text-slate-400 text-xs mb-1">{s.label}</p>
+                <p className="text-3xl font-bold text-white">
+                  {statsError ? "—" : s.value}
+                </p>
+              </div>
+              <s.icon className="w-7 h-7 text-mint opacity-30" />
+            </div>
+          ))}
+        </div>
+        {statsError && (
+          <p className="text-xs text-amber-400 mb-6">
+            Stats unavailable — database may not be connected yet.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {adminSections.map((section) => (

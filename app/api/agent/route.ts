@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { runAgent } from "@/lib/agent";
 import { executeTerminalCommand } from "@/lib/terminal";
 import { agentRequestSchema, checkRateLimit } from "@/lib/security";
+import { requireAuth } from "@/lib/role-guard";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-agent", 12);
     const body = agentRequestSchema.parse(await request.json());
 

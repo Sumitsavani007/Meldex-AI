@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { chatRequestSchema, checkRateLimit } from "@/lib/security";
+import { requireAuth } from "@/lib/role-guard";
 
 type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -8,6 +9,9 @@ type ChatMessage = {
 
 export async function POST(request: Request) {
   try {
+    const { error } = await requireAuth();
+    if (error) return error;
+
     checkRateLimit(request.headers.get("x-forwarded-for") || "local-chat", 40);
     const body = chatRequestSchema.parse(await request.json()) as {
       messages: ChatMessage[];
