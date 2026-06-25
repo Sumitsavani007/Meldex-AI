@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
-import { getConfig } from "@/lib/runtime-config";
+import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 
 const schema = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant", "system"]), content: z.string() })).min(1),
@@ -63,44 +63,29 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const apiKey = await getConfig("OPENROUTER_API_KEY");
-    const baseUrl = await getConfig("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1";
-    const defaultModel = model ?? await getConfig("OPENROUTER_MODEL") ?? "qwen/qwen3-coder:free";
-
-    if (!apiKey) {
-      return NextResponse.json({ error: "AI backend not configured" }, { status: 503 });
-    }
-
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://meldex.newsyfly.com",
-        "X-Title": "Meldex AI VS Code Extension",
-      },
-      body: JSON.stringify({
-        model: defaultModel,
-        messages: allMessages,
-        max_tokens: 4096,
-      }),
-      signal: AbortSignal.timeout(60000),
+    const message = await generateChatCompletion({
+      messages: allMessages,
+      model: model ?? undefined,
+      timeoutMs: 60_000,
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: `AI error: ${err}` }, { status: 502 });
-    }
-
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-    const content = data?.choices?.[0]?.message?.content ?? "No response";
-
     return NextResponse.json({
-      message: content,
-      model: defaultModel,
+      message,
       user: { id: user.userId, email: user.email },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
+    if (err instanceof ModelRouterError) {
+      if (err.code === "rate_limit") {
+        return NextResponse.json(
+          { error: "Free model is temporarily rate limited. A fallback model was tried. Please retry in a moment." },
+          { status: 429 }
+        );
+      }
+      if (err.code === "missing_api_key") {
+        return NextResponse.json({ error: "AI backend not configured on server." }, { status: 503 });
+      }
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Chat failed" },
       { status: 500 }

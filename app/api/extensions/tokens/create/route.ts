@@ -4,16 +4,16 @@
  * Returns the raw token ONCE — it is never stored in DB.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authConfig } from "@/lib/auth.config";
-import { createExtensionApiToken, prisma } from "@/lib/extension-auth";
+import { requireAuth } from "@/lib/role-guard";
+import { createExtensionApiToken } from "@/lib/extension-auth";
 import { z } from "zod";
 
 const schema = z.object({ name: z.string().min(1).max(80).optional() });
 
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authConfig);
+    const { session, error } = await requireAuth();
+    if (error) return error;
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

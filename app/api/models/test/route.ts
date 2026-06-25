@@ -16,8 +16,8 @@ import {
  * The route does NOT expose API keys or internal env vars.
  */
 export async function GET() {
-  const provider = getActiveProvider();
-  const providerLabel = getProviderLabel();
+  const provider = await getActiveProvider();
+  const providerLabel = await getProviderLabel();
   const start = Date.now();
 
   try {

@@ -1,33 +1,14 @@
 /**
  * lib/model-router.ts
  *
- * Unified LLM provider router.  Reads MELDEX_BRAIN_PROVIDER from the server
- * environment and routes chat completion requests to the correct backend.
+ * Unified LLM provider router. Reads runtime-editable settings via
+ * getConfig() so admin vault changes apply immediately without restart.
  *
- * Supported providers
- * -------------------
- *  local_ollama           — Local Ollama server (default)
- *  openrouter             — OpenRouter (OpenAI-compatible)
- *  custom_openai_compatible — Any OpenAI-compatible endpoint
- *
- * Environment variables
- * ---------------------
- *  MELDEX_BRAIN_PROVIDER   local_ollama | openrouter | custom_openai_compatible
- *
- *  --- Ollama ---
- *  OLLAMA_BASE_URL          default: http://localhost:11434
- *  DEFAULT_MODEL            default: qwen3-coder:30b
- *
- *  --- OpenRouter ---
- *  OPENROUTER_API_KEY       required
- *  OPENROUTER_BASE_URL      default: https://openrouter.ai/api/v1
- *  OPENROUTER_MODEL         default: qwen/qwen3-coder:free
- *
- *  --- Custom OpenAI-compatible ---
- *  CUSTOM_AI_BASE_URL       required
- *  CUSTOM_AI_API_KEY        optional
- *  CUSTOM_AI_MODEL          required
+ * Priority for OPENROUTER_MODEL / MELDEX_BRAIN_PROVIDER:
+ *   vault (DB) → process.env → default
  */
+
+import { getConfig } from "@/lib/runtime-config";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -36,12 +17,12 @@ export type ChatMessage = {
 
 export type CompletionOptions = {
   messages: ChatMessage[];
-  /** Optional model override.  Falls back to the provider's configured default. */
+  /** Optional model override. Falls back to the provider's configured default. */
   model?: string;
   temperature?: number;
-  /** Max tokens to generate. Default: 4096 (keeps within free-tier credit limits). */
+  /** Max tokens to generate. Default: 4096 */
   maxTokens?: number;
-  /** Timeout in milliseconds.  Default: 90 000 */
+  /** Timeout in milliseconds. Default: 90 000 */
   timeoutMs?: number;
 };
 
@@ -51,18 +32,18 @@ export type ProviderType =
   | "custom_openai_compatible";
 
 // ---------------------------------------------------------------------------
-// Provider detection
+// Provider detection — uses runtime config so vault changes apply live
 // ---------------------------------------------------------------------------
 
-export function getActiveProvider(): ProviderType {
-  const raw = (process.env.MELDEX_BRAIN_PROVIDER ?? "local_ollama").toLowerCase();
+export async function getActiveProvider(): Promise<ProviderType> {
+  const raw = ((await getConfig("MELDEX_BRAIN_PROVIDER")) ?? "local_ollama").toLowerCase();
   if (raw === "openrouter") return "openrouter";
   if (raw === "custom_openai_compatible" || raw === "custom") return "custom_openai_compatible";
   return "local_ollama";
 }
 
-export function getProviderLabel(): string {
-  const p = getActiveProvider();
+export async function getProviderLabel(): Promise<string> {
+  const p = await getActiveProvider();
   if (p === "openrouter") return "Cloud Test Brain (OpenRouter)";
   if (p === "custom_openai_compatible") return "Custom API";
   return "Local Brain (Ollama)";
@@ -134,21 +115,22 @@ async function callOpenAICompatible(
   });
 
   if (response.status === 401) {
-    throw new ModelRouterError("Invalid or missing API key. Check your OPENROUTER_API_KEY / CUSTOM_AI_API_KEY.", "missing_api_key", 401);
+    throw new ModelRouterError("Invalid or missing API key.", "missing_api_key", 401);
   }
-  if (response.status === 429) {
-    throw new ModelRouterError("Rate limit exceeded for this provider. Try again shortly.", "rate_limit", 429);
-  }
-  if (response.status === 402) {
-    throw new ModelRouterError("Insufficient credits for this model. Trying a smaller model...", "rate_limit", 402);
+  if (response.status === 429 || response.status === 402) {
+    throw new ModelRouterError("Rate limit exceeded.", "rate_limit", response.status);
   }
   if (response.status === 404) {
-    throw new ModelRouterError(`Model "${model}" not found. Check OPENROUTER_MODEL / CUSTOM_AI_MODEL.`, "invalid_model", 404);
+    throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404);
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
+    // Check for rate-limit in response body (OpenRouter sometimes returns 200 with error)
+    if (detail.includes("rate_limit") || detail.includes("free-models-per-day") || detail.includes("provider rate limit")) {
+      throw new ModelRouterError("Rate limit exceeded.", "rate_limit", response.status);
+    }
     throw new ModelRouterError(
-      `Provider returned ${response.status}. ${detail || ""}`,
+      `Provider returned ${response.status}.`,
       "provider_error",
       response.status
     );
@@ -156,11 +138,18 @@ async function callOpenAICompatible(
 
   const data = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
-    error?: { message?: string };
+    error?: { message?: string; code?: string };
   };
 
+  // OpenRouter can return 200 with an error object
   if (data.error?.message) {
-    throw new ModelRouterError(data.error.message, "provider_error");
+    const errMsg = data.error.message;
+    const isRateLimit = errMsg.includes("rate_limit") || errMsg.includes("free-models-per-day") ||
+      errMsg.includes("provider rate limit") || data.error.code === "429";
+    if (isRateLimit) {
+      throw new ModelRouterError("Rate limit exceeded.", "rate_limit");
+    }
+    throw new ModelRouterError(errMsg, "provider_error");
   }
 
   const content = data.choices?.[0]?.message?.content ?? "";
@@ -168,44 +157,59 @@ async function callOpenAICompatible(
   return content;
 }
 
-// Free models to try when the primary model is upstream rate-limited (Venice congestion).
-// These are confirmed free on OpenRouter as of 2026-06.
-const OPENROUTER_FALLBACK_MODELS = [
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "liquid/lfm-2.5-1.2b-instruct:free",
-  "nvidia/nemotron-3-nano-30b-a3b:free",
-];
+// ---------------------------------------------------------------------------
+// OpenRouter — reads model from runtime config (vault > env > default)
+// ---------------------------------------------------------------------------
 
 async function callOpenRouter(options: CompletionOptions): Promise<string> {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = await getConfig("OPENROUTER_API_KEY");
   if (!apiKey) {
     throw new ModelRouterError(
-      "OPENROUTER_API_KEY is not set. Add it to .env.local to use the cloud brain.",
+      "OPENROUTER_API_KEY is not configured. Add it in Master Admin → Credentials.",
       "missing_api_key"
     );
   }
-  const baseUrl = process.env.OPENROUTER_BASE_URL ?? "https://openrouter.ai/api/v1";
-  const primaryModel = options.model?.trim() || process.env.OPENROUTER_MODEL || "qwen/qwen3-coder:free";
+
+  const baseUrl = (await getConfig("OPENROUTER_BASE_URL")) ?? "https://openrouter.ai/api/v1";
+  const primaryModel = options.model?.trim() ||
+    (await getConfig("OPENROUTER_MODEL")) ||
+    "qwen/qwen3-coder:free";
+
+  // Fallback model — configurable via Master Admin
+  const configuredFallback = await getConfig("OPENROUTER_FALLBACK_MODEL");
+  const fallbackModels = [
+    ...(configuredFallback ? [configuredFallback] : []),
+    "liquid/lfm-2.5-1.2b-instruct:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+  ].filter((m, i, arr) => arr.indexOf(m) === i); // deduplicate
+
   const extraHeaders = {
-    "HTTP-Referer": process.env.NEXTAUTH_URL ?? "http://localhost:3000",
+    "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://meldex.newsyfly.com",
     "X-Title": "Meldex AI",
   };
 
-  // Try primary model first
+  // Try primary model
   try {
     return await callOpenAICompatible(baseUrl, apiKey, primaryModel, options, extraHeaders);
   } catch (err) {
-    // If primary is rate-limited, silently try fallbacks
-    if (err instanceof ModelRouterError && err.code === "rate_limit") {
-      for (const fallbackModel of OPENROUTER_FALLBACK_MODELS) {
-        try {
-          return await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
-        } catch {
-          // try next
-        }
+    if (!(err instanceof ModelRouterError) || err.code !== "rate_limit") throw err;
+
+    // Primary hit rate limit — try fallbacks
+    for (const fallbackModel of fallbackModels) {
+      try {
+        const result = await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
+        // Prepend a note that fallback was used
+        return `> ⚠️ Free model (${primaryModel}) is temporarily rate limited. Using fallback: ${fallbackModel}\n\n${result}`;
+      } catch {
+        // try next fallback
       }
     }
-    throw err;
+
+    // All fallbacks exhausted
+    throw new ModelRouterError(
+      `Free model (${primaryModel}) is temporarily rate limited and all fallback models are also unavailable. Please try again in a few minutes.`,
+      "rate_limit"
+    );
   }
 }
 
@@ -243,14 +247,13 @@ export class ModelRouterError extends Error {
  * Throws `ModelRouterError` for all provider-level failures.
  */
 export async function generateChatCompletion(options: CompletionOptions): Promise<string> {
-  const provider = getActiveProvider();
+  const provider = await getActiveProvider();
   try {
     if (provider === "openrouter") return await callOpenRouter(options);
     if (provider === "custom_openai_compatible") return await callCustom(options);
     return await callOllama(options);
   } catch (err) {
     if (err instanceof ModelRouterError) throw err;
-    // Wrap network / timeout errors
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("fetch") || msg.includes("ECONNREFUSED") || msg.includes("TimeoutError")) {
       throw new ModelRouterError(

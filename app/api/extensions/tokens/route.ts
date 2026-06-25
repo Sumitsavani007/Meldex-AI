@@ -3,13 +3,13 @@
  * DELETE /api/extensions/tokens  — not used; use /[id] route
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authConfig } from "@/lib/auth.config";
+import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await getServerSession(authConfig);
+    const { session, error } = await requireAuth();
+    if (error) return error;
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

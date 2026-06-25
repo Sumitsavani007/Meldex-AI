@@ -64,6 +64,10 @@ export async function POST(request: Request) {
     const lastUserMessage =
       userMessages.filter((m) => m.role === "user").at(-1)?.content ?? "";
 
+    // Resolve provider once — uses runtime config (vault > env)
+    const provider = await getActiveProvider();
+    const providerLabel = await getProviderLabel();
+
     // Background: learn from message, track recent topic
     learnFromMessage(userId, lastUserMessage).catch(() => {});
     memPush(userId, MEMORY_KEY.RECENT_TOPICS, lastUserMessage.slice(0, 80), 10).catch(() => {});
@@ -72,7 +76,7 @@ export async function POST(request: Request) {
     const persistConvId: { id?: string } = {};
     ensureConversation(userId, body.conversationId, lastUserMessage, {
       model: body.model,
-      provider: getActiveProvider(),
+      provider,
     }).then((convId) => {
       persistConvId.id = convId;
       return saveMessage(convId, "user", lastUserMessage, { model: body.model });
@@ -100,8 +104,8 @@ export async function POST(request: Request) {
         message: answer,
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
       });
     }
 
@@ -112,8 +116,8 @@ export async function POST(request: Request) {
         message: projectCtx,
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
       });
     }
 
@@ -125,8 +129,8 @@ export async function POST(request: Request) {
           message: factResult.answer,
           brain: brain.brain,
           brainLabel: brain.label,
-          provider: getActiveProvider(),
-          providerLabel: getProviderLabel(),
+          provider,
+          providerLabel,
         });
       }
       // Fact not found in KB — fall through to chat brain with context
@@ -141,8 +145,8 @@ export async function POST(request: Request) {
           message: answerResult.answer,
           brain: brain.brain,
           brainLabel: brain.label,
-          provider: getActiveProvider(),
-          providerLabel: getProviderLabel(),
+          provider,
+          providerLabel,
           sources: answerResult.sources,
           confidence: answerResult.confidence,
           searchQueries: answerResult.searchQueries,
@@ -166,8 +170,8 @@ export async function POST(request: Request) {
         message,
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
       });
     }
 
@@ -179,8 +183,8 @@ export async function POST(request: Request) {
         message: result.answer,
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
         reasoning: {
           thinking: result.thinking,
           verification: result.verification,
@@ -200,8 +204,8 @@ export async function POST(request: Request) {
         message: markdown,
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
         plan,
       });
     }
@@ -213,8 +217,8 @@ export async function POST(request: Request) {
         message: formatMultiAgentResult(result),
         brain: brain.brain,
         brainLabel: brain.label,
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
         agents: result.agents.map((a) => ({ agent: a.agent, durationMs: a.durationMs })),
       });
     }
@@ -228,8 +232,8 @@ export async function POST(request: Request) {
           message: formatMultiAgentResult(result),
           brain: "agent",
           brainLabel: "AGENT",
-          provider: getActiveProvider(),
-          providerLabel: getProviderLabel(),
+          provider,
+          providerLabel,
         });
       }
       const memCtx = await buildMemoryContext(userId);
@@ -243,8 +247,8 @@ export async function POST(request: Request) {
         message,
         brain: "agent",
         brainLabel: "AGENT",
-        provider: getActiveProvider(),
-        providerLabel: getProviderLabel(),
+        provider,
+        providerLabel,
       });
     }
 
@@ -274,8 +278,8 @@ export async function POST(request: Request) {
       message,
       brain: "chat",
       brainLabel: "CHAT",
-      provider: getActiveProvider(),
-      providerLabel: getProviderLabel(),
+      provider,
+      providerLabel,
       conversationId: persistConvId.id,
     });
   } catch (err) {

@@ -9,7 +9,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { saveSetting, isVaultConfigured, maskSecret, decryptSecret } from "@/lib/secret-vault";
-import { invalidateConfigCache, REQUIRES_RESTART } from "@/lib/runtime-config";
+import { invalidateConfigCache, REQUIRES_RESTART, HOT_RELOAD } from "@/lib/runtime-config";
 import { logAuditEvent } from "@/lib/audit";
 
 const NO_CACHE = { "Cache-Control": "no-store, no-cache", "Pragma": "no-cache" };
@@ -31,7 +31,8 @@ const KNOWN_KEYS: Array<{
   { key: "AUTH_URL", label: "Auth URL", category: "auth", isSecret: false },
   { key: "OPENROUTER_API_KEY", label: "API Key", category: "openrouter", isSecret: true },
   { key: "OPENROUTER_BASE_URL", label: "Base URL", category: "openrouter", isSecret: false },
-  { key: "OPENROUTER_MODEL", label: "Default Model", category: "openrouter", isSecret: false },
+  { key: "OPENROUTER_MODEL", label: "Default Model", category: "openrouter", isSecret: false, description: "Active model — vault value overrides ENV" },
+  { key: "OPENROUTER_FALLBACK_MODEL", label: "Fallback Model", category: "openrouter", isSecret: false, description: "Used when primary model hits rate limit" },
   { key: "MELDEX_BRAIN_PROVIDER", label: "Brain Provider", category: "openrouter", isSecret: false },
   { key: "R2_ACCOUNT_ID", label: "Account ID", category: "r2", isSecret: true },
   { key: "R2_ACCESS_KEY_ID", label: "Access Key ID", category: "r2", isSecret: true },
@@ -68,7 +69,20 @@ export async function GET(_req: NextRequest) {
     let updatedBy: string | null = null;
     let updatedAt: string | null = null;
 
-    if (envVal) {
+    const isHotReload = HOT_RELOAD.has(meta.key);
+
+    // For hot-reload keys: vault overrides ENV — show VAULT if both exist
+    if (isHotReload && dbRow) {
+      source = "VAULT";
+      if (dbRow.isSecret && dbRow.valueEncrypted && vaultOk) {
+        try { maskedValue = maskSecret(decryptSecret(dbRow.valueEncrypted)); }
+        catch { maskedValue = dbRow.valueMasked; }
+      } else {
+        maskedValue = dbRow.valueMasked;
+      }
+      updatedBy = dbRow.updatedBy;
+      updatedAt = dbRow.updatedAt.toISOString();
+    } else if (envVal) {
       source = "ENV";
       maskedValue = meta.isSecret ? maskSecret(envVal) : envVal;
     } else if (dbRow) {
@@ -87,6 +101,7 @@ export async function GET(_req: NextRequest) {
       key: meta.key, label: meta.label, category: meta.category,
       isSecret: meta.isSecret, description: meta.description ?? null,
       requireRestart: REQUIRES_RESTART.has(meta.key),
+      hotReload: isHotReload,
       source, maskedValue, configured: source !== "MISSING",
       updatedBy, updatedAt,
     };
@@ -122,5 +137,11 @@ export async function POST(req: NextRequest) {
     ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
   });
 
-  return NextResponse.json({ success: true, requireRestart }, { headers: NO_CACHE });
+  return NextResponse.json({
+    success: true,
+    requireRestart,
+    hotReload: HOT_RELOAD.has(key),
+    source: "VAULT",
+    maskedValue: isSecret ? maskSecret(value) : value,
+  }, { headers: NO_CACHE });
 }

@@ -3,8 +3,7 @@
  * Revoke (soft-delete) an extension token.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authConfig } from "@/lib/auth.config";
+import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
@@ -12,7 +11,8 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await getServerSession(authConfig);
+    const { session, error } = await requireAuth();
+    if (error) return error;
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
