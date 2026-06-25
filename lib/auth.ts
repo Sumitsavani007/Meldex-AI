@@ -7,6 +7,7 @@ import GitHubProvider from "next-auth/providers/github";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { verifyApiToken } from "@/lib/extension-auth";
 
 declare module "next-auth" {
   interface Session extends DefaultSession {
@@ -115,6 +116,26 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
           name: user.name,
           image: user.image,
           // Pass role so the jwt callback can embed it in the token.
+          role: user.role,
+        };
+      },
+    }),
+    // API Token sign-in — accepts mdx_ raw tokens from Settings → API Tokens
+    CredentialsProvider({
+      id: "api-token",
+      name: "API Token",
+      credentials: {
+        token: { label: "API Token", type: "password" },
+      },
+      async authorize(credentials) {
+        const raw = String(credentials?.token ?? "").trim();
+        if (!raw.startsWith("mdx_")) throw new Error("Invalid token format. Token must start with mdx_");
+
+        const user = await verifyApiToken(raw);
+        return {
+          id: user.userId,
+          email: user.email,
+          name: user.name,
           role: user.role,
         };
       },

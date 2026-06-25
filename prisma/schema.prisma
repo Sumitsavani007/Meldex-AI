@@ -73,6 +73,7 @@ model User {
   auditLogs      AuditLog[]
   accounts       Account[]
   sessions       Session[]
+  extensionTokens ExtensionToken[]
 }
 
 model Account {
@@ -365,4 +366,20 @@ model SystemSettingAudit {
 
   @@index([key, createdAt])
   @@index([updatedBy])
+}
+
+// ── VS Code Extension Token ───────────────────────────────────────────────────
+
+model ExtensionToken {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  name       String    @default("VS Code Extension")
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
