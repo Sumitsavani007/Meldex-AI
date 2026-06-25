@@ -7,3 +7,10 @@ dist
 .env.test
 *.log
 *.bundle
+
+# VS Code Extension build artifacts
+meldex-vscode-extension/out/
+meldex-vscode-extension/node_modules/
+meldex-vscode-extension/*.vsix
+meldex-vscode-extension/**/.DS_Store
+meldex-vscode-extension/src/**/*.bak

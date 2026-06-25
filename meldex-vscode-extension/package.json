@@ -1,0 +1,178 @@
+{
+  "name": "meldex-ai",
+  "displayName": "Meldex AI",
+  "description": "Premium AI coding assistant — Chat, Agent, Diff, Terminal. Powered by Meldex AI.",
+  "version": "5.0.0",
+  "publisher": "meldex-ai",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sumitsavani007/Meldex-AI"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "ai",
+    "copilot",
+    "agent",
+    "chat",
+    "meldex",
+    "coding assistant"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "meldex-sidebar",
+          "title": "Meldex AI",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "meldex-sidebar": [
+        {
+          "type": "webview",
+          "id": "meldex-ai.chatView",
+          "name": "Meldex AI",
+          "icon": "media/icon.svg",
+          "contextualTitle": "Meldex AI"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "meldex-ai.openChat",
+        "title": "Meldex: Open Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "meldex-ai.explainSelection",
+        "title": "Meldex: Explain Selection"
+      },
+      {
+        "command": "meldex-ai.fixFile",
+        "title": "Meldex: Fix Current File"
+      },
+      {
+        "command": "meldex-ai.generateTests",
+        "title": "Meldex: Generate Tests"
+      },
+      {
+        "command": "meldex-ai.refactorSelection",
+        "title": "Meldex: Refactor Selection"
+      },
+      {
+        "command": "meldex-ai.runAgent",
+        "title": "Meldex: Run Agent"
+      },
+      {
+        "command": "meldex-ai.addDocs",
+        "title": "Meldex: Add Documentation"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "meldex-ai.explainSelection",
+          "group": "meldex@1",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "meldex-ai.fixFile",
+          "group": "meldex@2"
+        },
+        {
+          "command": "meldex-ai.refactorSelection",
+          "group": "meldex@3",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "meldex-ai.generateTests",
+          "group": "meldex@4"
+        },
+        {
+          "command": "meldex-ai.addDocs",
+          "group": "meldex@5"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "meldex-ai.explainSelection",
+          "group": "meldex@1"
+        },
+        {
+          "command": "meldex-ai.fixFile",
+          "group": "meldex@2"
+        },
+        {
+          "command": "meldex-ai.generateTests",
+          "group": "meldex@3"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Meldex AI",
+      "properties": {
+        "meldex.apiUrl": {
+          "type": "string",
+          "default": "https://meldex.newsyfly.com",
+          "description": "Meldex AI backend URL"
+        },
+        "meldex.defaultModel": {
+          "type": "string",
+          "default": "qwen/qwen3-coder:free",
+          "description": "Default AI model"
+        },
+        "meldex.autoApplyChanges": {
+          "type": "boolean",
+          "default": false,
+          "description": "Auto-apply agent changes without confirmation"
+        },
+        "meldex.safeTerminal": {
+          "type": "boolean",
+          "default": true,
+          "description": "Block dangerous terminal commands"
+        },
+        "meldex.includeGitIgnoredFiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include .gitignore'd files in context"
+        },
+        "meldex.maxFilesToSend": {
+          "type": "number",
+          "default": 20,
+          "description": "Max files to include in agent context"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/vsce": "^2.24.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {}
+}
