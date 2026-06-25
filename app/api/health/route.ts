@@ -28,6 +28,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureWorkspace } from "@/lib/workspace";
+import { checkR2Health } from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,23 +100,37 @@ async function checkWorkspace(): Promise<Check> {
   }
 }
 
+async function checkR2(): Promise<Check> {
+  const result = await checkR2Health();
+  if (result.status === "unconfigured") {
+    return { status: "degraded", detail: result.detail };
+  }
+  return { status: result.status, latencyMs: result.latencyMs, detail: result.detail };
+}
+
 export async function GET() {
-  const [database, auth, ollama, workspace] = await Promise.all([
+  const [database, auth, ollama, workspace, r2] = await Promise.all([
     checkDatabase(),
     checkAuth(),
     checkOllama(),
     checkWorkspace(),
+    checkR2(),
   ]);
 
-  const checks = { database, auth, ollama, workspace };
+  const checks = { database, auth, ollama, workspace, r2 };
 
+  // database error → 503; other degraded checks → 207
   const statuses = Object.values(checks).map((c) => c.status);
   const overallStatus: CheckStatus =
+    database.status === "error" ? "error" :
     statuses.includes("error") ? "error" :
     statuses.includes("degraded") ? "degraded" :
     "ok";
 
-  const httpStatus = overallStatus === "error" ? 503 : 200;
+  const httpStatus =
+    overallStatus === "error" ? 503 :
+    overallStatus === "degraded" ? 207 :
+    200;
 
   return NextResponse.json(
     {

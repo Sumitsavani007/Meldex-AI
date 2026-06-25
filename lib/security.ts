@@ -130,17 +130,33 @@ export function checkRateLimit(key: string, limit = 60, windowMs = 60_000) {
   }
 }
 
-// CSRF Token validation
+// CSRF Token validation using constant-time comparison
 import crypto from "crypto";
 
 export function generateCSRFToken(): string {
   return crypto.randomBytes(32).toString("hex");
 }
 
-export function validateCSRFToken(token: string): boolean {
-  // In production, store the CSRF token in the session and validate
-  // For now, this is a basic implementation
-  return typeof token === "string" && token.length === 64;
+/**
+ * Validate a CSRF token using constant-time comparison to prevent timing attacks.
+ * The provided token is compared against the expected token stored in the session.
+ */
+export function validateCSRFToken(token: string, expectedToken: string): boolean {
+  if (
+    typeof token !== "string" ||
+    typeof expectedToken !== "string" ||
+    token.length !== expectedToken.length
+  ) {
+    return false;
+  }
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(token, "hex"),
+      Buffer.from(expectedToken, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
 // Validate API requests

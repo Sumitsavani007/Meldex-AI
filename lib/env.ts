@@ -89,6 +89,25 @@ function validateEnv() {
   const CUSTOM_AI_API_KEY = process.env.CUSTOM_AI_API_KEY ?? "";
   const CUSTOM_AI_MODEL = process.env.CUSTOM_AI_MODEL ?? "";
 
+  // ── Cloudflare R2 Object Storage ─────────────────────────────────────────
+  // Optional in development (workspace falls back to local FS).
+  // Required in production for file uploads, avatars, and project assets.
+  const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? "";
+  const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? "";
+  const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? "";
+  const R2_BUCKET = process.env.R2_BUCKET ?? "meldex-storage";
+  const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL ?? "";
+
+  if (process.env.NODE_ENV === "production" && !IS_BUILD) {
+    if (!R2_ACCOUNT_ID || !R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY) {
+      console.warn(
+        "\n⚠️  WARNING: Cloudflare R2 is not configured.\n" +
+        "   File uploads will fall back to local filesystem (not recommended in production).\n" +
+        "   Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_PUBLIC_URL.\n"
+      );
+    }
+  }
+
   return {
     DATABASE_URL,
     NEXTAUTH_SECRET,
@@ -106,6 +125,11 @@ function validateEnv() {
     CUSTOM_AI_BASE_URL,
     CUSTOM_AI_API_KEY,
     CUSTOM_AI_MODEL,
+    R2_ACCOUNT_ID,
+    R2_ACCESS_KEY_ID,
+    R2_SECRET_ACCESS_KEY,
+    R2_BUCKET,
+    R2_PUBLIC_URL,
     NODE_ENV: process.env.NODE_ENV ?? "development",
   } as const;
 }
