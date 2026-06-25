@@ -8,9 +8,10 @@ import { prisma } from "@/lib/prisma";
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const { session, error } = await requireAuth();
     if (error) return error;
     if (!session?.user?.id) {
@@ -18,7 +19,7 @@ export async function DELETE(
     }
 
     const token = await prisma.extensionToken.findFirst({
-      where: { id: params.id, userId: session.user.id },
+      where: { id, userId: session.user.id },
     });
 
     if (!token) {
@@ -26,7 +27,7 @@ export async function DELETE(
     }
 
     await prisma.extensionToken.update({
-      where: { id: params.id },
+      where: { id },
       data: { revokedAt: new Date() },
     });
 
