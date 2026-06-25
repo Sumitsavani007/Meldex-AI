@@ -60,6 +60,7 @@ type Message = {
 
 type Conversation = {
   id: string;
+  dbId?: string;  // DB-persisted conversation ID
   title: string;
   messages: Message[];
   mode: ChatMode;
@@ -790,6 +791,21 @@ export default function ChatPage() {
         setBrainOnline(d.status === "ok");
       })
       .catch(() => setBrainOnline(false));
+
+    // Load persisted conversations from DB
+    fetch("/api/conversations")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d: { conversations?: { id: string; title: string; updatedAt: string }[] } | null) => {
+        if (!d?.conversations?.length) return;
+        setConversations((prev) => {
+          const existing = new Set(prev.map((c) => c.dbId));
+          const fresh = d.conversations!.filter((c) => !existing.has(c.id)).map((c) => ({
+            id: uid(), dbId: c.id, title: c.title, messages: [], mode: "chat" as ChatMode,
+          }));
+          return [...prev, ...fresh];
+        });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -921,6 +937,7 @@ export default function ChatPage() {
           body: JSON.stringify({
             model,
             mode: "chat",
+            conversationId: conversations.find((c) => c.id === activeConvId)?.dbId,
             messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
           }),
         });
@@ -943,6 +960,14 @@ export default function ChatPage() {
         } = await response.json();
 
         if (!response.ok) throw new Error(data.error ?? "Chat request failed");
+
+        // Persist the DB conversation ID on first response
+        if ((data as { conversationId?: string }).conversationId) {
+          const dbConvId = (data as { conversationId?: string }).conversationId!;
+          setConversations((prev) =>
+            prev.map((c) => c.id === activeConvId && !c.dbId ? { ...c, dbId: dbConvId } : c)
+          );
+        }
 
         if (data.provider) setBrainProvider(data.provider);
 

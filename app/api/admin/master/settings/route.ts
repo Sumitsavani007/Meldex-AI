@@ -1,19 +1,18 @@
 /**
- * GET /api/admin/master/settings  — list all settings (masked)
+ * GET /api/admin/master/settings  — list all settings with auto-discovery
  * POST /api/admin/master/settings — save/update a setting
+ * Source badges: ENV | VAULT | MISSING
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import {
-  saveSetting,
-  isVaultConfigured,
-  maskSecret,
-} from "@/lib/secret-vault";
+import { saveSetting, isVaultConfigured, maskSecret, decryptSecret } from "@/lib/secret-vault";
 import { invalidateConfigCache, REQUIRES_RESTART } from "@/lib/runtime-config";
 import { logAuditEvent } from "@/lib/audit";
+
+const NO_CACHE = { "Cache-Control": "no-store, no-cache", "Pragma": "no-cache" };
 
 const saveSchema = z.object({
   key: z.string().min(1).max(120),
@@ -22,34 +21,78 @@ const saveSchema = z.object({
   isSecret: z.boolean().default(false),
 });
 
-export async function GET(req: NextRequest) {
-  const { session, error } = await requireAdmin();
+const KNOWN_KEYS: Array<{
+  key: string; label: string; category: string; isSecret: boolean; description?: string;
+}> = [
+  { key: "DATABASE_URL", label: "Database URL", category: "database", isSecret: true },
+  { key: "AUTH_SECRET", label: "Auth Secret", category: "auth", isSecret: true },
+  { key: "NEXTAUTH_SECRET", label: "NextAuth Secret (legacy)", category: "auth", isSecret: true },
+  { key: "NEXTAUTH_URL", label: "App URL", category: "auth", isSecret: false },
+  { key: "AUTH_URL", label: "Auth URL", category: "auth", isSecret: false },
+  { key: "OPENROUTER_API_KEY", label: "API Key", category: "openrouter", isSecret: true },
+  { key: "OPENROUTER_BASE_URL", label: "Base URL", category: "openrouter", isSecret: false },
+  { key: "OPENROUTER_MODEL", label: "Default Model", category: "openrouter", isSecret: false },
+  { key: "MELDEX_BRAIN_PROVIDER", label: "Brain Provider", category: "openrouter", isSecret: false },
+  { key: "R2_ACCOUNT_ID", label: "Account ID", category: "r2", isSecret: true },
+  { key: "R2_ACCESS_KEY_ID", label: "Access Key ID", category: "r2", isSecret: true },
+  { key: "R2_SECRET_ACCESS_KEY", label: "Secret Access Key", category: "r2", isSecret: true },
+  { key: "R2_BUCKET", label: "Bucket Name", category: "r2", isSecret: false },
+  { key: "R2_PUBLIC_URL", label: "Public URL", category: "r2", isSecret: false },
+  { key: "GOOGLE_CLIENT_ID", label: "Google Client ID", category: "oauth", isSecret: false },
+  { key: "GOOGLE_CLIENT_SECRET", label: "Google Client Secret", category: "oauth", isSecret: true },
+  { key: "GITHUB_ID", label: "GitHub Client ID", category: "oauth", isSecret: false },
+  { key: "GITHUB_SECRET", label: "GitHub Client Secret", category: "oauth", isSecret: true },
+  { key: "AWS_INSTANCE_ID", label: "Instance ID", category: "aws", isSecret: false },
+  { key: "AWS_REGION", label: "Region", category: "aws", isSecret: false },
+  { key: "AWS_PUBLIC_IP", label: "Public IP", category: "aws", isSecret: false },
+  { key: "AWS_DEPLOY_PATH", label: "Deploy Path", category: "aws", isSecret: false },
+  { key: "AWS_SSH_USER", label: "SSH User", category: "aws", isSecret: false },
+  { key: "AWS_SERVER_NAME", label: "Server Name", category: "aws", isSecret: false },
+  { key: "SETTINGS_ENCRYPTION_KEY", label: "Encryption Key", category: "security", isSecret: true },
+];
+
+export async function GET(_req: NextRequest) {
+  const { error } = await requireAdmin();
   if (error) return error;
 
-  const settings = await prisma.systemSetting.findMany({
-    orderBy: [{ category: "asc" }, { key: "asc" }],
-    select: {
-      id: true,
-      key: true,
-      valueMasked: true,
-      category: true,
-      isSecret: true,
-      requireRestart: true,
-      updatedBy: true,
-      updatedAt: true,
-      createdAt: true,
-    },
+  const dbSettings = await prisma.systemSetting.findMany({ orderBy: { key: "asc" } });
+  const dbMap = new Map(dbSettings.map((s) => [s.key, s]));
+  const vaultOk = isVaultConfigured();
+
+  const enriched = KNOWN_KEYS.map((meta) => {
+    const envVal = process.env[meta.key];
+    const dbRow = dbMap.get(meta.key);
+
+    let source: "ENV" | "VAULT" | "MISSING" = "MISSING";
+    let maskedValue: string | null = null;
+    let updatedBy: string | null = null;
+    let updatedAt: string | null = null;
+
+    if (envVal) {
+      source = "ENV";
+      maskedValue = meta.isSecret ? maskSecret(envVal) : envVal;
+    } else if (dbRow) {
+      source = "VAULT";
+      if (dbRow.isSecret && dbRow.valueEncrypted && vaultOk) {
+        try { maskedValue = maskSecret(decryptSecret(dbRow.valueEncrypted)); }
+        catch { maskedValue = dbRow.valueMasked; }
+      } else {
+        maskedValue = dbRow.valueMasked;
+      }
+      updatedBy = dbRow.updatedBy;
+      updatedAt = dbRow.updatedAt.toISOString();
+    }
+
+    return {
+      key: meta.key, label: meta.label, category: meta.category,
+      isSecret: meta.isSecret, description: meta.description ?? null,
+      requireRestart: REQUIRES_RESTART.has(meta.key),
+      source, maskedValue, configured: source !== "MISSING",
+      updatedBy, updatedAt,
+    };
   });
 
-  return NextResponse.json({
-    settings,
-    vaultConfigured: isVaultConfigured(),
-  }, {
-    headers: {
-      "Cache-Control": "no-store, no-cache, must-revalidate",
-      "Pragma": "no-cache",
-    },
-  });
+  return NextResponse.json({ settings: enriched, vaultConfigured: vaultOk }, { headers: NO_CACHE });
 }
 
 export async function POST(req: NextRequest) {
@@ -57,44 +100,27 @@ export async function POST(req: NextRequest) {
   if (error) return error;
 
   const body = saveSchema.safeParse(await req.json());
-  if (!body.success) {
-    return NextResponse.json({ error: "Invalid request", details: body.error.flatten() }, { status: 400 });
-  }
+  if (!body.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   const { key, value, category, isSecret } = body.data;
-
-  // Block secret saves if vault not configured
   if (isSecret && !isVaultConfigured()) {
-    return NextResponse.json(
-      { error: "SETTINGS_ENCRYPTION_KEY is not configured. Cannot save secrets." },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "SETTINGS_ENCRYPTION_KEY not configured. Run: openssl rand -base64 32" }, { status: 503 });
   }
 
-  // Determine restart requirement
   const requireRestart = REQUIRES_RESTART.has(key);
-
   await saveSetting(key, value, {
-    category,
-    isSecret,
-    requireRestart,
+    category, isSecret, requireRestart,
     updatedBy: session.user.email ?? session.user.id,
-    ipAddress: req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? undefined,
+    ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
     userAgent: req.headers.get("user-agent") ?? undefined,
   });
 
-  // Invalidate hot-reload cache
   invalidateConfigCache(key);
-
-  // Record audit log
   await logAuditEvent({
-    userId: session.user.id,
-    action: "SETTING_UPDATE",
-    resource: key,
-    success: true,
-    metadata: { category, isSecret, requireRestart, masked: isSecret ? maskSecret(value) : value.slice(0, 20) },
+    userId: session.user.id, action: "SETTING_UPDATE", resource: key, success: true,
+    metadata: { category, isSecret, requireRestart, masked: isSecret ? maskSecret(value) : value.slice(0, 30) },
     ipAddress: req.headers.get("x-forwarded-for") ?? undefined,
   });
 
-  return NextResponse.json({ success: true, requireRestart });
+  return NextResponse.json({ success: true, requireRestart }, { headers: NO_CACHE });
 }
