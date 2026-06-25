@@ -12,6 +12,7 @@ import { SectionShell, PageHeader } from "@/components/ui";
 import { DashboardCard } from "@/components/dashboard-card";
 
 const adminSections = [
+  { href: "/admin/master", label: "Master Control Center", icon: Shield, desc: "Credentials vault, integrations, encrypted settings, audit", color: "text-amber-400", accent: "border-amber-400/20 bg-amber-400/5 hover:border-amber-400/40" },
   { href: "/admin/users", label: "User Management", icon: Users, desc: "Manage user accounts, roles, and permissions", color: "text-mint", accent: "border-mint/20 bg-mint/5 hover:border-mint/40" },
   { href: "/admin/projects", label: "Projects", icon: Package, desc: "Browse and manage all workspace projects", color: "text-iris", accent: "border-iris/20 bg-iris/5 hover:border-iris/40" },
   { href: "/admin/usage", label: "AI Usage", icon: BarChart3, desc: "Monitor token usage, model calls, and cost", color: "text-ember", accent: "border-ember/20 bg-ember/5 hover:border-ember/40" },

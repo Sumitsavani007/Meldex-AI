@@ -23,6 +23,7 @@ import {
 import { buildProjectContext } from "@/lib/project-brain";
 import { lookupFact } from "@/lib/knowledge-brain";
 import { resolveConversationContext, buildConversationContext } from "@/lib/conversation-brain";
+import { ensureConversation, saveMessage } from "@/lib/chat-persistence";
 
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
@@ -53,8 +54,7 @@ export async function POST(request: Request) {
       messages: { role: "system" | "user" | "assistant"; content: string }[];
       model?: string;
       mode?: "chat" | "agent";
-      baseUrl?: string;
-    };
+      baseUrl?: string;      conversationId?: string;    };
 
     if (!body.messages.length) {
       return NextResponse.json({ error: "No chat messages were provided." }, { status: 400 });
@@ -67,6 +67,16 @@ export async function POST(request: Request) {
     // Background: learn from message, track recent topic
     learnFromMessage(userId, lastUserMessage).catch(() => {});
     memPush(userId, MEMORY_KEY.RECENT_TOPICS, lastUserMessage.slice(0, 80), 10).catch(() => {});
+
+    // ── Persist conversation & user message (background, non-blocking) ──────
+    const persistConvId: { id?: string } = {};
+    ensureConversation(userId, body.conversationId, lastUserMessage, {
+      model: body.model,
+      provider: getActiveProvider(),
+    }).then((convId) => {
+      persistConvId.id = convId;
+      return saveMessage(convId, "user", lastUserMessage, { model: body.model });
+    }).catch(() => {});
 
     // ── Conversation context resolution ────────────────────────────────────
     // Resolve follow-up pronouns (eni, teni, e, aa, pase ryu…) using history
@@ -251,12 +261,22 @@ export async function POST(request: Request) {
       ...userMessages,
     ];
     const message = await generateChatCompletion({ messages, model: body.model });
+
+    // Persist assistant reply
+    if (persistConvId.id) {
+      saveMessage(persistConvId.id, "assistant", message, {
+        model: body.model,
+        brain: "chat",
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       message,
       brain: "chat",
       brainLabel: "CHAT",
       provider: getActiveProvider(),
       providerLabel: getProviderLabel(),
+      conversationId: persistConvId.id,
     });
   } catch (err) {
     if (err instanceof ModelRouterError) {

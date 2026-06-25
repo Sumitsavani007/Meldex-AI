@@ -25,6 +25,8 @@ const credentialsSchema = z.object({
 export const { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  // Required when running behind a reverse proxy (Nginx)
+  trustHost: true,
   pages: {
     signIn: "/login",
     error: "/auth/error",

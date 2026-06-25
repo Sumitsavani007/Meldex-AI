@@ -150,26 +150,36 @@ model File {
 }
 
 model Conversation {
-  id        String    @id @default(cuid())
-  userId    String
-  projectId String?
-  title     String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  messages  Message[]
+  id          String    @id @default(cuid())
+  userId      String
+  projectId   String?
+  title       String
+  provider    String?
+  model       String?
+  activeBrain String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  messages    Message[]
+
+  @@index([userId, createdAt])
 }
 
 model Message {
   id             String       @id @default(cuid())
   conversationId String
   role           String
-  content        String
+  content        String       @db.Text
   model          String?
+  brain          String?
+  sourcesJson    Json?
+  metadataJson   Json?
   tokenCount     Int          @default(0)
   createdAt      DateTime     @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
 
 model Task {
@@ -323,4 +333,36 @@ model ConversationSummary {
   updatedAt      DateTime @updatedAt
 
   @@index([userId])
+}
+
+// ── Master Admin Control Center ───────────────────────────────────────────────
+
+model SystemSetting {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  valueEncrypted String?  @db.Text
+  valueMasked    String?
+  category       String   @default("general")
+  isSecret       Boolean  @default(false)
+  requireRestart Boolean  @default(false)
+  updatedBy      String?
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@index([category])
+}
+
+model SystemSettingAudit {
+  id         String   @id @default(cuid())
+  key        String
+  action     String
+  oldMasked  String?
+  newMasked  String?
+  updatedBy  String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([key, createdAt])
+  @@index([updatedBy])
 }
