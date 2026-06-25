@@ -80,11 +80,12 @@ const checkMeta: Record<
 };
 
 export default function SystemDiagnosticsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [health, setHealth] = useState<HealthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

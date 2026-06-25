@@ -21,11 +21,12 @@ interface Stats {
 }
 
 export default function ProjectsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [stats, setStats] = useState<Stats>({ total: 0, active: 0, archived: 0, projects: [] });
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

@@ -5,8 +5,9 @@ import { redirect } from "next/navigation";
 import { BarChart3, TrendingUp, Zap, Coins } from "lucide-react";
 
 export default function UsagePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

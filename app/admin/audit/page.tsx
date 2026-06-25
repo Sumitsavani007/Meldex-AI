@@ -15,11 +15,12 @@ interface AuditEntry {
 }
 
 export default function AuditPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

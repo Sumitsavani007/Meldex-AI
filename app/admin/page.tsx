@@ -30,11 +30,12 @@ interface AdminStats {
 }
 
 export default function AdminPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [statsError, setStatsError] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

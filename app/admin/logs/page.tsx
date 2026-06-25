@@ -14,11 +14,12 @@ interface LogEntry {
 }
 
 export default function LogsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
+  if (status === "loading") return null;
   if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
     redirect("/unauthorized");
   }

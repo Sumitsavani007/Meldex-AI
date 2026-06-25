@@ -14,19 +14,20 @@ interface UserData {
 }
 
 export default function UserManagementPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [users, setUsers] = useState<UserData[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (status === "loading") return;
     if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
       redirect("/unauthorized");
     }
     
     // Fetch users - we'll need to create this API endpoint
     fetchUsers();
-  }, [session]);
+  }, [session, status]);
 
   const fetchUsers = async () => {
     try {
