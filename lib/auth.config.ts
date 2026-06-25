@@ -10,11 +10,24 @@ import type { NextAuthConfig } from "next-auth";
 
 export const authConfig: NextAuthConfig = {
   session: { strategy: "jwt" },
+  // Required when running behind a reverse proxy (Nginx on AWS)
+  trustHost: true,
   pages: {
     signIn: "/login",
     error: "/auth/error",
   },
   callbacks: {
+    /**
+     * Map custom JWT fields (id, role) onto the session user object.
+     * This runs in the Edge Runtime so must stay free of Node-only imports.
+     */
+    async session({ session, token }) {
+      if (session.user && token) {
+        (session.user as { id?: string; role?: string }).id = token.id as string;
+        (session.user as { id?: string; role?: string }).role = token.role as string;
+      }
+      return session;
+    },
     /**
      * The `authorized` callback is called by the middleware helper to decide
      * whether a request is allowed to proceed. It receives only the JWT token
