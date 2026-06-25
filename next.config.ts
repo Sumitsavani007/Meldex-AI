@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: process.cwd(),
+  // instrumentation.ts is automatically enabled in Next.js 15 (stable).
+  // vault-loader runs at startup via instrumentation.ts before auth.ts initializes.
   // Enable standalone output for Docker deployments
   output: process.env.DOCKER_BUILD === "1" ? "standalone" : undefined,
 
@@ -47,8 +49,8 @@ const nextConfig: NextConfig = {
               "font-src 'self' https://fonts.gstatic.com",
               // Images: self + data URIs + R2 public URL
               `img-src 'self' data: blob: ${process.env.R2_PUBLIC_URL ?? ""}`,
-              // Connect: self + OpenRouter + Ollama + auth providers
-              "connect-src 'self' https://openrouter.ai https://api.openai.com https://api.anthropic.com",
+              // Connect: self + OpenRouter + Ollama + auth providers + Google OAuth
+              "connect-src 'self' https://openrouter.ai https://api.openai.com https://api.anthropic.com https://accounts.google.com https://oauth2.googleapis.com",
               // Worker: blob (Monaco editor web workers)
               "worker-src blob:",
               // Frame: deny

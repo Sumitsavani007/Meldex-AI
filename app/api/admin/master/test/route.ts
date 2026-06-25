@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
+import { getSetting, isVaultConfigured } from "@/lib/secret-vault";
 
 const testSchema = z.object({
   provider: z.enum(["postgres", "r2", "openrouter", "google", "github", "aws"]),
@@ -111,46 +112,100 @@ export async function POST(req: NextRequest) {
       }
 
       case "google": {
-        const clientId = process.env.GOOGLE_CLIENT_ID;
-        if (!clientId) {
+        // Check process.env first, then vault (vault-loader may not have run if no restart yet)
+        const clientId = process.env.GOOGLE_CLIENT_ID
+          || (isVaultConfigured() ? await getSetting("GOOGLE_CLIENT_ID") : null);
+        const clientSecret = process.env.GOOGLE_CLIENT_SECRET
+          || (isVaultConfigured() ? await getSetting("GOOGLE_CLIENT_SECRET") : null);
+
+        const appUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+        const callbackUrl = `${appUrl}/api/auth/callback/google`;
+        const origin = appUrl;
+
+        if (!clientId && !clientSecret) {
           return NextResponse.json({
             provider,
             status: "misconfigured",
             latencyMs: Date.now() - start,
-            message: "GOOGLE_CLIENT_ID not set. Add to .env.production",
+            message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set. Add via Credentials Vault and restart app.",
             lastCheckedAt: new Date().toISOString(),
+            extra: {
+              reason: "missing_client_id_and_secret",
+              callbackUrl,
+              origin,
+              requiredEnvVars: "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET",
+            },
           });
         }
-        const callbackUrl = `${process.env.NEXTAUTH_URL ?? process.env.AUTH_URL}/api/auth/callback/google`;
+        if (!clientId) {
+          return NextResponse.json({
+            provider, status: "misconfigured", latencyMs: Date.now() - start,
+            message: "GOOGLE_CLIENT_ID missing. Add via Credentials Vault and restart app.",
+            lastCheckedAt: new Date().toISOString(),
+            extra: { reason: "missing_client_id", callbackUrl, origin },
+          });
+        }
+        if (!clientSecret) {
+          return NextResponse.json({
+            provider, status: "misconfigured", latencyMs: Date.now() - start,
+            message: "GOOGLE_CLIENT_SECRET missing. Add via Credentials Vault and restart app.",
+            lastCheckedAt: new Date().toISOString(),
+            extra: { reason: "missing_client_secret", callbackUrl, origin },
+          });
+        }
+
+        // Check if actually loaded into process.env (i.e., vault-loader ran after restart)
+        const loadedInEnv = !!process.env.GOOGLE_CLIENT_ID;
+        const source = loadedInEnv ? (process.env.GOOGLE_CLIENT_ID === clientId ? "ENV" : "ENV") : "VAULT_ONLY";
+        const needsRestart = !loadedInEnv;
+
         return NextResponse.json({
           provider,
-          status: "configured",
+          status: needsRestart ? "configured_needs_restart" : "configured",
           latencyMs: Date.now() - start,
-          message: "Google OAuth client ID present",
+          message: needsRestart
+            ? "Google credentials found in vault but app restart required to activate provider"
+            : "Google OAuth configured and active",
           lastCheckedAt: new Date().toISOString(),
-          extra: { callbackUrl, clientIdPrefix: clientId.slice(0, 16) + "..." },
+          extra: {
+            source,
+            callbackUrl,
+            origin,
+            clientIdPrefix: clientId.slice(0, 20) + "...",
+            note: needsRestart ? "Restart app via Master Admin to activate" : undefined,
+          },
         });
       }
 
       case "github": {
-        const clientId = process.env.GITHUB_ID;
-        if (!clientId) {
+        const clientId = process.env.GITHUB_ID
+          || (isVaultConfigured() ? await getSetting("GITHUB_ID") : null);
+        const clientSecret = process.env.GITHUB_SECRET
+          || (isVaultConfigured() ? await getSetting("GITHUB_SECRET") : null);
+
+        const appUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+        const callbackUrl = `${appUrl}/api/auth/callback/github`;
+
+        if (!clientId || !clientSecret) {
           return NextResponse.json({
-            provider,
-            status: "misconfigured",
-            latencyMs: Date.now() - start,
-            message: "GITHUB_ID not set. Add to .env.production",
+            provider, status: "misconfigured", latencyMs: Date.now() - start,
+            message: `GitHub OAuth credentials missing: ${!clientId ? "GITHUB_ID " : ""}${!clientSecret ? "GITHUB_SECRET" : ""}. Add via Credentials Vault and restart.`,
             lastCheckedAt: new Date().toISOString(),
+            extra: { callbackUrl, reason: "missing_credentials" },
           });
         }
-        const callbackUrl = `${process.env.NEXTAUTH_URL ?? process.env.AUTH_URL}/api/auth/callback/github`;
+
+        const loadedInEnv = !!process.env.GITHUB_ID;
+        const needsRestart = !loadedInEnv;
         return NextResponse.json({
           provider,
-          status: "configured",
+          status: needsRestart ? "configured_needs_restart" : "configured",
           latencyMs: Date.now() - start,
-          message: "GitHub OAuth client ID present",
+          message: needsRestart
+            ? "GitHub credentials found in vault but app restart required to activate provider"
+            : "GitHub OAuth configured and active",
           lastCheckedAt: new Date().toISOString(),
-          extra: { callbackUrl, clientIdPrefix: clientId.slice(0, 8) + "..." },
+          extra: { callbackUrl, clientIdPrefix: clientId.slice(0, 8) + "...", source: loadedInEnv ? "ENV" : "VAULT_ONLY" },
         });
       }
 

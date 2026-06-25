@@ -45,6 +45,7 @@ const SOURCE_BADGES: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, string> = {
   ok: "text-emerald-400", configured: "text-emerald-400",
+  configured_needs_restart: "text-amber-400",
   degraded: "text-amber-400", not_configured: "text-amber-400",
   error: "text-red-400", misconfigured: "text-red-400",
   info: "text-blue-400",
@@ -52,6 +53,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_DOT: Record<string, string> = {
   ok: "bg-emerald-400 shadow-emerald-400/50", configured: "bg-emerald-400 shadow-emerald-400/50",
+  configured_needs_restart: "bg-amber-400 shadow-amber-400/50",
   degraded: "bg-amber-400 shadow-amber-400/50", not_configured: "bg-amber-400 shadow-amber-400/50",
   error: "bg-red-400 shadow-red-400/50", misconfigured: "bg-red-400 shadow-red-400/50",
 };

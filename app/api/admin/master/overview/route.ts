@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { isVaultConfigured } from "@/lib/secret-vault";
+import { isVaultConfigured, getSetting } from "@/lib/secret-vault";
 import os from "os";
 
 export async function GET() {
@@ -37,14 +37,22 @@ export async function GET() {
     prisma.systemSetting.count().catch(() => 0),
   ]);
 
+  const vaultOk = isVaultConfigured();
+
+  // Check OAuth credentials — env first, then vault
+  const googleId = process.env.GOOGLE_CLIENT_ID
+    || (vaultOk ? await getSetting("GOOGLE_CLIENT_ID").catch(() => null) : null);
+  const githubId = process.env.GITHUB_ID
+    || (vaultOk ? await getSetting("GITHUB_ID").catch(() => null) : null);
+
   const checks = {
     database: { status: dbStatus, latencyMs: dbLatencyMs },
     auth: { status: (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET) ? "ok" : "misconfigured" },
     r2: { status: (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID) ? "configured" : "not_configured" },
     openrouter: { status: process.env.OPENROUTER_API_KEY ? "configured" : "not_configured" },
-    googleOauth: { status: process.env.GOOGLE_CLIENT_ID ? "configured" : "not_configured" },
-    githubOauth: { status: process.env.GITHUB_ID ? "configured" : "not_configured" },
-    vault: { status: isVaultConfigured() ? "ok" : "not_configured" },
+    googleOauth: { status: googleId ? (process.env.GOOGLE_CLIENT_ID ? "configured" : "configured_needs_restart") : "not_configured" },
+    githubOauth: { status: githubId ? (process.env.GITHUB_ID ? "configured" : "configured_needs_restart") : "not_configured" },
+    vault: { status: vaultOk ? "ok" : "not_configured" },
   };
 
   return NextResponse.json({
@@ -55,7 +63,7 @@ export async function GET() {
     hostname: os.hostname(),
     platform: os.platform(),
     arch: os.arch(),
-    vaultConfigured: isVaultConfigured(),
+    vaultConfigured: vaultOk,
     checks,
     system: {
       totalMemMb: Math.round(totalMem / 1024 / 1024),
