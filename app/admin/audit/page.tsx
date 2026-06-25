@@ -20,11 +20,6 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
-  if (status === "loading") return null;
-  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
-    redirect("/unauthorized");
-  }
-
   useEffect(() => {
     fetch("/api/admin/audit")
       .then((r) => r.json())
@@ -34,6 +29,11 @@ export default function AuditPage() {
       .catch(() => setDbError(true))
       .finally(() => setLoading(false));
   }, []);
+
+  if (status === "loading") return null;
+  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
+    redirect("/unauthorized");
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 p-8">

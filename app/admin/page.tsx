@@ -35,17 +35,17 @@ export default function AdminPage() {
   const [statsError, setStatsError] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  if (status === "loading") return null;
-  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
-    redirect("/unauthorized");
-  }
-
   useEffect(() => {
     fetch("/api/admin/stats")
       .then((r) => r.json())
       .then((data) => { setStats(data); setLoading(false); })
       .catch(() => { setStatsError(true); setLoading(false); });
   }, []);
+
+  if (status === "loading") return null;
+  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
+    redirect("/unauthorized");
+  }
 
   const statCards = [
     { label: "Total Users", value: loading ? "…" : String(stats?.users ?? "—"), icon: Users, accent: "mint" as const, trendLabel: "+12% this month" },

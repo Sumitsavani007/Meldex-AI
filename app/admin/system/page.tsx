@@ -85,11 +85,6 @@ export default function SystemDiagnosticsPage() {
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
-  if (status === "loading") return null;
-  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
-    redirect("/unauthorized");
-  }
-
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     try {
@@ -110,6 +105,11 @@ export default function SystemDiagnosticsPage() {
     const interval = setInterval(fetchHealth, 30_000);
     return () => clearInterval(interval);
   }, [fetchHealth]);
+
+  if (status === "loading") return null;
+  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
+    redirect("/unauthorized");
+  }
 
   const overallColor =
     !health ? "text-slate-400" :

@@ -19,11 +19,6 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(true);
   const [dbError, setDbError] = useState(false);
 
-  if (status === "loading") return null;
-  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
-    redirect("/unauthorized");
-  }
-
   useEffect(() => {
     fetch("/api/admin/logs")
       .then((r) => r.json())
@@ -33,6 +28,11 @@ export default function LogsPage() {
       .catch(() => setDbError(true))
       .finally(() => setLoading(false));
   }, []);
+
+  if (status === "loading") return null;
+  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) {
+    redirect("/unauthorized");
+  }
 
   const errors = logs.filter((l) => l.level === "error").length;
   const successRate = logs.length === 0 ? 100 : Math.round(((logs.length - errors) / logs.length) * 100);
