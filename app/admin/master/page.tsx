@@ -409,7 +409,7 @@ export default function MasterAdminPage() {
                     <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
                       <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">Service Health</h3>
                       <div className="space-y-2">
-                        {Object.entries(overview.checks).map(([svc, check]) => (
+                        {Object.entries(overview.checks ?? {}).map(([svc, check]) => (
                           <div key={svc} className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
                             <div className="flex items-center gap-2.5">
                               <StatusPulse status={check.status} />
@@ -426,11 +426,11 @@ export default function MasterAdminPage() {
                   </div>
 
                   {/* AWS metadata */}
-                  {Object.values(overview.awsMeta).some(Boolean) && (
+                  {Object.values(overview.awsMeta ?? {}).some(Boolean) && (
                     <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
                       <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">AWS Deployment</h3>
                       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                        {Object.entries(overview.awsMeta).filter(([, v]) => v).map(([k, v]) => (
+                        {Object.entries(overview.awsMeta ?? {}).filter(([, v]) => v).map(([k, v]) => (
                           <div key={k} className="bg-white/[0.03] rounded-lg px-3 py-2">
                             <p className="text-[10px] text-slate-500 mb-0.5">{k.replace("AWS_", "")}</p>
                             <p className="text-[11px] font-mono text-slate-200 truncate">{v}</p>
