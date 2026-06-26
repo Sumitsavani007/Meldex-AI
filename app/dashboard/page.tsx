@@ -7,8 +7,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Bot,
+  Box,
   CheckCircle2,
-  CreditCard,
   Files,
   FolderKanban,
   KeyRound,
@@ -22,6 +22,8 @@ import {
   Sparkles,
   Sun,
   WalletCards,
+  Workflow,
+  Plug,
 } from "lucide-react";
 import { useThemePreference } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -41,8 +43,16 @@ const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/workspace", label: "Workspaces", icon: FolderKanban },
   { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/settings/tokens", label: "Tokens", icon: KeyRound },
-  { href: "/settings/billing", label: "Billing", icon: CreditCard },
+  { href: "/agents", label: "Agents", icon: Workflow },
+  { href: "/templates", label: "Templates", icon: Box },
+  { href: "/files", label: "Files", icon: Files },
+  { href: "/tasks", label: "Tasks", icon: Sparkles },
+  { href: "/models", label: "Models", icon: Bot },
+];
+
+const toolNav = [
+  { href: "/integrations", label: "Integrations", icon: Plug },
+  { href: "/settings/tokens", label: "API Tokens", icon: KeyRound },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -96,6 +106,30 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
           );
         })}
       </nav>
+
+      <div className="mt-7">
+        <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-500">Tools</p>
+        <nav className="space-y-1">
+          {toolNav.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(item.href + "/");
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "mx-focus flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition",
+                  active
+                    ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white",
+                )}
+              >
+                <item.icon className="size-4" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
 
       <div className="mt-auto space-y-3">
         <Link

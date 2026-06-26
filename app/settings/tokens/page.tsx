@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Copy, KeyRound, Loader2, Plus, Trash2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Copy, KeyRound, Loader2, Plus, RotateCw, Search, Trash2, AlertCircle } from "lucide-react";
+import { PanelCard, SoftButton, UserPanelShell } from "@/components/user-panel-shell";
 
 type TokenRecord = {
   id: string;
@@ -91,27 +92,18 @@ export default function TokensPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 text-slate-950 dark:text-white">
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]">
-            <KeyRound className="size-4 text-blue-600 dark:text-blue-300" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">Access Tokens</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Create mdx_ tokens for the Meldex VS Code extension. Raw tokens are shown once.</p>
-          </div>
-        </div>
-      </div>
+    <UserPanelShell title="API Tokens" description="Create mdx_ tokens for VS Code extension, CLI, benchmark runs, and agent access." eyebrow="API Tokens">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="min-w-0 space-y-5">
 
       {newToken && (
-        <section className="mb-6 rounded-md border border-emerald-600/25 bg-emerald-600/10 p-4">
+        <section className="rounded-2xl border border-emerald-600/25 bg-emerald-600/10 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
             <CheckCircle2 className="size-4" /> Token created. Copy it now.
           </div>
           <div className="mt-3 flex gap-2">
             <code className="min-w-0 flex-1 rounded-md border border-emerald-600/20 bg-white px-3 py-2 font-mono text-xs text-emerald-800 break-all dark:bg-black/40 dark:text-emerald-200">{newToken}</code>
-            <button onClick={copyRawToken} className="inline-flex items-center gap-2 rounded-md border border-emerald-600/30 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-100">
+            <button onClick={copyRawToken} className="inline-flex items-center gap-2 rounded-lg border border-emerald-600/30 px-3 py-2 text-xs font-semibold text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-100">
               {copied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
             </button>
           </div>
@@ -119,11 +111,19 @@ export default function TokensPage() {
         </section>
       )}
 
-      <section className="mb-6 rounded-md border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.04]">
-        <h2 className="text-sm font-semibold">Create token</h2>
+      <PanelCard>
+        <div className="mb-4 flex items-center gap-3">
+          <span className="grid size-10 place-items-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+            <KeyRound className="size-4" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold">Create token</h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Raw token is shown once after creation.</p>
+          </div>
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_150px]">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 dark:border-white/10 dark:bg-black/30 dark:focus:border-white/40" placeholder="Token name" />
-          <select value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none dark:border-white/10 dark:bg-black/30">
+          <input value={name} onChange={(e) => setName(e.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-violet-300 dark:border-white/10 dark:bg-white/[0.04]" placeholder="Token name" />
+          <select value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none dark:border-white/10 dark:bg-white/[0.04]">
             <option value={30}>30 days</option>
             <option value={90}>90 days</option>
             <option value={365}>1 year</option>
@@ -131,27 +131,40 @@ export default function TokensPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {ALL_SCOPES.map((scope) => (
-            <label key={scope} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-black/20 dark:text-slate-300">
+            <label key={scope} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300">
               <input type="checkbox" checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
               {scope}
             </label>
           ))}
         </div>
-        <button onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0} className="mt-4 inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-black">
+        <SoftButton onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0} variant="primary" className="mt-4">
           {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Create token
-        </button>
-      </section>
+        </SoftButton>
+      </PanelCard>
 
-      {error && <div className="mb-4 flex items-center gap-2 rounded-md border border-red-600/30 bg-red-600/10 p-3 text-sm text-red-700 dark:text-red-200"><AlertCircle className="size-4" />{error}</div>}
+      {error && <div className="flex items-center gap-2 rounded-xl border border-red-600/30 bg-red-600/10 p-3 text-sm text-red-700 dark:text-red-200"><AlertCircle className="size-4" />{error}</div>}
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold">Tokens</h2>
+      <PanelCard>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-sm font-semibold">Active token list</h2>
+          <div className="flex items-center gap-2">
+            <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04]">
+              <Search className="size-4" />
+              <input className="w-44 bg-transparent outline-none" placeholder="Search tokens" />
+            </label>
+            <button onClick={loadTokens} className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]" title="Refresh tokens">
+              <RotateCw className="size-4" />
+            </button>
+          </div>
+        </div>
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><Loader2 className="size-4 animate-spin" /> Loading...</div>
+          <div className="grid gap-2">
+            {[0, 1, 2].map((item) => <div key={item} className="h-14 animate-pulse rounded-xl bg-slate-100 dark:bg-white/[0.06]" />)}
+          </div>
         ) : tokens.length === 0 ? (
-          <div className="rounded-md border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">No tokens yet.</div>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-white/15 dark:bg-white/[0.04] dark:text-slate-400">No tokens yet. Create a token to connect VS Code or the CLI.</div>
         ) : (
-          <div className="overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-white/[0.04] dark:text-slate-400">
                 <tr>
@@ -165,7 +178,7 @@ export default function TokensPage() {
               </thead>
               <tbody>
                 {tokens.map((token) => (
-                  <tr key={token.id} className="border-t border-slate-200 dark:border-white/10">
+                  <tr key={token.id} className="border-t border-slate-200 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]">
                     <td className="p-3 font-medium">{token.name}</td>
                     <td className="p-3 font-mono text-xs text-slate-600 dark:text-slate-300">{token.maskedToken}</td>
                     <td className="p-3 text-xs text-slate-500 dark:text-slate-400">{token.scopes.join(", ")}</td>
@@ -174,7 +187,7 @@ export default function TokensPage() {
                       <div>Expires {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() : "Never"}</div>
                       <div>Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleDateString() : "Never"}</div>
                     </td>
-                    <td className="p-3 text-xs">{token.status}</td>
+                    <td className="p-3 text-xs"><span className="rounded-full bg-emerald-50 px-2 py-1 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{token.status}</span></td>
                     <td className="p-3 text-right">
                       <button onClick={() => revokeToken(token.id)} disabled={token.status === "revoked"} className="rounded-md p-2 text-slate-500 hover:bg-red-600/10 hover:text-red-700 disabled:opacity-30 dark:text-slate-400 dark:hover:text-red-200" title="Revoke token">
                         <Trash2 className="size-4" />
@@ -186,7 +199,26 @@ export default function TokensPage() {
             </table>
           </div>
         )}
-      </section>
-    </main>
+      </PanelCard>
+        </section>
+        <aside className="space-y-5">
+          <PanelCard>
+            <h2 className="text-sm font-semibold">Token Security</h2>
+            <div className="mt-4 space-y-3 text-sm text-slate-600 dark:text-slate-300">
+              <p>Raw tokens are shown once and never stored in reports or logs.</p>
+              <p>Revoked tokens automatically log out connected extensions on the next auth check.</p>
+            </div>
+          </PanelCard>
+          <PanelCard>
+            <h2 className="text-sm font-semibold">Activity</h2>
+            <div className="mt-4 space-y-3">
+              {["Create", "Copy once", "Revoke anytime"].map((item) => (
+                <div key={item} className="rounded-xl bg-slate-50 px-3 py-3 text-sm dark:bg-white/[0.04]">{item}</div>
+              ))}
+            </div>
+          </PanelCard>
+        </aside>
+      </div>
+    </UserPanelShell>
   );
 }

@@ -42,7 +42,14 @@ export function Header() {
     pathname.startsWith("/master/login") ||
     pathname.startsWith("/chat") ||
     pathname.startsWith("/workspace") ||
-    pathname.startsWith("/dashboard")
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/agents") ||
+    pathname.startsWith("/templates") ||
+    pathname.startsWith("/files") ||
+    pathname.startsWith("/tasks") ||
+    pathname.startsWith("/models") ||
+    pathname.startsWith("/integrations")
   ) return null;
 
   return (
