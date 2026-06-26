@@ -38,5 +38,16 @@ The Workspace stream now emits the following orchestration events during a real 
 ## Local Verification
 
 - Build completed successfully after event wiring.
-- Live verification is required after AWS deployment to prove production runtime execution.
+- AWS deployment completed at commit `129bccce331bf94d9307547d95982cd3de6300ea`.
 
+## Live Verification
+
+Prompt:
+
+`Create a premium responsive pricing section for Meldex.`
+
+Observed production stream events:
+
+`thinking`, `tool_start`, `tool_result`, `memory_loaded`, `intent_detected`, `task_classified`, `planner_done`, `architect_done`, `designer_done`, `tool_plan_ready`, `confidence_scored`, `qwen_generation_started`, `plan`, `changes_planned`, `file_extracted`, `reviewer_done`, `security_reviewed`, `performance_reviewed`, `file_created`, `diff_ready`, `server_starting`, `server_ready`, `preview_verified`, `finalized`, `memory_updated`, `learning_updated`, `summary`, `done`.
+
+Required orchestration events missing: none.

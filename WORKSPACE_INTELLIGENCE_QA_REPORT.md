@@ -35,7 +35,21 @@ After deployment, run one real Workspace stream task with the target prompt and 
 - Preview body is HTML, not JSON or model text.
 - File assets are served through the Workspace preview endpoint.
 
+## Production QA Result
+
+- AWS commit: `129bccce331bf94d9307547d95982cd3de6300ea`
+- Workspace stream status: 200
+- Missing required orchestration events: none
+- Generated files: `README.md`, `index.html`, `script.js`, `style.css`
+- Missing required files: none
+- Preview status: 200
+- HTML shell detected: yes
+- CSS linked: yes
+- JS linked: yes
+- Raw JSON preview: no
+- Unresolved `${...}` placeholders: no
+- Escaped newline spam: no
+
 ## Current Result
 
-Local implementation is ready for production deployment and live runtime proof.
-
+Workspace full orchestration is live and verified for the target pricing-section task.

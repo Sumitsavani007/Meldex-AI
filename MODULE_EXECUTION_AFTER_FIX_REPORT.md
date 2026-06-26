@@ -45,3 +45,6 @@ Workspace runtime no longer goes directly from a regex task label to one Qwen ca
 
 Some intelligence modules are deterministic orchestration summaries rather than separate model calls. That is intentional for this wiring pass to avoid adding a second agent system or replacing Qwen.
 
+## Production Runtime Proof
+
+A live Workspace task using `Create a premium responsive pricing section for Meldex.` emitted all required orchestration events and completed with a valid preview. No required module event was missing.

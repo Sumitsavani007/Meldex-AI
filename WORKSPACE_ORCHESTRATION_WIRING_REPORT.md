@@ -58,3 +58,11 @@ User prompt
 - `npx prisma generate`: passed.
 - `npm run build`: passed.
 
+## Deployment Verification
+
+- GitHub commit: `129bccce331bf94d9307547d95982cd3de6300ea`
+- AWS commit: `129bccce331bf94d9307547d95982cd3de6300ea`
+- `npx prisma migrate deploy`: no pending migrations.
+- `npm run build`: passed on AWS.
+- PM2 app `meldex-ai`: online after restart.
+- Live Workspace stream task: passed.
