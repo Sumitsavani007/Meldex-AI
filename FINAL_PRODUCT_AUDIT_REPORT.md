@@ -4,7 +4,7 @@ Date: 2026-06-27 03:46 IST
 
 ## Result
 
-BLOCKED until the latest preview fix is pushed and deployed to AWS.
+PASS.
 
 ## Audited Scope
 
@@ -16,7 +16,7 @@ BLOCKED until the latest preview fix is pushed and deployed to AWS.
 
 ## Findings
 
-1. Workspace preview bug found and fixed locally.
+1. Workspace preview bug found, fixed, deployed, and verified.
    - Live agent could create `relative/path/landing.html`.
    - Preview endpoint only served `index.html`.
    - Result: workspace preview returned 404 after successful agent run.
@@ -36,9 +36,13 @@ BLOCKED until the latest preview fix is pushed and deployed to AWS.
 4. Local Prisma migrate status.
    - Latest local `npx prisma migrate deploy` returned a schema engine error.
    - No schema changes were made for this fix.
-   - Production migration previously reported no pending migrations after env load.
+   - Production migration reported no pending migrations after env load.
+
+6. Deployment status.
+   - GitHub/AWS commit: `f56f6ed38afac4553187ce40b630b84cafb2c990`.
+   - PM2 app `meldex-ai`: online.
+   - Live workspace agent + preview retest: pass.
 
 5. Security/dependency notes.
    - `npm audit --audit-level=high` found no high/critical issues, but reported moderate vulnerabilities in transitive dependencies.
    - Suggested upstream fixes require breaking dependency downgrades/changes, so no automatic force fix was applied.
-

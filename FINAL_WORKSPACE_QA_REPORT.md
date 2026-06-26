@@ -4,7 +4,7 @@ Date: 2026-06-27 03:46 IST
 
 ## Result
 
-BLOCKED pending deployment of the local preview fix.
+PASS.
 
 ## Live Reproduction
 
@@ -15,7 +15,7 @@ Authenticated live smoke created a workspace and ran the agent successfully, but
 - Preview: 404
 - Error: `index.html` not found
 
-## Local Fix
+## Fix
 
 Files changed:
 
@@ -36,4 +36,11 @@ Fix details:
 - `npx prisma generate`: pass.
 - `npm run build`: pass.
 - VSIX package: pass.
-
+- Production deploy: pass.
+- Live authenticated retest:
+  - Workspace create: 201
+  - Agent run: 200
+  - Files: `index.html` present
+  - Preview verify: 200, verified true
+  - Preview HTML: 200
+  - Cleanup: 200

@@ -4,29 +4,26 @@ Date: 2026-06-27 03:46 IST
 
 ## Current Production State
 
-- GitHub/AWS commit before the preview fix: `b1f385c4f8241462f75abab98b74d673905903a6`
+- GitHub/AWS commit: `f56f6ed38afac4553187ce40b630b84cafb2c990`
 - PM2 app: `meldex-ai`
 - PM2 status: online during last check
-- Production build before the preview fix: pass
-- Production migration before the preview fix: no pending migrations
+- Production build: pass
+- Production migration: no pending migrations
 
-## Pending
+## Deployment Result
 
-The workspace preview fix is local and must be committed, pushed, deployed, and live-tested.
+- `git pull origin main`: fast-forwarded to `f56f6ed`
+- `npm install`: completed with existing moderate audit advisories
+- `npx prisma generate`: pass
+- `npx prisma migrate deploy`: no pending migrations
+- `npm run build`: pass
+- `pm2 restart meldex-ai --update-env`: pass
 
-## Deployment Commands Required
+## Live Verification
 
-```bash
-git add .
-git commit -m "Fix workspace preview entry fallback"
-git push origin main
-ssh -i /Users/sumitsavani/Downloads/meldex.pem ubuntu@16.171.165.221
-cd /home/ubuntu/meldex-ai
-git pull origin main
-npm install
-npx prisma generate
-npx prisma migrate deploy
-npm run build
-pm2 restart meldex-ai --update-env
-```
-
+- Authenticated pages: pass
+- Workspace create: pass
+- Agent run: pass
+- Preview verify: pass
+- Preview HTML response: pass
+- CLI doctor auth/model health: pass
