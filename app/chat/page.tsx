@@ -1,8 +1,6 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ElementType } from "react";
 import { signOut, useSession } from "next-auth/react";
 import {
   Archive,
@@ -11,14 +9,11 @@ import {
   Code2,
   Copy,
   CopyPlus,
-  CreditCard,
   Download,
   Edit3,
   ExternalLink,
-  FolderKanban,
   Globe,
   Image as ImageIcon,
-  LayoutDashboard,
   LogOut,
   Menu,
   MessageSquare,
@@ -32,17 +27,16 @@ import {
   RotateCcw,
   Search,
   Send,
-  Settings,
   SquarePen,
   StopCircle,
   Terminal,
   Trash2,
-  User,
   X,
   Zap,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { UserPanelSidebar } from "@/components/user-panel-sidebar";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -742,7 +736,7 @@ function Sidebar({
       )}
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-[#f9f9f9] transition-all duration-200 dark:border-[#262626] dark:bg-[#111111] lg:relative lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-white transition-all duration-200 dark:border-[#262626] dark:bg-[#111111] lg:relative lg:translate-x-0",
           collapsed ? "lg:w-[68px]" : "w-[260px]",
           open ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
@@ -757,7 +751,7 @@ function Sidebar({
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
-          {!collapsed && <span className="text-sm font-semibold text-slate-950 dark:text-white">Meldex</span>}
+          {!collapsed && <span className="text-sm font-semibold text-slate-950 dark:text-white">New Chat</span>}
           <div className="flex gap-1">
             <button
               onClick={onNew}
@@ -789,7 +783,7 @@ function Sidebar({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search history"
-              className="mx-focus w-full rounded-lg border-0 bg-slate-200/70 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-500 dark:bg-[#202020] dark:text-white dark:placeholder:text-[#71717a]"
+              className="w-full appearance-none rounded-lg border-0 bg-slate-100 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none ring-0 transition placeholder:text-slate-500 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none dark:bg-[#202020] dark:text-white dark:placeholder:text-[#71717a]"
             />
           </label>
         </div>}
@@ -804,22 +798,6 @@ function Sidebar({
               >
                 <MessageSquarePlus className="size-4" />
               </button>
-              {([
-                ["/dashboard", LayoutDashboard, "Dashboard"],
-                ["/workspace", FolderKanban, "Workspaces"],
-                ["/settings/tokens", Code2, "Tokens"],
-                ["/settings/billing", CreditCard, "Billing"],
-                ["/settings", Settings, "Settings"],
-              ] as const).map(([href, Icon, label]) => (
-                <Link
-                  key={String(href)}
-                  href={String(href)}
-                  className="mx-focus grid size-11 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
-                  title={String(label)}
-                >
-                  <Icon className="size-4" />
-                </Link>
-              ))}
             </div>
           ) : (
             <>
@@ -857,14 +835,6 @@ function Sidebar({
                   onDelete={onDelete}
                 />
               ))}
-              <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
-              <SidebarLink href="/dashboard" icon={LayoutDashboard} label="Dashboard" />
-              <SidebarLink href="/workspace" icon={FolderKanban} label="Workspaces" />
-              <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
-              <SidebarLink href="/settings/tokens" icon={Code2} label="Tokens" />
-              <SidebarLink href="/settings/billing" icon={CreditCard} label="Billing" />
-              <SidebarLink href="/settings/profile" icon={User} label="Profile" />
-              <SidebarLink href="/settings" icon={Settings} label="Settings" />
             </>
           )}
         </div>
@@ -891,18 +861,6 @@ function Sidebar({
         </div>
       </aside>
     </>
-  );
-}
-
-function SidebarLink({ href, icon: Icon, label }: { href: string; icon: ElementType; label: string }) {
-  return (
-    <a
-      href={href}
-      className="mx-focus flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
-    >
-      <Icon className="size-4" />
-      <span>{label}</span>
-    </a>
   );
 }
 
@@ -1338,7 +1296,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-slate-950 dark:bg-[#0d0d0d] dark:text-white">
+    <div className="flex h-screen overflow-hidden bg-[#f7f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
+      <UserPanelSidebar />
       {/* Sidebar */}
       <Sidebar
         conversations={conversations}
@@ -1363,9 +1322,9 @@ export default function ChatPage() {
       />
 
       {/* Main chat column */}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#0d0d0d]">
         {/* Header */}
-        <header className="flex shrink-0 items-center justify-between bg-white/90 px-3 py-3 backdrop-blur sm:px-4 dark:bg-[#0d0d0d]/90">
+        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white/92 px-3 py-3 backdrop-blur-xl sm:px-4 dark:border-white/10 dark:bg-[#0d0d0d]/92">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -1374,8 +1333,8 @@ export default function ChatPage() {
             >
               <Menu className="size-5" />
             </button>
-            <div className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-800 dark:text-white">
-              Meldex
+            <div className="rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-800 dark:text-white">
+              New Chat
             </div>
             {isAdmin && <ModeBadge mode={mode} />}
           </div>
@@ -1461,7 +1420,7 @@ export default function ChatPage() {
         {/* Input area */}
         <div className="shrink-0 bg-white px-3 pb-4 pt-2 dark:bg-[#0d0d0d] sm:px-4 sm:pb-5">
           <div className="mx-auto max-w-3xl">
-            <div className="rounded-[24px] border border-slate-200 bg-white p-2 shadow-sm dark:border-[#262626] dark:bg-[#171717]">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-2 shadow-sm shadow-slate-950/5 dark:border-[#262626] dark:bg-[#171717]">
               <textarea
                 ref={textareaRef}
                 value={input}
