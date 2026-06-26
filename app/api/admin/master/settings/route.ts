@@ -65,7 +65,7 @@ function settingStatus(source: "ENV" | "VAULT" | "MISSING") {
   return source === "MISSING" ? "missing" : "active";
 }
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
 
@@ -132,6 +132,9 @@ export async function POST(req: NextRequest) {
   if (!body.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   const { key, value, category, isSecret } = body.data;
+  if (isSecret && session.user.role !== "OWNER") {
+    return NextResponse.json({ error: "Owner access required to update secrets" }, { status: 403 });
+  }
   if (isSecret && !isVaultConfigured()) {
     return NextResponse.json({ error: "SETTINGS_ENCRYPTION_KEY not configured. Run: openssl rand -base64 32" }, { status: 503 });
   }

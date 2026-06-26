@@ -4,16 +4,16 @@
  * Only ADMIN/OWNER.
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { requireAdmin } from "@/lib/role-guard";
+import { requireOwner } from "@/lib/role-guard";
 import { logAuditEvent } from "@/lib/audit";
 
 const execAsync = promisify(exec);
 
 export async function POST(req: NextRequest) {
-  const { session, error } = await requireAdmin();
+  const { session, error } = await requireOwner();
   if (error) return error;
 
   await logAuditEvent({

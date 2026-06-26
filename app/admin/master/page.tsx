@@ -1,761 +1,939 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { redirect } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ElementType, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowRight, Check, CheckCircle2,
-  ChevronRight, CircleDot, Cloud, Code2, Copy, Database,
-  Eye, EyeOff, Globe, HardDrive, Info, Key, Loader2, Lock,
-  MemoryStick, MessageSquare, Monitor, Package, RefreshCw,
-  RotateCcw, Save, Server, Settings, Shield, ShieldAlert,
-  TestTube2, Timer, Users, WifiOff, X, Zap, Terminal, Search,
+  Activity,
+  AlertTriangle,
+  ChevronRight,
+  Cloud,
+  Code2,
+  Copy,
+  Database,
+  FileText,
+  Globe,
+  Key,
+  Loader2,
+  Lock,
+  LogOut,
+  Monitor,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Server,
+  Settings,
+  Shield,
+  TestTube2,
+  Users,
+  Zap,
 } from "lucide-react";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-type TabId = "overview" | "vault" | "integrations" | "users" | "conversations" | "diagnostics" | "audit";
+type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "users" | "audit" | "diagnostics";
+
+type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
-  key: string; label: string; category: string; isSecret: boolean;
-  requireRestart: boolean; source: "ENV" | "VAULT" | "MISSING";
-  hotReload?: boolean; status?: string;
-  maskedValue: string | null; configured: boolean;
-  updatedBy: string | null; updatedAt: string | null; description?: string;
+  key: string;
+  label: string;
+  category: string;
+  isSecret: boolean;
+  requireRestart: boolean;
+  source: SettingSource;
+  hotReload?: boolean;
+  status?: string;
+  maskedValue: string | null;
+  configured: boolean;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  description?: string | null;
 }
 
 interface Overview {
-  appUrl: string; environment: string; nodeVersion: string; buildVersion: string;
-  hostname: string; vaultConfigured: boolean;
+  appUrl?: string;
+  environment?: string;
+  nodeVersion?: string;
+  buildVersion?: string;
+  hostname?: string;
+  vaultConfigured?: boolean;
+  diagnosticsMs?: number;
   checks?: Record<string, { status: string; latencyMs?: number }>;
   system?: { totalMemMb: number; usedMemMb: number; memPercent: number; cpuLoad1: string; cpus: number; uptimeSeconds: number };
   stats?: { users: number; projects: number; conversations: number; messages: number; vaultKeys: number };
   awsMeta?: Record<string, string | undefined>;
-  diagnosticsMs: number;
 }
 
-interface TestResult { provider: string; status: string; latencyMs: number; message: string; lastCheckedAt: string; extra?: Record<string, string> }
-interface AuditEntry { id: string; action: string; resource?: string; userId?: string; ipAddress?: string; createdAt: string; metadata?: Record<string, unknown> }
-interface ConvEntry { id: string; title: string; model?: string; activeBrain?: string; updatedAt: string; _count: { messages: number } }
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-const SOURCE_BADGES: Record<string, string> = {
-  ENV: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
-  VAULT: "bg-violet-500/15 text-violet-400 border-violet-500/25",
-  MISSING: "bg-red-500/15 text-red-400 border-red-500/25",
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  ok: "text-emerald-400", configured: "text-emerald-400",
-  configured_needs_restart: "text-amber-400",
-  degraded: "text-amber-400", not_configured: "text-amber-400",
-  error: "text-red-400", misconfigured: "text-red-400",
-  info: "text-blue-400",
-};
-
-const STATUS_DOT: Record<string, string> = {
-  ok: "bg-emerald-400 shadow-emerald-400/50", configured: "bg-emerald-400 shadow-emerald-400/50",
-  configured_needs_restart: "bg-amber-400 shadow-amber-400/50",
-  degraded: "bg-amber-400 shadow-amber-400/50", not_configured: "bg-amber-400 shadow-amber-400/50",
-  error: "bg-red-400 shadow-red-400/50", misconfigured: "bg-red-400 shadow-red-400/50",
-};
-
-function StatusPulse({ status }: { status: string }) {
-  const cls = STATUS_DOT[status] ?? "bg-slate-400";
-  return <span className={`inline-block w-2 h-2 rounded-full shadow-[0_0_6px] ${cls}`} />;
+interface TestResult {
+  provider: string;
+  status: string;
+  latencyMs: number;
+  message: string;
+  lastCheckedAt: string;
+  extra?: Record<string, string | undefined>;
 }
 
-function Badge({ label, variant = "default" }: { label: string; variant?: "emerald" | "violet" | "amber" | "red" | "blue" | "default" }) {
-  const styles: Record<string, string> = {
-    emerald: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-    violet: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-    amber: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-    red: "bg-red-500/10 text-red-400 border-red-500/20",
-    blue: "bg-blue-500/10 text-blue-400 border-blue-500/20",
-    default: "bg-white/5 text-slate-400 border-white/10",
-  };
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium border ${styles[variant]}`}>{label}</span>;
+interface AuditEntry {
+  id: string;
+  action: string;
+  resource?: string | null;
+  userId?: string | null;
+  ipAddress?: string | null;
+  createdAt: string;
+  metadata?: Record<string, unknown> | null;
 }
 
-function SourceBadge({ source }: { source: "ENV" | "VAULT" | "MISSING" }) {
-  const v = source === "ENV" ? "emerald" : source === "VAULT" ? "violet" : "red";
-  return <Badge label={source} variant={v as "emerald" | "violet" | "red"} />;
+interface UserRow {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: "USER" | "ADMIN" | "OWNER";
+  authProvider?: string;
+  createdAt: string;
+  updatedAt?: string;
 }
 
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse bg-white/5 rounded-lg ${className}`} />;
-}
+type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
-function fmt(bytes: number) {
-  return bytes < 1024 ? `${bytes}B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)}KB` : `${(bytes / 1048576).toFixed(1)}MB`;
-}
+const tabs: { id: TabId; label: string; icon: ElementType }[] = [
+  { id: "overview", label: "Overview", icon: Activity },
+  { id: "ai", label: "AI Models", icon: Code2 },
+  { id: "vault", label: "Credentials Vault", icon: Key },
+  { id: "integrations", label: "Integrations", icon: Zap },
+  { id: "runtime", label: "Runtime", icon: Settings },
+  { id: "users", label: "Users", icon: Users },
+  { id: "audit", label: "Audit Logs", icon: FileText },
+  { id: "diagnostics", label: "Diagnostics", icon: Monitor },
+];
 
-function fmtUptime(s: number) {
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-const CREDENTIAL_GROUPS = [
-  { category: "database", label: "Database", icon: Database },
-  { category: "auth", label: "Authentication", icon: Lock },
-  { category: "openrouter", label: "OpenRouter AI", icon: Zap },
+const groups = [
+  { category: "openrouter", label: "OpenRouter", icon: Zap },
   { category: "qwen", label: "Qwen3-Coder", icon: Code2 },
   { category: "search", label: "Search Providers", icon: Search },
   { category: "r2", label: "Cloudflare R2", icon: Cloud },
-  { category: "oauth", label: "OAuth Providers", icon: Globe },
-  { category: "aws", label: "AWS Deployment", icon: Server },
+  { category: "oauth", label: "Auth Providers", icon: Globe },
+  { category: "aws", label: "AWS / Deployment", icon: Server },
   { category: "runtime", label: "App Runtime", icon: Settings },
+  { category: "auth", label: "Boot Auth", icon: Lock },
+  { category: "database", label: "Database", icon: Database },
   { category: "security", label: "Security", icon: Shield },
 ];
 
-const INTEGRATIONS = [
-  { id: "postgres", label: "PostgreSQL", icon: Database, color: "text-sky-400", bgColor: "bg-sky-400/10" },
-  { id: "r2", label: "Cloudflare R2", icon: Cloud, color: "text-orange-400", bgColor: "bg-orange-400/10" },
-  { id: "openrouter", label: "OpenRouter", icon: Zap, color: "text-yellow-400", bgColor: "bg-yellow-400/10" },
-  { id: "google", label: "Google OAuth", icon: Globe, color: "text-emerald-400", bgColor: "bg-emerald-400/10" },
-  { id: "github", label: "GitHub OAuth", icon: Code2, color: "text-slate-300", bgColor: "bg-white/5" },
-  { id: "aws", label: "AWS Server", icon: Server, color: "text-violet-400", bgColor: "bg-violet-400/10" },
+const integrations = [
+  { id: "openrouter", label: "OpenRouter", icon: Zap },
+  { id: "r2", label: "Cloudflare R2", icon: Cloud },
+  { id: "google", label: "Google OAuth", icon: Globe },
+  { id: "github", label: "GitHub OAuth", icon: Code2 },
+  { id: "postgres", label: "PostgreSQL", icon: Database },
+  { id: "aws", label: "AWS", icon: Server },
 ];
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+const aiKeys = [
+  "OPENROUTER_MODEL",
+  "OPENROUTER_FALLBACK_MODEL",
+  "OPENROUTER_BASE_URL",
+  "MELDEX_BRAIN_PROVIDER",
+  "QWEN_TEMPERATURE",
+  "QWEN_MAX_TOKENS",
+  "QWEN_TIMEOUT_MS",
+  "QWEN_RETRY_COUNT",
+  "QWEN_CONTEXT_SIZE",
+  "QWEN_ACTION_MODE",
+];
+
+const runtimeKeys = [
+  "APP_PUBLIC_URL",
+  "NEXTAUTH_URL",
+  "AUTH_URL",
+  "AWS_REGION",
+  "AWS_PUBLIC_IP",
+  "AWS_INSTANCE_ID",
+];
+
+function cx(...parts: Array<string | false | null | undefined>) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
+  return (
+    <span
+      className={cx(
+        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium",
+        tone === "green" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
+        tone === "red" && "border-red-500/20 bg-red-500/10 text-red-300",
+        tone === "amber" && "border-amber-500/20 bg-amber-500/10 text-amber-300",
+        tone === "blue" && "border-sky-500/20 bg-sky-500/10 text-sky-300",
+        tone === "neutral" && "border-white/10 bg-white/[0.04] text-slate-300"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SourceBadge({ source }: { source: SettingSource }) {
+  if (source === "VAULT") return <Badge tone="blue">VAULT</Badge>;
+  if (source === "ENV") return <Badge tone="green">ENV</Badge>;
+  return <Badge tone="red">MISSING</Badge>;
+}
+
+function StatusDot({ status }: { status?: string }) {
+  const healthy = status === "ok" || status === "configured" || status === "active";
+  const bad = status === "error" || status === "misconfigured" || status === "missing";
+  return <span className={cx("size-2 rounded-full", healthy && "bg-emerald-400", bad && "bg-red-400", !healthy && !bad && "bg-amber-400")} />;
+}
+
+function Panel({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cx("rounded-lg border border-white/[0.08] bg-white/[0.025]", className)}>{children}</div>;
+}
+
+function SectionTitle({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function SpinnerText({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Loader2 className="size-3.5 animate-spin" />
+      {label}
+    </span>
+  );
+}
+
+function fmtUptime(seconds = 0) {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
 export default function MasterAdminPage() {
   const { data: session, status: sessionStatus } = useSession();
+  const role = session?.user?.role;
+  const isOwner = role === "OWNER";
+
   const [tab, setTab] = useState<TabId>("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [settings, setSettings] = useState<SettingRow[]>([]);
   const [vaultOk, setVaultOk] = useState(false);
-  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [editVals, setEditVals] = useState<Record<string, string>>({});
-  const [showVals, setShowVals] = useState<Record<string, boolean>>({});
-  const [savingKey, setSavingKey] = useState<string | null>(null);
-  const [saveOk, setSaveOk] = useState<Record<string, boolean>>({});
-  const [overviewLoading, setOverviewLoading] = useState(true);
-  const [settingsLoading, setSettingsLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [restarting, setRestarting] = useState(false);
-  const [restartBanner, setRestartBanner] = useState(false);
+  const [users, setUsers] = useState<UserRow[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
-  const [conversations, setConversations] = useState<ConvEntry[]>([]);
-  const [users, setUsers] = useState<{ id: string; email: string; name?: string; role: string; createdAt: string }[]>([]);
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
+  const [testing, setTesting] = useState<Record<string, boolean>>({});
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false });
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const [updatingUser, setUpdatingUser] = useState<string | null>(null);
 
-  // ── All hooks first, guards after ─────────────────────────────────────────
-  const fetchOverview = useCallback(async () => {
-    setOverviewLoading(true);
-    try { const r = await fetch("/api/admin/master/overview"); if (r.ok) setOverview(await r.json()); }
-    finally { setOverviewLoading(false); }
+  const pushToast = useCallback((tone: Toast["tone"], message: string) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, tone, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((toast) => toast.id !== id)), 4500);
   }, []);
+
+  const fetchOverview = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, overview: true }));
+    try {
+      const res = await fetch("/api/admin/master/overview", { cache: "no-store" });
+      if (!res.ok) throw new Error("Overview unavailable");
+      setOverview(await res.json());
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Overview unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, overview: false }));
+    }
+  }, [pushToast]);
 
   const fetchSettings = useCallback(async () => {
-    setSettingsLoading(true);
+    setLoading((prev) => ({ ...prev, settings: true }));
     try {
-      const r = await fetch("/api/admin/master/settings");
-      if (r.ok) { const d = await r.json(); setSettings(d.settings); setVaultOk(d.vaultConfigured); }
-    } finally { setSettingsLoading(false); }
-  }, []);
-
-  const fetchAudit = useCallback(async () => {
-    try { const r = await fetch("/api/admin/audit"); if (r.ok) { const d = await r.json(); setAuditLogs(d.logs?.slice(0, 100) ?? []); } }
-    catch {}
-  }, []);
-
-  const fetchConversations = useCallback(async () => {
-    try { const r = await fetch("/api/admin/master/conversations"); if (r.ok) { const d = await r.json(); setConversations(d.conversations ?? []); } }
-    catch {}
-  }, []);
+      const res = await fetch("/api/admin/master/settings", { cache: "no-store" });
+      if (!res.ok) throw new Error("Settings unavailable");
+      const data = await res.json();
+      setSettings(data.settings ?? []);
+      setVaultOk(Boolean(data.vaultConfigured));
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Settings unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, settings: false }));
+    }
+  }, [pushToast]);
 
   const fetchUsers = useCallback(async () => {
-    try { const r = await fetch("/api/admin/users"); if (r.ok) { const d = await r.json(); setUsers(d.users ?? []); } }
-    catch {}
+    setLoading((prev) => ({ ...prev, users: true }));
+    try {
+      const res = await fetch("/api/admin/users", { cache: "no-store" });
+      if (!res.ok) throw new Error("Users unavailable");
+      const data = await res.json();
+      setUsers(data.users ?? []);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Users unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, users: false }));
+    }
+  }, [pushToast]);
+
+  const fetchAudit = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, audit: true }));
+    try {
+      const res = await fetch("/api/admin/audit", { cache: "no-store" });
+      if (!res.ok) throw new Error("Audit logs unavailable");
+      const data = await res.json();
+      setAuditLogs(data.logs ?? []);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Audit logs unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, audit: false }));
+    }
+  }, [pushToast]);
+
+  useEffect(() => {
+    fetchOverview();
+    fetchSettings();
+  }, [fetchOverview, fetchSettings]);
+
+  useEffect(() => {
+    const section = new URLSearchParams(window.location.search).get("section") as TabId | null;
+    if (section && tabs.some((item) => item.id === section)) {
+      setTab(section);
+    }
   }, []);
 
-  useEffect(() => { fetchOverview(); fetchSettings(); }, [fetchOverview, fetchSettings]);
-  useEffect(() => { if (tab === "audit") fetchAudit(); }, [tab, fetchAudit]);
-  useEffect(() => { if (tab === "conversations") fetchConversations(); }, [tab, fetchConversations]);
-  useEffect(() => { if (tab === "users") fetchUsers(); }, [tab, fetchUsers]);
+  useEffect(() => {
+    if (tab === "users") fetchUsers();
+    if (tab === "audit") fetchAudit();
+  }, [tab, fetchUsers, fetchAudit]);
 
-  // ── Auth guard (after all hooks) ──────────────────────────────────────────
-  if (sessionStatus === "loading") return (
-    <div className="flex items-center justify-center min-h-screen bg-[#080c14]">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-amber-400/30 border-t-amber-400 rounded-full animate-spin" />
-        <p className="text-sm text-slate-500">Loading Control Center...</p>
+  const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
+  const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
+  const system = overview?.system ?? { totalMemMb: 0, usedMemMb: 0, memPercent: 0, cpuLoad1: "0.00", cpus: 0, uptimeSeconds: 0 };
+  const checks = overview?.checks ?? {};
+  const activeModel = settingMap.get("OPENROUTER_MODEL")?.maskedValue ?? "qwen/qwen3-coder:free";
+  const activeProvider = settingMap.get("MELDEX_BRAIN_PROVIDER")?.maskedValue ?? "openrouter";
+  const statCards = [
+    { label: "Users", value: stats.users, icon: Users },
+    { label: "Projects", value: stats.projects, icon: Database },
+    { label: "Conversations", value: stats.conversations, icon: FileText },
+    { label: "Vault Keys", value: stats.vaultKeys, icon: Key },
+  ];
+
+  if (sessionStatus === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#0b0f17] text-slate-400">
+        <SpinnerText label="Loading Master Panel" />
       </div>
-    </div>
-  );
-  if (!session?.user?.role || !["ADMIN", "OWNER"].includes(session.user.role)) redirect("/unauthorized");
+    );
+  }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
-  const testConn = async (id: string) => {
-    setTestingId(id);
-    try {
-      const r = await fetch("/api/admin/master/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider: id }) });
-      const res = await r.json();
-      setTestResults((p) => ({ ...p, [id]: res }));
-    } finally { setTestingId(null); }
-  };
+  if (!role || !["ADMIN", "OWNER"].includes(role)) redirect("/unauthorized");
 
-  const saveSetting = async (key: string, isSecret: boolean, category: string) => {
-    const value = editVals[key];
-    if (!value) return;
-    setSavingKey(key);
+  async function readError(res: Response) {
+    const data = await res.json().catch(() => null);
+    return data?.error || data?.message || `Request failed (${res.status})`;
+  }
+
+  async function saveSetting(row: SettingRow) {
+    const value = edits[row.key]?.trim();
+    if (!value) {
+      pushToast("error", "Enter a value before saving.");
+      return;
+    }
+    if (row.isSecret && !isOwner) {
+      pushToast("error", "Owner access is required to update secrets.");
+      return;
+    }
+    setSaving((prev) => ({ ...prev, [row.key]: true }));
     try {
-      const r = await fetch("/api/admin/master/settings", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key, value, isSecret, category }),
+      const res = await fetch("/api/admin/master/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: row.key, value, category: row.category, isSecret: row.isSecret }),
       });
-      if (r.ok) {
-        const data = await r.json();
-        setSaveOk((p) => ({ ...p, [key]: true }));
-        setEditVals((p) => { const n = { ...p }; delete n[key]; return n; });
-        if (data.requireRestart) setRestartBanner(true);
-        fetchSettings();
-        setTimeout(() => setSaveOk((p) => { const n = { ...p }; delete n[key]; return n; }), 2500);
-      } else {
-        const e = await r.json(); alert(e.error ?? "Save failed");
-      }
-    } finally { setSavingKey(null); }
-  };
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      setEdits((prev) => {
+        const next = { ...prev };
+        delete next[row.key];
+        return next;
+      });
+      pushToast("success", data.requireRestart ? "Saved. Restart is required for this setting." : "Saved and ready.");
+      await fetchSettings();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [row.key]: false }));
+    }
+  }
 
-  const syncEnv = async () => {
+  async function testConnection(id: string) {
+    setTesting((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await fetch("/api/admin/master/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      setTestResults((prev) => ({ ...prev, [id]: data }));
+      pushToast(data.status === "ok" || data.status === "configured" ? "success" : "info", data.message ?? `${id} checked`);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Test failed");
+    } finally {
+      setTesting((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  async function testAll() {
+    await Promise.all(integrations.map((item) => testConnection(item.id)));
+  }
+
+  async function reloadConfig() {
+    setReloading(true);
+    try {
+      const res = await fetch("/api/admin/master/reload-config", { method: "POST" });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      pushToast(data.openrouter?.ok ? "success" : "info", data.openrouter?.userMessage ?? data.message ?? "Runtime config reloaded.");
+      await Promise.all([fetchOverview(), fetchSettings()]);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Reload failed");
+    } finally {
+      setReloading(false);
+    }
+  }
+
+  async function syncEnv() {
+    if (!isOwner) {
+      pushToast("error", "Owner access is required to sync ENV into vault.");
+      return;
+    }
     setSyncing(true);
     try {
-      const r = await fetch("/api/admin/master/sync-env", { method: "POST" });
-      const d = await r.json();
-      if (d.success) { alert(`✓ Synced ${d.synced} settings to vault`); fetchSettings(); }
-      else alert(d.error);
-    } finally { setSyncing(false); }
-  };
+      const res = await fetch("/api/admin/master/sync-env", { method: "POST" });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      pushToast("success", `Synced ${data.synced ?? 0} setting(s) into vault.`);
+      await Promise.all([fetchSettings(), fetchAudit()]);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
-  const restartApp = async () => {
-    if (!confirm("Restart Meldex AI? The app will be unavailable for ~5 seconds.")) return;
+  async function restartApp() {
+    if (!isOwner) {
+      pushToast("error", "Owner access is required to restart the app.");
+      return;
+    }
     setRestarting(true);
     try {
-      await fetch("/api/admin/master/restart", { method: "POST" });
-      setRestartBanner(false);
-      setTimeout(() => { setRestarting(false); fetchOverview(); }, 6000);
-    } catch { setRestarting(false); }
-  };
+      const res = await fetch("/api/admin/master/restart", { method: "POST" });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Restart initiated. Refresh in a few seconds.");
+      setConfirmRestart(false);
+      setTimeout(() => {
+        setRestarting(false);
+        fetchOverview();
+      }, 6000);
+    } catch (err) {
+      setRestarting(false);
+      pushToast("error", err instanceof Error ? err.message : "Restart failed");
+    }
+  }
 
-  const reloadConfig = async () => {
-    await fetch("/api/admin/master/reload-config", { method: "POST" });
-    fetchOverview();
-  };
+  async function copyMasked(value?: string | null) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      pushToast("success", "Masked value copied.");
+    } catch {
+      pushToast("error", "Clipboard permission denied.");
+    }
+  }
 
-  const copyToClipboard = (val: string) => {
-    navigator.clipboard.writeText(val).catch(() => {});
-  };
+  async function updateRole(userId: string, nextRole: UserRow["role"]) {
+    if (!isOwner) {
+      pushToast("error", "Owner access is required to update user roles.");
+      return;
+    }
+    setUpdatingUser(userId);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: userId, role: nextRole }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      setUsers((prev) => prev.map((user) => (user.id === userId ? data.user : user)));
+      pushToast("success", "User role updated.");
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Role update failed");
+    } finally {
+      setUpdatingUser(null);
+    }
+  }
 
-  const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
-    { id: "overview", label: "Overview", icon: Activity },
-    { id: "vault", label: "Credentials Vault", icon: Key },
-    { id: "integrations", label: "Integrations", icon: Zap },
-    { id: "users", label: "Users", icon: Users },
-    { id: "conversations", label: "Conversations", icon: MessageSquare },
-    { id: "diagnostics", label: "Diagnostics", icon: Monitor },
-    { id: "audit", label: "Audit Logs", icon: Shield },
-  ];
-  const overviewStats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
-  const overviewSystem = overview?.system ?? { totalMemMb: 0, usedMemMb: 0, memPercent: 0, cpuLoad1: "0.00", cpus: 0, uptimeSeconds: 0 };
-  const overviewChecks = overview?.checks ?? {};
-  const overviewAwsMeta = overview?.awsMeta ?? {};
+  function renderSettingRows(rows: SettingRow[]) {
+    if (!rows.length) {
+      return <div className="px-4 py-8 text-center text-sm text-slate-500">No settings in this section.</div>;
+    }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  return (
-    <div className="min-h-screen bg-[#080c14] text-white flex flex-col">
-      {/* Restart required banner */}
-      {restartBanner && (
-        <div className="bg-amber-500/10 border-b border-amber-500/20 px-6 py-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-amber-300">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Some changes require an app restart to take effect.</span>
+    return rows.map((row) => {
+      const cannotSaveSecret = row.isSecret && !isOwner;
+      const disabled = saving[row.key] || !edits[row.key]?.trim() || cannotSaveSecret || (row.isSecret && !vaultOk);
+      return (
+        <div key={row.key} className="grid gap-3 border-t border-white/[0.06] px-4 py-4 first:border-t-0 lg:grid-cols-[1fr_360px]">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="text-xs text-slate-100">{row.key}</code>
+              <SourceBadge source={row.source} />
+              {row.hotReload && !row.requireRestart && <Badge tone="green">hot reload</Badge>}
+              {row.requireRestart && <Badge tone="amber">restart</Badge>}
+              {row.isSecret && <Badge tone="neutral">secret</Badge>}
+            </div>
+            <p className="mt-1 text-sm text-slate-300">{row.label}</p>
+            {row.description && <p className="mt-1 text-xs text-slate-500">{row.description}</p>}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="font-mono">{row.maskedValue || "not configured"}</span>
+              {row.maskedValue && (
+                <button onClick={() => copyMasked(row.maskedValue)} className="inline-flex items-center gap-1 text-slate-400 hover:text-white">
+                  <Copy className="size-3" />
+                  Copy masked
+                </button>
+              )}
+              {row.updatedAt && <span>Updated {new Date(row.updatedAt).toLocaleString()}</span>}
+              {row.updatedBy && <span>by {row.updatedBy}</span>}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={restartApp} disabled={restarting} className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 rounded-lg text-amber-300 transition-colors disabled:opacity-50">
-              {restarting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-              {restarting ? "Restarting..." : "Restart Now"}
+          <div className="flex items-start gap-2">
+            <input
+              type={row.isSecret ? "password" : "text"}
+              value={edits[row.key] ?? ""}
+              onChange={(event) => setEdits((prev) => ({ ...prev, [row.key]: event.target.value }))}
+              disabled={cannotSaveSecret}
+              placeholder={cannotSaveSecret ? "Owner only" : row.configured ? "Replace value" : "Enter value"}
+              className="h-9 min-w-0 flex-1 rounded-md border border-white/[0.1] bg-black/25 px-3 text-sm text-white placeholder:text-slate-600 outline-none transition focus:border-sky-400/50 disabled:cursor-not-allowed disabled:opacity-50"
+            />
+            <button
+              onClick={() => saveSetting(row)}
+              disabled={disabled}
+              title={cannotSaveSecret ? "Owner access required" : undefined}
+              className="inline-flex h-9 items-center gap-2 rounded-md border border-white/[0.1] bg-white/[0.05] px-3 text-xs font-medium text-slate-100 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {saving[row.key] ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+              Save
             </button>
-            <button onClick={() => setRestartBanner(false)} className="text-amber-400/60 hover:text-amber-400 transition-colors"><X className="w-4 h-4" /></button>
           </div>
+        </div>
+      );
+    });
+  }
+
+  return (
+    <div className="min-h-screen bg-[#0b0f17] text-white">
+      <div className="pointer-events-none fixed inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.04] to-transparent" />
+
+      <div className="fixed right-4 top-4 z-50 space-y-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={cx(
+              "flex w-[340px] items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-2xl backdrop-blur",
+              toast.tone === "success" && "border-emerald-500/20 bg-emerald-950/80 text-emerald-100",
+              toast.tone === "error" && "border-red-500/20 bg-red-950/80 text-red-100",
+              toast.tone === "info" && "border-sky-500/20 bg-sky-950/80 text-sky-100"
+            )}
+          >
+            <StatusDot status={toast.tone === "success" ? "ok" : toast.tone === "error" ? "error" : "info"} />
+            <span>{toast.message}</span>
+          </div>
+        ))}
+      </div>
+
+      {confirmRestart && (
+        <div className="fixed inset-0 z-40 grid place-items-center bg-black/70 px-4">
+          <Panel className="w-full max-w-md p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <span className="grid size-10 place-items-center rounded-lg bg-red-500/10 text-red-300">
+                <RotateCcw className="size-5" />
+              </span>
+              <div>
+                <h3 className="font-semibold text-white">Restart Meldex AI?</h3>
+                <p className="mt-1 text-sm text-slate-400">The app may be unavailable briefly while PM2 restarts the production process.</p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setConfirmRestart(false)} className="rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-300 hover:bg-white/[0.05]">
+                Cancel
+              </button>
+              <button onClick={restartApp} disabled={restarting} className="rounded-md border border-red-500/25 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-200 hover:bg-red-500/15 disabled:opacity-50">
+                {restarting ? <SpinnerText label="Restarting" /> : "Restart app"}
+              </button>
+            </div>
+          </Panel>
         </div>
       )}
 
-      {/* Top header */}
-      <header className="border-b border-white/[0.06] bg-black/30 px-6 py-3.5 flex items-center justify-between backdrop-blur-sm sticky top-0 z-10">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400/20 to-amber-600/20 border border-amber-400/20 flex items-center justify-center">
-              <Shield className="w-3.5 h-3.5 text-amber-400" />
-            </div>
+      <header className="sticky top-0 z-20 border-b border-white/[0.08] bg-[#0b0f17]/90 backdrop-blur">
+        <div className="flex h-16 items-center justify-between px-5">
+          <div className="flex items-center gap-3">
+            <span className="grid size-9 place-items-center rounded-lg border border-white/[0.1] bg-white/[0.04] text-sky-300">
+              <Shield className="size-4" />
+            </span>
             <div>
-              <p className="text-sm font-semibold text-white leading-none">Master Control Center</p>
-              <p className="text-[11px] text-slate-500 leading-none mt-0.5">Meldex AI Enterprise</p>
+              <p className="text-sm font-semibold">Master Panel</p>
+              <p className="text-xs text-slate-500">{overview?.appUrl ?? "Meldex AI Runtime Control"}</p>
             </div>
           </div>
-          <div className="h-4 w-px bg-white/10" />
           <div className="flex items-center gap-2">
-            <span className="text-[11px] font-mono text-slate-400">{overview?.environment ?? "—"}</span>
-            <span className="text-[11px] text-slate-600">·</span>
-            <span className="text-[11px] font-mono text-slate-400">v{overview?.buildVersion ?? "—"}</span>
-            <span className="text-[11px] text-slate-600">·</span>
-            <span className="text-[11px] font-mono text-slate-400">{overview?.nodeVersion ?? "—"}</span>
+            <Badge tone={isOwner ? "amber" : "blue"}>{role}</Badge>
+            <button onClick={() => signOut({ callbackUrl: "/master/login" })} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-xs text-slate-300 hover:bg-white/[0.05]">
+              <LogOut className="size-3.5" />
+              Logout
+            </button>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 bg-white/[0.04] border border-white/[0.06] rounded-lg px-2.5 py-1.5">
-            <StatusPulse status={overview?.checks?.database?.status ?? "error"} />
-            <span>{overview?.appUrl ?? "Loading..."}</span>
-          </div>
-          <button onClick={syncEnv} disabled={syncing || !vaultOk} className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 bg-violet-500/10 hover:bg-violet-500/15 border border-violet-500/20 rounded-lg text-violet-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            {syncing ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
-            Sync ENV → Vault
-          </button>
-          <button onClick={reloadConfig} className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] rounded-lg text-slate-300 transition-colors">
-            <RefreshCw className="w-3 h-3" /> Reload Config
-          </button>
-          <button onClick={restartApp} disabled={restarting} className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500/15 border border-red-500/20 rounded-lg text-red-300 transition-colors disabled:opacity-50">
-            {restarting ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
-            {restarting ? "Restarting..." : "Restart App"}
-          </button>
         </div>
       </header>
 
-      <div className="flex flex-1">
-        {/* Sidebar */}
-        <nav className="w-52 shrink-0 border-r border-white/[0.06] p-3 space-y-0.5">
-          {TABS.map((t) => (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-all ${
-                tab === t.id ? "bg-amber-400/[0.08] text-amber-300 border border-amber-400/[0.12]"
-                : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
-              }`}>
-              <t.icon className="w-3.5 h-3.5" />
-              {t.label}
-            </button>
-          ))}
-        </nav>
+      <div className="grid min-h-[calc(100vh-64px)] grid-cols-1 lg:grid-cols-[240px_1fr]">
+        <aside className="border-r border-white/[0.08] px-3 py-4">
+          <nav className="space-y-1">
+            {tabs.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setTab(item.id)}
+                className={cx(
+                  "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm transition",
+                  tab === item.id ? "bg-white/[0.08] text-white" : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-200"
+                )}
+              >
+                <item.icon className="size-4" />
+                {item.label}
+                {tab === item.id && <ChevronRight className="ml-auto size-3.5 text-slate-500" />}
+              </button>
+            ))}
+          </nav>
+        </aside>
 
-        {/* Content */}
-        <main className="flex-1 overflow-auto p-6">
-
-          {/* ── OVERVIEW ─────────────────────────────────────────────── */}
-          {tab === "overview" && (
-            <div className="space-y-5 max-w-5xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">System Overview</h2>
-                <button onClick={fetchOverview} className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors">
-                  <RefreshCw className={`w-3 h-3 ${overviewLoading ? "animate-spin" : ""}`} /> Refresh
-                </button>
-              </div>
-
-              {overviewLoading ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-20" />)}
-                </div>
-              ) : overview && (
-                <>
-                  {/* Stats row */}
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    {[
-                      { label: "Users", value: overviewStats.users, icon: Users, color: "text-emerald-400", dot: "bg-emerald-400" },
-                      { label: "Projects", value: overviewStats.projects, icon: Package, color: "text-violet-400", dot: "bg-violet-400" },
-                      { label: "Conversations", value: overviewStats.conversations, icon: MessageSquare, color: "text-blue-400", dot: "bg-blue-400" },
-                      { label: "Messages", value: overviewStats.messages, icon: CircleDot, color: "text-amber-400", dot: "bg-amber-400" },
-                      { label: "Vault Keys", value: overviewStats.vaultKeys, icon: Key, color: "text-rose-400", dot: "bg-rose-400" },
-                    ].map((s) => (
-                      <div key={s.label} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 hover:bg-white/[0.04] transition-colors">
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-[11px] text-slate-500 font-medium uppercase tracking-wide">{s.label}</p>
-                          <s.icon className={`w-3.5 h-3.5 ${s.color}`} />
-                        </div>
-                        <p className={`text-2xl font-bold ${s.color}`}>{s.value.toLocaleString()}</p>
+        <main className="relative px-4 py-6 sm:px-6">
+          <div className="mx-auto max-w-7xl space-y-6">
+            {tab === "overview" && (
+              <>
+                <SectionTitle
+                  title="Overview"
+                  description="System health, active provider, model, database, storage, auth, and server state."
+                  action={
+                    <button onClick={fetchOverview} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]">
+                      <RefreshCw className={cx("size-4", loading.overview && "animate-spin")} />
+                      Refresh
+                    </button>
+                  }
+                />
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  {statCards.map(({ label, value, icon: Icon }) => (
+                    <Panel key={label} className="p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
+                        <Icon className="size-4 text-slate-500" />
                       </div>
-                    ))}
-                  </div>
+                      <p className="mt-3 text-2xl font-semibold text-white">{value.toLocaleString()}</p>
+                    </Panel>
+                  ))}
+                </div>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <Panel className="p-5 lg:col-span-2">
+                    <h3 className="text-sm font-semibold text-white">Service Health</h3>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {Object.entries(checks).map(([name, check]) => (
+                        <div key={name} className="flex items-center justify-between rounded-md border border-white/[0.06] bg-black/20 px-3 py-2">
+                          <span className="flex items-center gap-2 text-sm text-slate-300">
+                            <StatusDot status={check.status} />
+                            {name.replace(/([A-Z])/g, " $1")}
+                          </span>
+                          <span className="text-xs text-slate-500">{check.latencyMs !== undefined ? `${check.latencyMs}ms` : check.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
+                  <Panel className="p-5">
+                    <h3 className="text-sm font-semibold text-white">Runtime Snapshot</h3>
+                    <dl className="mt-4 space-y-3 text-sm">
+                      <div className="flex justify-between gap-4"><dt className="text-slate-500">Provider</dt><dd className="text-slate-200">{activeProvider}</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="text-slate-500">Model</dt><dd className="truncate text-slate-200">{activeModel}</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="text-slate-500">Node</dt><dd className="text-slate-200">{overview?.nodeVersion ?? "-"}</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="text-slate-500">Memory</dt><dd className="text-slate-200">{system.memPercent}%</dd></div>
+                      <div className="flex justify-between gap-4"><dt className="text-slate-500">Uptime</dt><dd className="text-slate-200">{fmtUptime(system.uptimeSeconds)}</dd></div>
+                    </dl>
+                  </Panel>
+                </div>
+              </>
+            )}
 
-                  {/* System info + service health */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* System resources */}
-                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-                      <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">System Resources</h3>
-                      <div className="space-y-3">
-                        <div>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="text-slate-400">Memory</span>
-                            <span className="text-slate-300">{overviewSystem.usedMemMb} / {overviewSystem.totalMemMb} MB</span>
-                          </div>
-                          <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${overviewSystem.memPercent > 85 ? "bg-red-400" : overviewSystem.memPercent > 70 ? "bg-amber-400" : "bg-emerald-400"}`}
-                              style={{ width: `${overviewSystem.memPercent}%` }} />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          <div className="bg-white/[0.03] rounded-lg px-3 py-2">
-                            <p className="text-slate-500 mb-0.5">CPU Load</p>
-                            <p className="text-slate-200 font-mono">{overviewSystem.cpuLoad1} ({overviewSystem.cpus} cores)</p>
-                          </div>
-                          <div className="bg-white/[0.03] rounded-lg px-3 py-2">
-                            <p className="text-slate-500 mb-0.5">Uptime</p>
-                            <p className="text-slate-200 font-mono">{fmtUptime(overviewSystem.uptimeSeconds)}</p>
-                          </div>
-                          <div className="bg-white/[0.03] rounded-lg px-3 py-2">
-                            <p className="text-slate-500 mb-0.5">Hostname</p>
-                            <p className="text-slate-200 font-mono truncate">{overview.hostname}</p>
-                          </div>
-                          <div className="bg-white/[0.03] rounded-lg px-3 py-2">
-                            <p className="text-slate-500 mb-0.5">Node</p>
-                            <p className="text-slate-200 font-mono">{overview.nodeVersion}</p>
-                          </div>
-                        </div>
+            {tab === "ai" && (
+              <>
+                <SectionTitle
+                  title="AI Models"
+                  description="Qwen3-Coder is the active coding brain. Runtime-editable model settings use vault first."
+                  action={<button onClick={() => testConnection("openrouter")} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"><TestTube2 className="size-4" />Test model</button>}
+                />
+                <Panel>
+                  <div className="border-b border-white/[0.06] p-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="green">Coding Brain</Badge>
+                      <Badge tone="blue">OpenRouter</Badge>
+                      <Badge tone="neutral">Qwen3-Coder only</Badge>
+                    </div>
+                  </div>
+                  {renderSettingRows(settings.filter((row) => aiKeys.includes(row.key)))}
+                </Panel>
+              </>
+            )}
+
+            {tab === "vault" && (
+              <>
+                <SectionTitle
+                  title="Credentials Vault"
+                  description="Secrets are masked in the browser. Raw secret reveal is disabled; replace values instead."
+                />
+                {!vaultOk && (
+                  <Panel className="border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-200">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="mt-0.5 size-4" />
+                      <div>
+                        <p className="font-medium">Vault encryption is not configured.</p>
+                        <p className="mt-1 text-amber-200/75">Set SETTINGS_ENCRYPTION_KEY before saving secrets.</p>
                       </div>
                     </div>
+                  </Panel>
+                )}
+                <div className="space-y-4">
+                  {groups.map((group) => {
+                    const rows = settings.filter((setting) => setting.category === group.category);
+                    if (!rows.length) return null;
+                    return (
+                      <Panel key={group.category} className="overflow-hidden">
+                        <div className="flex items-center justify-between border-b border-white/[0.06] px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <group.icon className="size-4 text-slate-400" />
+                            <h3 className="text-sm font-semibold text-white">{group.label}</h3>
+                          </div>
+                          <span className="text-xs text-slate-500">{rows.filter((row) => row.configured).length}/{rows.length} configured</span>
+                        </div>
+                        {renderSettingRows(rows)}
+                      </Panel>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
-                    {/* Service health */}
-                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-                      <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">Service Health</h3>
-                      <div className="space-y-2">
-                        {Object.entries(overviewChecks).map(([svc, check]) => (
-                          <div key={svc} className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
-                            <div className="flex items-center gap-2.5">
-                              <StatusPulse status={check.status} />
-                              <span className="text-xs text-slate-300 capitalize">{svc.replace(/([A-Z])/g, " $1")}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              {check.latencyMs !== undefined && <span className="text-[11px] text-slate-500 font-mono">{check.latencyMs}ms</span>}
-                              <span className={`text-[11px] font-medium ${STATUS_COLORS[check.status] ?? "text-slate-400"}`}>{check.status.replace("_", " ")}</span>
+            {tab === "integrations" && (
+              <>
+                <SectionTitle
+                  title="Integrations"
+                  description="Run safe connection tests and see provider-specific diagnostics."
+                  action={<button onClick={testAll} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"><TestTube2 className="size-4" />Test all</button>}
+                />
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {integrations.map((item) => {
+                    const result = testResults[item.id];
+                    return (
+                      <Panel key={item.id} className="p-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <span className="grid size-9 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04] text-slate-300">
+                              <item.icon className="size-4" />
+                            </span>
+                            <div>
+                              <p className="text-sm font-semibold text-white">{item.label}</p>
+                              <p className="text-xs text-slate-500">{result?.lastCheckedAt ? new Date(result.lastCheckedAt).toLocaleTimeString() : "Not tested"}</p>
                             </div>
                           </div>
+                          <StatusDot status={result?.status} />
+                        </div>
+                        {result && (
+                          <div className="mt-4 rounded-md border border-white/[0.06] bg-black/20 p-3 text-xs">
+                            <p className="text-slate-200">{result.message}</p>
+                            <p className="mt-1 text-slate-500">{result.latencyMs}ms</p>
+                            {result.extra && Object.entries(result.extra).filter(([, value]) => value).map(([key, value]) => (
+                              <p key={key} className="mt-1 break-all font-mono text-slate-500">{key}: {value}</p>
+                            ))}
+                          </div>
+                        )}
+                        <button onClick={() => testConnection(item.id)} disabled={testing[item.id]} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05] disabled:opacity-50">
+                          {testing[item.id] ? <SpinnerText label="Testing" /> : <><TestTube2 className="size-4" />Test connection</>}
+                        </button>
+                      </Panel>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {tab === "runtime" && (
+              <>
+                <SectionTitle title="Runtime" description="Reload hot config, sync environment values into vault, and restart only when needed." />
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <Panel className="p-4">
+                    <h3 className="text-sm font-semibold text-white">Reload Config</h3>
+                    <p className="mt-2 text-sm text-slate-400">Clears runtime cache and retests the active model without PM2 restart.</p>
+                    <button onClick={reloadConfig} disabled={reloading} className="mt-4 inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05] disabled:opacity-50">
+                      {reloading ? <SpinnerText label="Reloading" /> : <><RefreshCw className="size-4" />Reload config</>}
+                    </button>
+                  </Panel>
+                  <Panel className="p-4">
+                    <h3 className="text-sm font-semibold text-white">Sync ENV to Vault</h3>
+                    <p className="mt-2 text-sm text-slate-400">Imports runtime-editable environment values. Existing vault values are preserved.</p>
+                    <button onClick={syncEnv} disabled={!isOwner || !vaultOk || syncing} className="mt-4 inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-40">
+                      {syncing ? <SpinnerText label="Syncing" /> : <><Database className="size-4" />Sync ENV to Vault</>}
+                    </button>
+                    {!isOwner && <p className="mt-2 text-xs text-slate-500">Owner access required.</p>}
+                  </Panel>
+                  <Panel className="p-4">
+                    <h3 className="text-sm font-semibold text-white">Restart App</h3>
+                    <p className="mt-2 text-sm text-slate-400">Use only for boot-critical settings or OAuth provider registration changes.</p>
+                    <button onClick={() => setConfirmRestart(true)} disabled={!isOwner} className="mt-4 inline-flex items-center gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40">
+                      <RotateCcw className="size-4" />
+                      Restart app
+                    </button>
+                    {!isOwner && <p className="mt-2 text-xs text-slate-500">Owner access required.</p>}
+                  </Panel>
+                </div>
+                <Panel>
+                  <div className="border-b border-white/[0.06] px-4 py-3">
+                    <h3 className="text-sm font-semibold text-white">Runtime Sources</h3>
+                  </div>
+                  {renderSettingRows(settings.filter((row) => runtimeKeys.includes(row.key)))}
+                </Panel>
+              </>
+            )}
+
+            {tab === "users" && (
+              <>
+                <SectionTitle title="Users" description="View users and update roles. Role changes are owner-only." action={<button onClick={fetchUsers} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"><RefreshCw className={cx("size-4", loading.users && "animate-spin")} />Refresh</button>} />
+                <Panel className="overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3">Email</th>
+                          <th className="px-4 py-3">Name</th>
+                          <th className="px-4 py-3">Provider</th>
+                          <th className="px-4 py-3">Role</th>
+                          <th className="px-4 py-3">Joined</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {users.map((user) => (
+                          <tr key={user.id}>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-200">{user.email}</td>
+                            <td className="px-4 py-3 text-slate-300">{user.name || "-"}</td>
+                            <td className="px-4 py-3 text-slate-400">{user.authProvider || "-"}</td>
+                            <td className="px-4 py-3">
+                              <select
+                                value={user.role}
+                                disabled={!isOwner || updatingUser === user.id}
+                                onChange={(event) => updateRole(user.id, event.target.value as UserRow["role"])}
+                                className="rounded-md border border-white/[0.1] bg-black/30 px-2 py-1 text-xs text-white disabled:opacity-50"
+                              >
+                                <option value="USER">USER</option>
+                                <option value="ADMIN">ADMIN</option>
+                                <option value="OWNER">OWNER</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3 text-slate-500">{new Date(user.createdAt).toLocaleDateString()}</td>
+                          </tr>
                         ))}
-                      </div>
-                    </div>
+                        {!users.length && (
+                          <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">{loading.users ? "Loading users..." : "No users found."}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
+                </Panel>
+              </>
+            )}
 
-                  {/* AWS metadata */}
-                  {Object.values(overviewAwsMeta).some(Boolean) && (
-                    <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
-                      <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">AWS Deployment</h3>
-                      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                        {Object.entries(overviewAwsMeta).filter(([, v]) => v).map(([k, v]) => (
-                          <div key={k} className="bg-white/[0.03] rounded-lg px-3 py-2">
-                            <p className="text-[10px] text-slate-500 mb-0.5">{k.replace("AWS_", "")}</p>
-                            <p className="text-[11px] font-mono text-slate-200 truncate">{v}</p>
-                          </div>
+            {tab === "audit" && (
+              <>
+                <SectionTitle title="Audit Logs" description="Config changes, secret updates, role updates, and admin actions." action={<button onClick={fetchAudit} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"><RefreshCw className={cx("size-4", loading.audit && "animate-spin")} />Refresh</button>} />
+                <Panel className="overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-white/[0.06] text-left text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3">Action</th>
+                          <th className="px-4 py-3">Resource</th>
+                          <th className="px-4 py-3">Actor</th>
+                          <th className="px-4 py-3">IP</th>
+                          <th className="px-4 py-3">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.06]">
+                        {auditLogs.map((log) => (
+                          <tr key={log.id}>
+                            <td className="px-4 py-3"><Badge tone={log.action.includes("DELETE") || log.action.includes("RESTART") ? "amber" : "blue"}>{log.action}</Badge></td>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-400">{log.resource || "-"}</td>
+                            <td className="px-4 py-3 text-slate-400">{log.userId || "-"}</td>
+                            <td className="px-4 py-3 font-mono text-xs text-slate-500">{log.ipAddress || "-"}</td>
+                            <td className="px-4 py-3 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
+                          </tr>
                         ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          {/* ── CREDENTIALS VAULT ─────────────────────────────────────── */}
-          {tab === "vault" && (
-            <div className="space-y-5 max-w-5xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-base font-semibold text-white">Credentials Vault</h2>
-                  <p className="text-[12px] text-slate-500 mt-0.5">Auto-discovered from process.env. Replace to update in encrypted vault.</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <SourceBadge source="ENV" /><span className="text-slate-500">from environment</span>
+                        {!auditLogs.length && (
+                          <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">{loading.audit ? "Loading audit logs..." : "No audit logs found."}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <SourceBadge source="VAULT" /><span className="text-slate-500">encrypted vault</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <SourceBadge source="MISSING" /><span className="text-slate-500">not set</span>
-                  </div>
-                </div>
-              </div>
+                </Panel>
+              </>
+            )}
 
-              {!vaultOk && (
-                <div className="flex items-start gap-3 bg-amber-500/5 border border-amber-500/15 rounded-xl p-4">
-                  <ShieldAlert className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-amber-300">Vault encryption not configured</p>
-                    <p className="text-xs text-amber-400/70 mt-1">Secrets are visible in ENV but cannot be saved to the encrypted vault until you set <code className="font-mono bg-black/30 px-1 rounded">SETTINGS_ENCRYPTION_KEY</code>.</p>
-                    <code className="block mt-2 text-xs font-mono bg-black/40 text-amber-200 px-3 py-1.5 rounded-lg">openssl rand -base64 32</code>
-                  </div>
-                </div>
-              )}
-
-              {settingsLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-32" />)}
-                </div>
-              ) : (
-                CREDENTIAL_GROUPS.map((grp) => {
-                  const rows = settings.filter((s) => s.category === grp.category);
-                  if (!rows.length) return null;
-                  return (
-                    <div key={grp.category} className="bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
-                      <div className="flex items-center gap-2.5 px-5 py-3 border-b border-white/[0.06] bg-white/[0.01]">
-                        <grp.icon className="w-3.5 h-3.5 text-slate-400" />
-                        <h3 className="text-[13px] font-semibold text-white">{grp.label}</h3>
-                        <span className="ml-auto text-[11px] text-slate-500">{rows.filter((r) => r.configured).length}/{rows.length} configured</span>
-                      </div>
-                      <div className="divide-y divide-white/[0.04]">
-                        {rows.map((row) => {
-                          const editing = editVals[row.key] !== undefined;
-                          const saving = savingKey === row.key;
-                          const saved = saveOk[row.key];
-                          const revealed = showVals[row.key];
-                          return (
-                            <div key={row.key} className="px-5 py-3.5 flex items-center gap-4 hover:bg-white/[0.01] transition-colors">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <code className="text-[12px] font-mono text-slate-200">{row.key}</code>
-                                  <SourceBadge source={row.source} />
-                                  {row.requireRestart && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/15 px-1.5 py-0.5 rounded">
-                                      <Timer className="w-2.5 h-2.5" /> restart
-                                    </span>
-                                  )}
-                                  {row.hotReload && !row.requireRestart && (
-                                    <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-1.5 py-0.5 rounded">
-                                      <RefreshCw className="w-2.5 h-2.5" /> hot reload
-                                    </span>
-                                  )}
-                                  {row.status && <Badge label={row.status} variant={row.status === "missing" ? "red" : "emerald"} />}
-                                  {row.isSecret && <Lock className="w-2.5 h-2.5 text-slate-600" />}
-                                </div>
-                                <div className="flex items-center gap-3 mt-1">
-                                  <span className="text-[11px] text-slate-500">{row.label}</span>
-                                  {row.maskedValue && (
-                                    <span className="text-[11px] font-mono text-slate-400 truncate max-w-[200px]">{row.maskedValue}</span>
-                                  )}
-                                  {row.updatedBy && (
-                                    <span className="text-[10px] text-slate-600">by {row.updatedBy}</span>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 shrink-0">
-                                {row.maskedValue && (
-                                  <button onClick={() => copyToClipboard(row.maskedValue!)} className="p-1.5 text-slate-600 hover:text-slate-300 transition-colors rounded-md hover:bg-white/5">
-                                    <Copy className="w-3 h-3" />
-                                  </button>
-                                )}
-                                <div className="relative">
-                                  <input
-                                    type={row.isSecret && !revealed ? "password" : "text"}
-                                    placeholder={row.configured ? "Replace value..." : "Enter value..."}
-                                    value={editVals[row.key] ?? ""}
-                                    onChange={(e) => setEditVals((p) => ({ ...p, [row.key]: e.target.value }))}
-                                    className="w-48 bg-black/30 border border-white/[0.08] rounded-lg px-3 py-1.5 text-[12px] text-white placeholder-slate-600 focus:outline-none focus:border-amber-400/40 focus:ring-1 focus:ring-amber-400/20 transition-all pr-7"
-                                  />
-                                  {row.isSecret && (
-                                    <button onClick={() => setShowVals((p) => ({ ...p, [row.key]: !p[row.key] }))}
-                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-300 transition-colors">
-                                      {revealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                                    </button>
-                                  )}
-                                </div>
-                                <button
-                                  disabled={!editing || saving || (row.isSecret && !vaultOk)}
-                                  onClick={() => saveSetting(row.key, row.isSecret, row.category)}
-                                  className="flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-lg bg-amber-400/[0.08] text-amber-300 hover:bg-amber-400/15 border border-amber-400/15 disabled:opacity-30 disabled:cursor-not-allowed transition-all font-medium"
-                                >
-                                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saved ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
-                                  {saving ? "Saving" : saved ? "Saved!" : "Save"}
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-
-          {/* ── INTEGRATIONS ──────────────────────────────────────────── */}
-          {tab === "integrations" && (
-            <div className="space-y-5 max-w-4xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">Integrations</h2>
-                <button onClick={() => INTEGRATIONS.forEach((i) => testConn(i.id))}
-                  className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] rounded-lg text-slate-300 transition-colors">
-                  <TestTube2 className="w-3 h-3" /> Test All
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {INTEGRATIONS.map((intg) => {
-                  const result = testResults[intg.id];
-                  const testing = testingId === intg.id;
-                  return (
-                    <div key={intg.id} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5 flex flex-col gap-4 hover:border-white/[0.1] transition-colors">
+            {tab === "diagnostics" && (
+              <>
+                <SectionTitle title="Diagnostics" description="API health, auth health, provider health, storage health, and deployment metadata." action={<button onClick={fetchOverview} className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-sm text-slate-200 hover:bg-white/[0.05]"><RefreshCw className={cx("size-4", loading.overview && "animate-spin")} />Refresh</button>} />
+                <div className="grid gap-4 md:grid-cols-2">
+                  {Object.entries(checks).map(([name, check]) => (
+                    <Panel key={name} className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-lg ${intg.bgColor} flex items-center justify-center`}>
-                            <intg.icon className={`w-4 h-4 ${intg.color}`} />
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold text-white">{intg.label}</p>
-                            {result && <p className={`text-[11px] ${STATUS_COLORS[result.status] ?? "text-slate-400"}`}>{result.status.replace("_", " ")}</p>}
-                          </div>
+                          <StatusDot status={check.status} />
+                          <p className="text-sm font-medium capitalize text-white">{name.replace(/([A-Z])/g, " $1")}</p>
                         </div>
-                        {result && <StatusPulse status={result.status} />}
+                        <Badge tone={check.status === "ok" || check.status === "configured" ? "green" : check.status === "error" || check.status === "misconfigured" ? "red" : "amber"}>{check.status}</Badge>
                       </div>
-
-                      {result && (
-                        <div className="bg-black/20 rounded-lg p-3 space-y-1.5">
-                          <p className="text-[12px] text-slate-300">{result.message}</p>
-                          <p className="text-[11px] text-slate-500">{result.latencyMs}ms · {new Date(result.lastCheckedAt).toLocaleTimeString()}</p>
-                          {result.extra && Object.entries(result.extra).map(([k, v]) => (
-                            <div key={k} className="flex items-start gap-2">
-                              <span className="text-[10px] text-slate-500 w-24 shrink-0">{k}</span>
-                              <span className="text-[10px] font-mono text-slate-400 break-all">{v}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <button onClick={() => testConn(intg.id)} disabled={testing}
-                        className="flex items-center justify-center gap-2 py-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] text-[12px] text-slate-300 hover:text-white transition-all disabled:opacity-50 mt-auto">
-                        {testing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <TestTube2 className="w-3.5 h-3.5" />}
-                        {testing ? "Testing..." : "Test Connection"}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── USERS ─────────────────────────────────────────────────── */}
-          {tab === "users" && (
-            <div className="space-y-4 max-w-4xl">
-              <h2 className="text-base font-semibold text-white">Users</h2>
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
-                <table className="w-full text-[12px]">
-                  <thead><tr className="border-b border-white/[0.06] bg-white/[0.01]">
-                    {["Email", "Name", "Role", "Joined"].map((h) => (
-                      <th key={h} className="text-left px-5 py-3 text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {users.length === 0 ? (
-                      <tr><td colSpan={4} className="px-5 py-10 text-center text-slate-500">Loading users...</td></tr>
-                    ) : users.map((u) => (
-                      <tr key={u.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-5 py-3 font-mono text-slate-200">{u.email}</td>
-                        <td className="px-5 py-3 text-slate-300">{u.name ?? "—"}</td>
-                        <td className="px-5 py-3">
-                          <Badge label={u.role} variant={u.role === "OWNER" ? "amber" : u.role === "ADMIN" ? "violet" : "default"} />
-                        </td>
-                        <td className="px-5 py-3 text-slate-500">{new Date(u.createdAt).toLocaleDateString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ── CONVERSATIONS ─────────────────────────────────────────── */}
-          {tab === "conversations" && (
-            <div className="space-y-4 max-w-4xl">
-              <h2 className="text-base font-semibold text-white">Conversations</h2>
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
-                <table className="w-full text-[12px]">
-                  <thead><tr className="border-b border-white/[0.06] bg-white/[0.01]">
-                    {["Title", "Model", "Brain", "Messages", "Updated"].map((h) => (
-                      <th key={h} className="text-left px-5 py-3 text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {conversations.length === 0 ? (
-                      <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-500">No conversations yet</td></tr>
-                    ) : conversations.map((c) => (
-                      <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-5 py-3 text-slate-200 max-w-[240px] truncate">{c.title}</td>
-                        <td className="px-5 py-3 font-mono text-slate-400">{c.model ?? "—"}</td>
-                        <td className="px-5 py-3"><Badge label={c.activeBrain ?? "chat"} variant="blue" /></td>
-                        <td className="px-5 py-3 text-slate-300">{c._count.messages}</td>
-                        <td className="px-5 py-3 text-slate-500">{new Date(c.updatedAt).toLocaleDateString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* ── DIAGNOSTICS ───────────────────────────────────────────── */}
-          {tab === "diagnostics" && (
-            <div className="space-y-5 max-w-4xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">Diagnostics</h2>
-                <button onClick={fetchOverview} className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors">
-                  <RefreshCw className={`w-3 h-3 ${overviewLoading ? "animate-spin" : ""}`} /> Refresh
-                </button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {Object.entries(overviewChecks).map(([svc, check]) => (
-                  <div key={svc} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${check.status === "ok" || check.status === "configured" ? "bg-emerald-500/10" : check.status === "error" ? "bg-red-500/10" : "bg-amber-500/10"}`}>
-                        <Monitor className={`w-4 h-4 ${STATUS_COLORS[check.status] ?? "text-slate-400"}`} />
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-medium text-white capitalize">{svc.replace(/([A-Z])/g, " $1")}</p>
-                        {check.latencyMs !== undefined && <p className="text-[11px] text-slate-500">{check.latencyMs}ms response</p>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <StatusPulse status={check.status} />
-                      <span className={`text-[12px] font-medium ${STATUS_COLORS[check.status] ?? "text-slate-400"}`}>{check.status.replace("_", " ")}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── AUDIT LOGS ────────────────────────────────────────────── */}
-          {tab === "audit" && (
-            <div className="space-y-4 max-w-5xl">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-white">Audit Logs</h2>
-                <button onClick={fetchAudit} className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white transition-colors">
-                  <RefreshCw className="w-3 h-3" /> Refresh
-                </button>
-              </div>
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl overflow-hidden">
-                <table className="w-full text-[12px]">
-                  <thead><tr className="border-b border-white/[0.06] bg-white/[0.01]">
-                    {["Action", "Resource", "User", "IP", "Time"].map((h) => (
-                      <th key={h} className="text-left px-5 py-3 text-[11px] text-slate-500 font-semibold uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr></thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {auditLogs.length === 0 ? (
-                      <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-500">No audit logs yet</td></tr>
-                    ) : auditLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-white/[0.02] transition-colors">
-                        <td className="px-5 py-2.5">
-                          <span className={`inline-flex px-2 py-0.5 rounded text-[11px] font-medium ${
-                            log.action?.includes("DELETE") ? "bg-red-500/15 text-red-300" :
-                            log.action?.includes("UPDATE") || log.action?.includes("SYNC") ? "bg-blue-500/15 text-blue-300" :
-                            log.action?.includes("RESTART") ? "bg-orange-500/15 text-orange-300" :
-                            "bg-emerald-500/15 text-emerald-300"}`}>{log.action}</span>
-                        </td>
-                        <td className="px-5 py-2.5 font-mono text-slate-400 max-w-[180px] truncate">{log.resource ?? "—"}</td>
-                        <td className="px-5 py-2.5 text-slate-400 truncate max-w-[140px]">{log.userId ?? "—"}</td>
-                        <td className="px-5 py-2.5 font-mono text-slate-500">{log.ipAddress ?? "—"}</td>
-                        <td className="px-5 py-2.5 text-slate-500">{new Date(log.createdAt).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
+                      {check.latencyMs !== undefined && <p className="mt-2 text-xs text-slate-500">{check.latencyMs}ms response time</p>}
+                    </Panel>
+                  ))}
+                  {overview?.awsMeta && Object.entries(overview.awsMeta).filter(([, value]) => value).map(([key, value]) => (
+                    <Panel key={key} className="p-4">
+                      <p className="text-xs uppercase tracking-wide text-slate-500">{key}</p>
+                      <p className="mt-2 break-all font-mono text-sm text-slate-200">{value}</p>
+                    </Panel>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </main>
       </div>
     </div>

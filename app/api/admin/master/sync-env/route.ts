@@ -4,8 +4,8 @@
  * Only saves non-empty values. Skips boot-critical keys that must stay in env.
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/role-guard";
+import { NextRequest } from "next/server";
+import { requireOwner } from "@/lib/role-guard";
 import { saveSetting, isVaultConfigured, maskSecret } from "@/lib/secret-vault";
 import { logAuditEvent } from "@/lib/audit";
 import { REQUIRES_RESTART, invalidateConfigCache } from "@/lib/runtime-config";
@@ -49,7 +49,7 @@ const SYNC_KEYS: Array<{ key: string; category: string; isSecret: boolean }> = [
 ];
 
 export async function POST(req: NextRequest) {
-  const { session, error } = await requireAdmin();
+  const { session, error } = await requireOwner();
   if (error) return error;
 
   if (!isVaultConfigured()) {

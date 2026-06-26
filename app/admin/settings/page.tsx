@@ -2,6 +2,7 @@
 
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { Settings, Lock, Bell } from "lucide-react";
 
 export default function SettingsPage() {
@@ -29,9 +30,9 @@ export default function SettingsPage() {
                 <p className="text-slate-400 text-sm mb-4">
                   Configure rate limiting, IP whitelisting, and security policies
                 </p>
-                <button className="px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
-                  Configure
-                </button>
+                <Link href="/admin/master?section=runtime" className="inline-flex px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
+                  Open Runtime
+                </Link>
               </div>
             </div>
           </div>
@@ -44,9 +45,9 @@ export default function SettingsPage() {
                 <p className="text-slate-400 text-sm mb-4">
                   Set up email alerts and notification preferences
                 </p>
-                <button className="px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
-                  Configure
-                </button>
+                <Link href="/admin/master?section=diagnostics" className="inline-flex px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
+                  Open Diagnostics
+                </Link>
               </div>
             </div>
           </div>
@@ -59,9 +60,9 @@ export default function SettingsPage() {
                 <p className="text-slate-400 text-sm mb-4">
                   Configure API rate limits, storage limits, and feature flags
                 </p>
-                <button className="px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
-                  Configure
-                </button>
+                <Link href="/admin/master?section=vault" className="inline-flex px-4 py-2 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 rounded-lg transition text-sm font-medium">
+                  Open Vault
+                </Link>
               </div>
             </div>
           </div>
