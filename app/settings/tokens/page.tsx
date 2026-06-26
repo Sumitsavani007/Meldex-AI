@@ -150,7 +150,7 @@ export default function TokensPage() {
           <div className="flex items-center gap-2">
             <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04]">
               <Search className="size-4" />
-              <input className="w-44 bg-transparent outline-none" placeholder="Search tokens" />
+              <input className="w-44 appearance-none border-0 bg-transparent p-0 outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search tokens" />
             </label>
             <button onClick={loadTokens} className="grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]" title="Refresh tokens">
               <RotateCw className="size-4" />

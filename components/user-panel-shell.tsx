@@ -69,14 +69,15 @@ export function UserPanelShell({
   return (
     <div className="min-h-screen bg-[#f7f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
       <div className="flex min-h-screen">
-        <aside className="hidden h-screen w-[232px] shrink-0 border-r border-slate-200 bg-[#0d1526] p-4 text-white shadow-xl shadow-slate-950/10 lg:flex lg:flex-col">
-          <Link href="/dashboard" className="mx-focus mb-6 flex items-center gap-3 rounded-lg px-1">
+        <aside className="hidden h-screen w-[232px] shrink-0 border-r border-slate-200 bg-white p-3 text-slate-950 shadow-xl shadow-slate-950/5 dark:border-white/10 dark:bg-[#0d1526] dark:text-white lg:flex lg:flex-col">
+          <Link href="/dashboard" className="mx-focus mb-4 flex shrink-0 items-center gap-3 rounded-lg px-1">
             <span className="grid size-8 place-items-center rounded-lg bg-violet-500 text-white shadow-sm shadow-violet-500/30">
               <Bot className="size-4" />
             </span>
             <span className="text-sm font-semibold tracking-[0.12em]">MELDEX</span>
           </Link>
 
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
           <nav className="space-y-1">
             {userPanelNav.map((item) => {
               const active = isActivePath(pathname, item.href);
@@ -85,20 +86,20 @@ export function UserPanelShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "mx-focus flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition",
+                    "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
                     active
-                      ? "bg-white/12 text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-                      : "text-slate-300/85 hover:bg-white/8 hover:text-white",
+                      ? "bg-violet-50 text-violet-700 shadow-[inset_0_0_0_1px_rgba(124,58,237,0.08)] dark:bg-white/12 dark:text-white dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300/85 dark:hover:bg-white/8 dark:hover:text-white",
                   )}
                 >
-                  <item.icon className={cn("size-4", active ? "text-violet-300" : "text-slate-400")} />
+                  <item.icon className={cn("size-4", active ? "text-violet-600 dark:text-violet-300" : "text-slate-400")} />
                   {item.label}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="mt-7">
+          <div className="mt-5">
             <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">Tools</p>
             <nav className="space-y-1">
               {userPanelTools.map((item) => {
@@ -108,35 +109,40 @@ export function UserPanelShell({
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "mx-focus flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition",
-                      active ? "bg-white/12 text-white" : "text-slate-300/85 hover:bg-white/8 hover:text-white",
+                      "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
+                      active
+                        ? "bg-violet-50 text-violet-700 dark:bg-white/12 dark:text-white"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300/85 dark:hover:bg-white/8 dark:hover:text-white",
                     )}
                   >
-                    <item.icon className={cn("size-4", active ? "text-violet-300" : "text-slate-400")} />
+                    <item.icon className={cn("size-4", active ? "text-violet-600 dark:text-violet-300" : "text-slate-400")} />
                     {item.label}
                   </Link>
                 );
               })}
             </nav>
           </div>
+          </div>
 
-          <div className="mt-auto space-y-3">
-            <Link href="/settings" className="mx-focus flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-300/85 hover:bg-white/8 hover:text-white">
+          <div className="shrink-0 space-y-2 pt-3">
+            <Link href="/settings" className="mx-focus flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300/85 dark:hover:bg-white/8 dark:hover:text-white">
               <HelpCircle className="size-4 text-slate-400" />
               Help & Docs
             </Link>
-            <div className="rounded-xl border border-white/10 bg-white/6 p-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-white/6">
               <div className="flex items-center gap-2">
-                <span className="grid size-9 place-items-center rounded-full bg-white/12 text-xs font-semibold text-white">
-                  {initials}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold">{session?.user?.name || "Meldex User"}</p>
-                  <p className="truncate text-[11px] text-slate-400">Pro Plan</p>
-                </div>
+                <Link href="/settings/profile" className="mx-focus flex min-w-0 flex-1 items-center gap-2 rounded-lg">
+                  <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-semibold text-white dark:bg-white/12">
+                    {initials}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold">{session?.user?.name || "Meldex User"}</p>
+                    <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">Pro Plan</p>
+                  </div>
+                </Link>
                 <button
                   onClick={() => signOut({ callbackUrl: "/login" })}
-                  className="mx-focus rounded-lg p-1.5 text-slate-400 hover:bg-white/8 hover:text-white"
+                  className="mx-focus rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"
                   title="Logout"
                   aria-label="Logout"
                 >
@@ -158,7 +164,7 @@ export function UserPanelShell({
               </div>
               <label className="hidden h-10 w-full max-w-[360px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
                 <Search className="size-4" />
-                <input className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400" placeholder="Search anything..." />
+                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search anything..." />
                 <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 dark:bg-white/10">⌘ K</span>
               </label>
               <button
@@ -172,17 +178,17 @@ export function UserPanelShell({
               <button disabled title="Notifications are not available in this release" className="grid size-10 cursor-not-allowed place-items-center rounded-xl border border-slate-200 bg-white text-slate-300 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-600">
                 <Bell className="size-4" />
               </button>
-              <span className="grid size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20">
+              <Link href="/settings/profile" className="mx-focus grid size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20">
                 {initials}
-              </span>
+              </Link>
             </div>
           </header>
 
-          <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
+          <main className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
             <div className={cn("grid gap-5", rightRail ? "xl:grid-cols-[minmax(0,1fr)_320px]" : "")}>
               <section className="min-w-0">
-                <div className="mb-5">
-                  <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
+                <div className="mb-4">
+                  <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
                   {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
                 </div>
                 {children}

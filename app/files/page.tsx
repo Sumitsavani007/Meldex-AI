@@ -12,7 +12,7 @@ export default function FilesPage() {
       <PanelCard>
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-sm font-semibold">Recent files</h2>
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04]"><Search className="size-4" /><input className="bg-transparent outline-none" placeholder="Search files" /></label>
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04]"><Search className="size-4" /><input className="appearance-none border-0 bg-transparent p-0 outline-none ring-0 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search files" /></label>
         </div>
         <div className="grid gap-2">
           <Link href="/workspace" className="flex items-center gap-3 rounded-xl bg-slate-50 px-3 py-3 text-sm font-medium hover:bg-violet-50 dark:bg-white/[0.04] dark:hover:bg-violet-500/10"><Folder className="size-4 text-violet-600" /> Workspace project files</Link>

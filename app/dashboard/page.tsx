@@ -78,14 +78,15 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
   const pathname = usePathname();
 
   return (
-    <aside className="hidden h-screen w-[232px] shrink-0 border-r border-slate-200 bg-white/90 p-4 text-slate-950 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0d]/90 dark:text-white lg:flex lg:flex-col">
-      <Link href="/dashboard" className="mx-focus mb-6 flex items-center gap-3 rounded-lg px-1">
+    <aside className="hidden h-screen w-[232px] shrink-0 border-r border-slate-200 bg-white/90 p-3 text-slate-950 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0d]/90 dark:text-white lg:flex lg:flex-col">
+      <Link href="/dashboard" className="mx-focus mb-4 flex shrink-0 items-center gap-3 rounded-lg px-1">
         <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-600/20">
           <Bot className="size-5" />
         </span>
         <span className="text-base font-semibold tracking-tight">Meldex AI</span>
       </Link>
 
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
       <nav className="space-y-1">
         {primaryNav.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -94,7 +95,7 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
               key={item.href}
               href={item.href}
               className={cn(
-                "mx-focus flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition",
+                "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
                 active
                   ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white",
@@ -107,7 +108,7 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
         })}
       </nav>
 
-      <div className="mt-7">
+      <div className="mt-5">
         <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-500">Tools</p>
         <nav className="space-y-1">
           {toolNav.map((item) => {
@@ -117,7 +118,7 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "mx-focus flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition",
+                  "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
                   active
                     ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white",
@@ -130,8 +131,9 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
           })}
         </nav>
       </div>
+      </div>
 
-      <div className="mt-auto space-y-3">
+      <div className="shrink-0 space-y-2 pt-3">
         <Link
           href="/settings"
           className="mx-focus flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white"
@@ -141,13 +143,15 @@ function UserSidebar({ email, name }: { email?: string | null; name?: string | n
         </Link>
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-white/[0.04]">
           <div className="flex items-center gap-2">
-            <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-semibold text-white">
-              {(name?.[0] || email?.[0] || "U").toUpperCase()}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-xs font-semibold">{name || "Meldex User"}</p>
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{email}</p>
-            </div>
+            <Link href="/settings/profile" className="mx-focus flex min-w-0 flex-1 items-center gap-2 rounded-lg">
+              <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-semibold text-white">
+                {(name?.[0] || email?.[0] || "U").toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold">{name || "Meldex User"}</p>
+                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{email}</p>
+              </div>
+            </Link>
             <button
               onClick={() => signOut({ callbackUrl: "/login" })}
               className="mx-focus grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-white hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"
@@ -233,7 +237,7 @@ export default function DashboardPage() {
         <UserSidebar email={session?.user?.email} name={session?.user?.name} />
 
         <div className="min-w-0 flex-1 pb-20 lg:pb-0">
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f8f7fb]/90 px-4 py-4 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90 sm:px-6 lg:px-10">
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f8f7fb]/90 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90 sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-7xl items-center gap-4">
               <div className="lg:hidden">
                 <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
@@ -244,7 +248,7 @@ export default function DashboardPage() {
               <h1 className="hidden text-2xl font-semibold tracking-tight lg:block">Dashboard</h1>
               <label className="ml-auto hidden h-10 w-full max-w-sm items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
                 <Search className="size-4" />
-                <input className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-slate-400" placeholder="Search workspaces..." />
+                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
                 <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 dark:bg-white/10">⌘ K</span>
               </label>
               <button
@@ -255,28 +259,28 @@ export default function DashboardPage() {
               >
                 {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               </button>
-              <span className="hidden size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 sm:grid">
+              <Link href="/settings/profile" className="mx-focus hidden size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 sm:grid">
                 {(session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase()}
-              </span>
+              </Link>
             </div>
           </header>
 
-          <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-10">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <section className="rounded-2xl border border-violet-100 bg-gradient-to-br from-white via-violet-50 to-white p-5 shadow-sm dark:border-violet-400/10 dark:from-white/[0.06] dark:via-violet-500/10 dark:to-white/[0.03] sm:p-7">
+          <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <section className="rounded-2xl border border-violet-100 bg-gradient-to-br from-white via-violet-50 to-white p-4 shadow-sm dark:border-violet-400/10 dark:from-white/[0.06] dark:via-violet-500/10 dark:to-white/[0.03]">
                 <div className="max-w-3xl">
-                  <p className="text-2xl font-semibold tracking-tight sm:text-3xl">Good morning, {firstName}</p>
+                  <p className="text-2xl font-semibold tracking-tight">Good morning, {firstName}</p>
                   <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">What do you want to build today?</p>
                 </div>
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111113]">
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111113]">
                   <textarea
                     value={idea}
                     onChange={(event) => setIdea(event.target.value)}
-                    rows={3}
-                    className="min-h-20 w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-slate-400 dark:text-white"
+                    rows={2}
+                    className="min-h-14 w-full resize-none bg-transparent px-1 text-sm outline-none placeholder:text-slate-400 dark:text-white"
                     placeholder="Describe your idea or task..."
                   />
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Link href="/workspace" className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
                       <Plus className="size-3.5" /> Create Workspace
                     </Link>
@@ -297,24 +301,24 @@ export default function DashboardPage() {
                 </div>
               </section>
 
-              <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111113]">
-                <div className="mb-4 flex items-center justify-between">
+              <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111113]">
+                <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Overview</h2>
                   <span className="text-xs text-slate-500">Live</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {[
                     { label: "Workspaces", value: projects.length, icon: FolderKanban, tone: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200" },
                     { label: "Tasks completed", value: stats.tasks, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200" },
                     { label: "Files created", value: stats.files, icon: Files, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200" },
                   ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 dark:border-white/8">
-                      <span className={cn("grid size-10 place-items-center rounded-xl", item.tone)}>
+                    <div key={item.label} className="flex items-center gap-3 rounded-xl border border-slate-100 p-2.5 dark:border-white/8">
+                      <span className={cn("grid size-9 place-items-center rounded-xl", item.tone)}>
                         <item.icon className="size-4" />
                       </span>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">{item.label}</p>
-                        <p className="text-lg font-semibold">{item.value}</p>
+                        <p className="text-base font-semibold">{item.value}</p>
                       </div>
                     </div>
                   ))}
@@ -328,19 +332,19 @@ export default function DashboardPage() {
               </div>
             )}
 
-            <section className="mt-7">
+            <section className="mt-4">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Recent Workspaces</h2>
                 <Link href="/workspace" className="mx-focus rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]">View all</Link>
               </div>
               {loading ? (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {[0, 1, 2, 3].map((item) => <div key={item} className="h-36 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.04]" />)}
+                  {[0, 1, 2, 3].map((item) => <div key={item} className="h-28 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.04]" />)}
                 </div>
               ) : recentProjects.length ? (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   {recentProjects.map((project) => (
-                    <Link key={project.id} href={`/workspace/${project.id}`} className="mx-focus group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md dark:border-white/10 dark:bg-[#111113] dark:hover:border-violet-400/25">
+                    <Link key={project.id} href={`/workspace/${project.id}`} className="mx-focus group rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md dark:border-white/10 dark:bg-[#111113] dark:hover:border-violet-400/25">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="flex items-center gap-2 truncate text-sm font-semibold">
@@ -351,8 +355,8 @@ export default function DashboardPage() {
                         </div>
                         <ArrowRight className="size-4 shrink-0 text-slate-300 transition group-hover:text-violet-600" />
                       </div>
-                      <div className="mt-4 rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-violet-50 p-3 dark:border-white/8 dark:from-white/[0.05] dark:to-violet-500/10">
-                        <div className="h-12 rounded-lg bg-white shadow-sm dark:bg-black/30" />
+                      <div className="mt-3 rounded-xl border border-slate-100 bg-gradient-to-br from-slate-50 to-violet-50 p-2 dark:border-white/8 dark:from-white/[0.05] dark:to-violet-500/10">
+                        <div className="h-9 rounded-lg bg-white shadow-sm dark:bg-black/30" />
                         <div className="mt-2 grid grid-cols-3 gap-1">
                           <span className="h-1.5 rounded-full bg-violet-200 dark:bg-violet-400/30" />
                           <span className="h-1.5 rounded-full bg-slate-200 dark:bg-white/10" />
@@ -374,15 +378,15 @@ export default function DashboardPage() {
               )}
             </section>
 
-            <div className="mt-7 grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111113]">
+            <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111113]">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Recent Activity</h2>
                   <span className="text-xs text-slate-500">{recentProjects.length} updates</span>
                 </div>
                 <div className="space-y-1">
                   {recentProjects.length ? recentProjects.map((project) => (
-                    <Link key={project.id} href={`/workspace/${project.id}`} className="mx-focus flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-slate-50 dark:hover:bg-white/[0.05]">
+                    <Link key={project.id} href={`/workspace/${project.id}`} className="mx-focus flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50 dark:hover:bg-white/[0.05]">
                       <span className="grid size-8 place-items-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
                         <FolderKanban className="size-4" />
                       </span>
@@ -397,11 +401,11 @@ export default function DashboardPage() {
                 </div>
               </section>
 
-              <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111113]">
+              <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#111113]">
                 <h2 className="mb-3 text-sm font-semibold">Quick Actions</h2>
                 <div className="space-y-1">
                   {quickActions.map((action) => (
-                    <Link key={action.href} href={action.href} className="mx-focus flex items-center gap-3 rounded-xl px-2 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.05]">
+                    <Link key={action.href} href={action.href} className="mx-focus flex items-center gap-3 rounded-xl px-2 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.05]">
                       <action.icon className="size-4 text-slate-500 dark:text-slate-400" />
                       <span className="flex-1">{action.label}</span>
                       <ArrowRight className="size-4 text-slate-300" />
