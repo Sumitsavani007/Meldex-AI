@@ -2,22 +2,26 @@ import type { Config } from "tailwindcss";
 import forms from "@tailwindcss/forms";
 
 const config: Config = {
+  darkMode: "class",
   content: ["./app/**/*.{js,ts,jsx,tsx}", "./components/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-inter)", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+      },
       colors: {
-        ink: "#05070d",
-        panel: "#0c111d",
-        line: "#1d2638",
-        mint: "#63f2be",
-        iris: "#9aa4ff",
-        ember: "#ffb86b",
-        cyan: "#56d9ff",
-        rose: "#ff6b8b"
+        ink: "#020204",
+        panel: "#0b0b0f",
+        line: "#24242b",
+        mint: "#2563eb",
+        iris: "#4f46e5",
+        ember: "#64748b",
+        cyan: "#0ea5e9",
+        rose: "#dc2626"
       },
       boxShadow: {
-        glow: "0 0 80px rgba(99, 242, 190, 0.16)",
-        aurora: "0 0 120px rgba(154, 164, 255, 0.24)"
+        glow: "0 18px 60px rgba(37, 99, 235, 0.12)",
+        aurora: "0 24px 80px rgba(15, 23, 42, 0.14)"
       },
       animation: {
         "particle-drift": "particle-drift 18s ease-in-out infinite alternate",
