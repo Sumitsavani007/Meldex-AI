@@ -2,40 +2,12 @@
  * DELETE /api/extensions/tokens/[id]
  * Revoke (soft-delete) an extension token.
  */
-import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/role-guard";
-import { prisma } from "@/lib/prisma";
+import { NextRequest } from "next/server";
+import { DELETE as deleteAccountToken } from "@/app/api/account/tokens/[id]/route";
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const { id } = await params;
-    const { session, error } = await requireAuth();
-    if (error) return error;
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const token = await prisma.extensionToken.findFirst({
-      where: { id, userId: session.user.id },
-    });
-
-    if (!token) {
-      return NextResponse.json({ error: "Token not found" }, { status: 404 });
-    }
-
-    await prisma.extensionToken.update({
-      where: { id },
-      data: { revokedAt: new Date() },
-    });
-
-    return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed" },
-      { status: 500 }
-    );
-  }
+  return deleteAccountToken(_req, { params });
 }

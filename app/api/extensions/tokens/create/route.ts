@@ -3,31 +3,9 @@
  * Creates a new API token for the authenticated web-session user.
  * Returns the raw token ONCE — it is never stored in DB.
  */
-import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/role-guard";
-import { createExtensionApiToken } from "@/lib/extension-auth";
-import { z } from "zod";
-
-const schema = z.object({ name: z.string().min(1).max(80).optional() });
+import { NextRequest } from "next/server";
+import { POST as createAccountToken } from "@/app/api/account/tokens/route";
 
 export async function POST(req: NextRequest) {
-  try {
-    const { session, error } = await requireAuth();
-    if (error) return error;
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const body = schema.safeParse(await req.json().catch(() => ({})));
-    const name = body.success ? body.data.name : undefined;
-
-    const raw = await createExtensionApiToken(session.user.id, name);
-
-    return NextResponse.json({ token: raw, message: "Copy this token now — it will not be shown again." });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to create token" },
-      { status: 500 }
-    );
-  }
+  return createAccountToken(req);
 }

@@ -1,8 +1,8 @@
 {
   "name": "meldex-ai",
   "displayName": "Meldex AI",
-  "description": "Premium AI coding assistant — Chat, Agent, Diff, Terminal. Powered by Meldex AI.",
-  "version": "5.0.0",
+  "description": "Codex-style AI coding assistant with chat, agent timeline, diff review, patch apply, and terminal checks.",
+  "version": "5.1.2",
   "publisher": "meldex-ai",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -24,12 +24,18 @@
     "agent",
     "chat",
     "meldex",
-    "coding assistant"
+    "coding assistant",
+    "diff",
+    "codex",
+    "qwen"
   ],
   "activationEvents": [
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "bin": {
+    "meldex-agent": "./out/cli/main.js"
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -58,6 +64,14 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "meldex-ai.repairInstallation",
+        "title": "Meldex: Repair Agent Installation"
+      },
+      {
+        "command": "meldex-ai.doctor",
+        "title": "Meldex: Doctor"
+      },
+      {
         "command": "meldex-ai.explainSelection",
         "title": "Meldex: Explain Selection"
       },
@@ -76,6 +90,14 @@
       {
         "command": "meldex-ai.runAgent",
         "title": "Meldex: Run Agent"
+      },
+      {
+        "command": "meldex-ai.copyBenchmarkToken",
+        "title": "Meldex: Copy Benchmark Token"
+      },
+      {
+        "command": "meldex-ai.logout",
+        "title": "Meldex: Logout"
       },
       {
         "command": "meldex-ai.addDocs",
@@ -130,11 +152,6 @@
           "default": "https://meldex.newsyfly.com",
           "description": "Meldex AI backend URL"
         },
-        "meldex.defaultModel": {
-          "type": "string",
-          "default": "qwen/qwen3-coder:free",
-          "description": "Default AI model"
-        },
         "meldex.autoApplyChanges": {
           "type": "boolean",
           "default": false,
@@ -154,13 +171,56 @@
           "type": "number",
           "default": 20,
           "description": "Max files to include in agent context"
+        },
+        "meldex.nodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional explicit Node.js runtime path. Leave empty to use a safe runtime from process.execPath or PATH."
+        },
+        "meldex.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional explicit Meldex Agent CLI JavaScript path. Bundled CLI is used first."
+        },
+        "meldex.qwenTemperature": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 2,
+          "description": "Qwen3-Coder temperature hint for coding tasks"
+        },
+        "meldex.qwenMaxTokens": {
+          "type": "number",
+          "default": 8192,
+          "description": "Qwen3-Coder max output token hint"
+        },
+        "meldex.qwenTimeoutMs": {
+          "type": "number",
+          "default": 90000,
+          "description": "Qwen3-Coder request timeout in milliseconds"
+        },
+        "meldex.qwenRetryCount": {
+          "type": "number",
+          "default": 2,
+          "description": "Retries for malformed or weak action JSON"
+        },
+        "meldex.qwenContextSize": {
+          "type": "number",
+          "default": 24000,
+          "description": "Maximum optimized context characters sent to Qwen3-Coder"
+        },
+        "meldex.qwenActionMode": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask Qwen3-Coder for structured action JSON in Agent Mode"
         }
       }
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && node scripts/ensure-cli-bin.js",
+    "build": "npm run compile",
     "watch": "tsc -watch -p ./",
     "lint": "eslint src --ext ts",
     "package": "vsce package"
@@ -168,11 +228,10 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
-    "@vscode/vsce": "^2.24.0",
+    "@typescript-eslint/eslint-plugin": "^8.62.0",
+    "@typescript-eslint/parser": "^8.62.0",
+    "@vscode/vsce": "^3.9.2",
     "eslint": "^8.0.0",
     "typescript": "^5.3.0"
-  },
-  "dependencies": {}
+  }
 }

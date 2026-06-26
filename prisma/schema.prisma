@@ -74,6 +74,7 @@ model User {
   accounts       Account[]
   sessions       Session[]
   extensionTokens ExtensionToken[]
+  extensionDeviceCodes ExtensionDeviceCode[]
 }
 
 model Account {
@@ -374,12 +375,37 @@ model ExtensionToken {
   id         String    @id @default(cuid())
   userId     String
   tokenHash  String    @unique
+  tokenPrefix String?
+  tokenLast4 String?
+  scopesJson Json?
   name       String    @default("VS Code Extension")
   lastUsedAt DateTime?
   expiresAt  DateTime?
   revokedAt  DateTime?
   createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([revokedAt])
+  @@index([expiresAt])
+}
+
+model ExtensionDeviceCode {
+  id          String    @id @default(cuid())
+  userId      String?
+  deviceCode  String    @unique
+  userCode    String    @unique
+  tokenPlain  String?   @db.Text
+  status      String    @default("pending")
+  expiresAt   DateTime
+  approvedAt  DateTime?
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userCode])
+  @@index([deviceCode])
+  @@index([expiresAt])
 }

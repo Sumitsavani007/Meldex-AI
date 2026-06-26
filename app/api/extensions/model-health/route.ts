@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
+import { ExtensionTokenError, extractBearerToken, requireExtensionScope, verifyAnyExtensionToken } from "@/lib/extension-auth";
 import { testOpenRouterHealth } from "@/lib/provider-health";
 
 const NO_CACHE = { "Cache-Control": "no-store, no-cache", "Pragma": "no-cache" };
@@ -9,9 +9,11 @@ export async function GET(req: Request) {
   if (!token) return NextResponse.json({ error: "Authorization required" }, { status: 401, headers: NO_CACHE });
 
   try {
-    await verifyAnyExtensionToken(token);
-  } catch {
-    return NextResponse.json({ error: "Invalid or expired token" }, { status: 401, headers: NO_CACHE });
+    const user = await verifyAnyExtensionToken(token);
+    requireExtensionScope(user, "model-health");
+  } catch (err) {
+    const code = err instanceof ExtensionTokenError ? err.code : "token_invalid";
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Invalid or expired token", code }, { status: 401, headers: NO_CACHE });
   }
 
   const result = await testOpenRouterHealth();

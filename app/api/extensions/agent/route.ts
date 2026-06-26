@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
+import { ExtensionTokenError, extractBearerToken, requireExtensionScope, verifyAnyExtensionToken } from "@/lib/extension-auth";
 import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { getNumberSetting } from "@/lib/runtime-config";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
@@ -66,8 +66,10 @@ export async function POST(req: NextRequest) {
   let user: Awaited<ReturnType<typeof verifyAnyExtensionToken>>;
   try {
     user = await verifyAnyExtensionToken(token);
-  } catch {
-    return NextResponse.json({ error: "Invalid or expired token" }, { status: 401 });
+    requireExtensionScope(user, "agent");
+  } catch (err) {
+    const code = err instanceof ExtensionTokenError ? err.code : "token_invalid";
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Invalid or expired token", code }, { status: 401 });
   }
 
   const body = schema.safeParse(await req.json());
