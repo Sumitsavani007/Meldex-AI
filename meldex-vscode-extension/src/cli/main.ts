@@ -9,7 +9,7 @@ import * as os from "os";
 import * as path from "path";
 import { autonomousPromptSection, buildAutonomousPlan, planNeedsUserInput, safeReasoningSummary } from "../agent/autonomousOrchestrator";
 import { buildFixTask } from "../agent/fixGenerator";
-import { errorFingerprint, parseAgentError } from "../agent/errorParser";
+import { errorFingerprint, parseAgentError, type ParsedError } from "../agent/errorParser";
 import { blockUnsafePatch, buildMilInsight, insightSummary } from "../agent/milEngine";
 import { learnFromTask, readWorkspaceMemory } from "../agent/workspaceMemory";
 import { runBenchmarkLab } from "../agent/benchmarkLab";
@@ -662,12 +662,24 @@ Open \`index.html\` in a browser to preview the page.
   };
 }
 
-function canUseStaticLandingFastPath(task: string, root: string) {
+function isStaticLandingTask(task: string) {
   const lower = task.toLowerCase();
-  const asksForLanding = lower.includes("landing page") || (lower.includes("index.html") && lower.includes("style.css") && lower.includes("script.js"));
-  if (!asksForLanding) return false;
-  const existing = ["index.html", "style.css", "script.js", "README.md"].filter((file) => fs.existsSync(path.join(root, file)));
-  return existing.length === 0;
+  return lower.includes("landing page") || (lower.includes("index.html") && lower.includes("style.css") && lower.includes("script.js"));
+}
+
+function isStaticOnlyProject(root: string) {
+  if (fs.existsSync(path.join(root, "package.json"))) return false;
+  const files = fs.readdirSync(root).filter((file) => !file.startsWith("."));
+  return files.length === 0 || files.every((file) => ["index.html", "style.css", "styles.css", "script.js", "README.md"].includes(file));
+}
+
+function canUseStaticLandingFastPath(task: string, root: string) {
+  if (!isStaticLandingTask(task) || !isStaticOnlyProject(root)) return false;
+  const indexPath = path.join(root, "index.html");
+  if (!fs.existsSync(indexPath)) return true;
+  const current = fs.readFileSync(indexPath, "utf8");
+  const hasSubstantialBody = /<h1|<section|<main[^>]*>[\s\S]{160,}<\/main>/i.test(current);
+  return !hasSubstantialBody;
 }
 
 function calculateDiff(oldContent: string, newContent: string) {
@@ -744,6 +756,10 @@ function commandPolicy(command: string, safeMode: boolean) {
   return { allowed: true };
 }
 
+function isPolicyBlockedResult(result: { exitCode: number; stderr: string }) {
+  return result.exitCode === 126 && /Command is not in allowed tool list|Command requires manual confirmation|Blocked dangerous command/i.test(result.stderr);
+}
+
 function runCommand(command: string, cwd: string, safeMode: boolean) {
   const policy = commandPolicy(command, safeMode);
   if (!policy.allowed) {
@@ -761,6 +777,25 @@ function runCommand(command: string, cwd: string, safeMode: boolean) {
   if (child.stderr) emit("terminal", { stderr: child.stderr.slice(0, 8000), command, durationMs });
   emit("tool_result", { tool: "terminal", command, exitCode: child.status ?? 1, signal: child.signal, durationMs, cwd });
   return { stdout: child.stdout || "", stderr: child.stderr || "", exitCode: child.status ?? 1, durationMs };
+}
+
+function isServerCommand(command: string) {
+  const normalized = command.trim().toLowerCase();
+  return [
+    /^npm\s+start(?:\s|$)/,
+    /^npm\s+run\s+dev(?:\s|$)/,
+    /^pnpm\s+(?:start|dev|run\s+dev)(?:\s|$)/,
+    /^yarn\s+(?:start|dev)(?:\s|$)/,
+    /^bun\s+(?:start|dev|run\s+dev)(?:\s|$)/,
+    /\bnext\s+dev\b/,
+    /\bvite(?:\s|$).*--host\b/,
+    /\bphp\s+artisan\s+serve\b/,
+    /\bpython3?\s+-m\s+http\.server\b/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function isPackageManagerCommand(command: string) {
+  return /^(npm|pnpm|yarn|bun)\s+/i.test(command.trim());
 }
 
 function requestNeedsExecution(task: string) {
@@ -906,6 +941,35 @@ function titleFromIndex(root: string) {
   }
 }
 
+function relativeToRoot(root: string, file?: string) {
+  if (!file) return undefined;
+  const normalized = file.replace(/^file:\/\//, "");
+  const absolute = path.isAbsolute(normalized) ? normalized : path.resolve(root, normalized);
+  const relative = path.relative(root, absolute).replace(/\\/g, "/");
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return path.basename(normalized);
+  return relative;
+}
+
+function allowedAutofixFiles(root: string, parsed: ParsedError, recentFiles: string[]) {
+  const file = relativeToRoot(root, parsed.file);
+  if (file && ["syntax", "typescript", "eslint", "vite", "next", "node"].includes(parsed.kind)) return new Set([file]);
+  if (parsed.kind === "dependency") return new Set(recentFiles.filter((item) => /\.(ts|tsx|js|jsx|mjs|cjs|json)$/.test(item)));
+  return null;
+}
+
+function unrelatedAutofixFiles(root: string, parsed: ParsedError, patches: ReturnType<typeof preparePatches>, recentFiles: string[]) {
+  const allowed = allowedAutofixFiles(root, parsed, recentFiles);
+  if (!allowed || allowed.size === 0) return [];
+  return patches.map((patch) => patch.path).filter((file) => !allowed.has(file));
+}
+
+function staticAutofixRuleViolations(root: string, patches: ReturnType<typeof preparePatches>) {
+  if (!isStaticOnlyProject(root)) return [];
+  return patches
+    .map((patch) => patch.path)
+    .filter((file) => file === "package.json" || file === "package-lock.json" || file === "server.js");
+}
+
 async function autofixFailure(
   root: string,
   task: string,
@@ -918,9 +982,52 @@ async function autofixFailure(
 ) {
   const parsed = parseAgentError(rawError);
   emit("retry", { attempt, maxRetries: config.maxRetries, message: parsed.title, parsed });
+  if (/Command is not in allowed tool list|Command requires manual confirmation|Blocked dangerous command/i.test(rawError)) {
+    emit("tool_result", {
+      tool: "autofix_scope",
+      status: "skipped",
+      reason: "Command was blocked by CLI safety policy; not treating it as a source-code defect.",
+    });
+    return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: "Skipped autofix for safety-policy-blocked command." };
+  }
   const fix = buildFixTask({ root, taskGoal: task, error: parsed, rawOutput: rawError, recentFiles });
-  const response = validateAgentResponse(await apiRequest<AgentResponse>(config.backendUrl, token, "/api/extensions/agent", "POST", { task: fix.task, context: fix.context }));
-  const patches = preparePatches(root, response.files || []);
+  let response = validateAgentResponse(await apiRequest<AgentResponse>(config.backendUrl, token, "/api/extensions/agent", "POST", { task: fix.task, context: fix.context }));
+  let patches = preparePatches(root, response.files || []);
+  const staticViolations = staticAutofixRuleViolations(root, patches);
+  if (staticViolations.length) {
+    emit("tool_result", {
+      tool: "autofix_scope",
+      status: "blocked",
+      reason: "Static project autofix cannot add package/server dependency files.",
+      rejectedFiles: staticViolations,
+    });
+    return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: `Autofix blocked static dependency files: ${staticViolations.join(", ")}` };
+  }
+  let unrelated = unrelatedAutofixFiles(root, parsed, patches, recentFiles);
+  if (unrelated.length) {
+    emit("tool_result", {
+      tool: "autofix_scope",
+      status: "rejected",
+      reason: "Autofix patch touched files unrelated to the parsed error.",
+      allowedFiles: [...(allowedAutofixFiles(root, parsed, recentFiles) || [])],
+      rejectedFiles: unrelated,
+    });
+    response = validateAgentResponse(await apiRequest<AgentResponse>(config.backendUrl, token, "/api/extensions/agent", "POST", {
+      task: `${fix.task}\n\nSTRICT PATCH SCOPE: The detected error is in ${relativeToRoot(root, parsed.file) || "the reported file"}. Return a minimal patch for only that file. Do not rewrite unrelated files, HTML links, CSS, package.json, or server files unless the error log explicitly names them.`,
+      context: fix.context,
+    }));
+    patches = preparePatches(root, response.files || []);
+    unrelated = unrelatedAutofixFiles(root, parsed, patches, recentFiles);
+    if (unrelated.length) {
+      emit("tool_result", {
+        tool: "autofix_scope",
+        status: "blocked",
+        reason: "Regenerated autofix still touched unrelated files.",
+        rejectedFiles: unrelated,
+      });
+      return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: `Autofix scope blocked: ${unrelated.join(", ")}` };
+    }
+  }
   if (!patches.length) return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: "No fix patch returned." };
   writeRollback(root, `${taskId}-fix-${attempt}`, patches);
   emit("diff", { files: patches.map(({ path: filePath, operation, added, removed }) => ({ path: filePath, operation, added, removed })), totalAdded: patches.reduce((n, p) => n + p.added, 0), totalRemoved: patches.reduce((n, p) => n + p.removed, 0) });
@@ -1103,21 +1210,49 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   }
   if (applied.length) {
     const shouldExecute = requestNeedsExecution(task);
-    const commands = response.commands?.length ? response.commands : shouldExecute ? detectValidationCommands(root) : plan.commandsToRun;
+    const requestedCommands = response.commands?.length ? response.commands : shouldExecute ? detectValidationCommands(root) : plan.commandsToRun;
+    const serverCommands = requestedCommands.filter(isServerCommand);
+    const commands = requestedCommands.filter((command) => !isServerCommand(command));
+    if (serverCommands.length) {
+      emit("tool_result", { tool: "server_command_classifier", status: "ok", serverCommands, validationCommands: commands });
+    }
     const commandResults: string[] = [];
     let buildPassed = false;
     let testsPassed = false;
     let previewVerified = false;
+    const skippedCommands: string[] = [];
     const seenErrors = new Map<string, number>();
     for (const command of commands) {
       let commandPassed = false;
       for (let attempt = 1; attempt <= config.maxRetries; attempt += 1) {
+        if (!fs.existsSync(path.join(root, "package.json")) && isPackageManagerCommand(command)) {
+          emit("tool_result", {
+            tool: "terminal",
+            command,
+            status: "skipped",
+            reason: "Static project has no package.json; package-manager validation command is not applicable.",
+          });
+          skippedCommands.push(command);
+          commandPassed = true;
+          break;
+        }
         const result = runCommand(command, root, config.safeMode);
         if (result.exitCode === 0) {
           commandPassed = true;
           commandResults.push(command);
           if (command.includes("build")) buildPassed = true;
           if (command.includes("test")) testsPassed = true;
+          break;
+        }
+        if (isPolicyBlockedResult(result)) {
+          emit("tool_result", {
+            tool: "terminal",
+            command,
+            status: "skipped",
+            reason: result.stderr,
+          });
+          skippedCommands.push(command);
+          commandPassed = true;
           break;
         }
         const raw = result.stderr || result.stdout || `Command failed: ${command}`;
@@ -1138,7 +1273,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
       }
       if (!commandPassed) break;
     }
-    if (requestNeedsServer(task)) {
+    if (requestNeedsServer(task) || serverCommands.length) {
       let server = await startServer(root, config.safeMode);
       previewVerified = !!server.verified;
       if (server.status !== "running" && config.maxRetries > 0) {
@@ -1169,7 +1304,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
       quality: milAfter.quality,
       risk: milAfter.risk,
       filesChanged: patches.map((patch) => patch.path),
-      buildStatus: buildPassed ? "passed" : commands.some((cmd) => cmd.includes("build")) ? "not_run_or_failed" : "not_applicable",
+      buildStatus: buildPassed ? "passed" : commands.some((cmd) => cmd.includes("build") && !skippedCommands.includes(cmd)) ? "not_run_or_failed" : "not_applicable",
       previewStatus: previewVerified ? "verified" : requestNeedsServer(task) ? "not_verified" : "not_applicable",
       recommendations: milAfter.recommendations,
       summary: insightSummary(milAfter),
