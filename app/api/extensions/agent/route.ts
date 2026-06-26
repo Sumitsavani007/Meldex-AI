@@ -58,6 +58,21 @@ Rules:
 - Do not expose hidden chain-of-thought
 - Do not invent fake imports or unnecessary dependencies`;
 
+const CODING_ENGINE_V2 = `Coding Engine V2 rules for all coding tasks:
+- Never directly generate random files. Internally run: understand request, detect project type, detect framework, plan architecture, plan files, plan reusable components, plan state/data flow, generate code, self-review, run checks, fix errors, refactor if needed, verify final output.
+- Before coding decide project type, framework, folder structure, components, utilities, data model, API routes, validation, state management, styling approach, and testing approach.
+- Static sites must remain dependency-free unless explicitly requested: index.html, style.css, script.js, README.md.
+- React/Vite: use correct main entry, component imports, CSS import, and no Next-only APIs.
+- Next.js: follow existing app/pages router conventions, server/client boundaries, metadata, imports, and route placement.
+- Backend: prefer routes/controllers/services/middleware/validators/utils structure, validation, error handling, status codes, and security middleware where appropriate.
+- Use reusable components, constants, helpers, clean naming, small functions, and separation of concerns.
+- Avoid one giant file, repeated code, inline random styles, fake imports, unused imports, placeholder TODOs, broken paths, and duplicate logic.
+- Never add dependencies unless necessary and already present. If a dependency is required, put it in warnings and commands; do not silently force installs for static tasks.
+- When editing existing projects, read/preserve relevant style and patch the smallest possible files. Do not rewrite unrelated files.
+- If no test framework exists, do not add a heavy test framework unless asked.
+- README for generated projects must include what was built, how to run, file structure, preview command, and next steps.
+- Internal quality target: code quality, architecture, maintainability, security, performance, and testing overall >= 85 before returning.`;
+
 const WEBSITE_DESIGNER_V2 = `Website Designer Agent V2 rules for website/static/landing-page tasks:
 - Never generate a bare hero/footer page. Internally run: intent detection, category detection, visual designer, UX planner, layout planner, section planner, animation planner, palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, improve if needed.
 - Detect category internally from: Restaurant, Hotel, Cafe, Portfolio, Agency, AI Startup, SaaS, E-commerce, Landing Page, Corporate, Healthcare, Education, Finance, Travel, Event, Photography, Construction, Real Estate, Gaming, Developer Tool, Open Source, Admin Dashboard, Blog, Documentation.
@@ -112,7 +127,7 @@ export async function POST(req: NextRequest) {
       maxTokens,
       timeoutMs,
       messages: [
-        { role: "system", content: `${AGENT_SYSTEM}\n${isWebsiteTask(task) ? `\n${WEBSITE_DESIGNER_V2}` : ""}\nReturn JSON only. No markdown fences.` },
+        { role: "system", content: `${AGENT_SYSTEM}\n${CODING_ENGINE_V2}\n${isWebsiteTask(task) ? `\n${WEBSITE_DESIGNER_V2}` : ""}\nReturn JSON only. No markdown fences.` },
         { role: "user", content: ctxParts.join("\n\n") },
       ],
     });

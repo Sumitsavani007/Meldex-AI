@@ -457,6 +457,17 @@ Return JSON only:
   "warnings": []
 }
 Rules: use relative paths, avoid secrets, do not add dependencies for static HTML, prefer minimal patches, and create complete working files.
+Coding Engine V2:
+- Internally run: understand request, detect project type, detect framework, plan architecture, plan files, plan reusable components, plan state/data flow, generate code, self-review, run checks, fix errors, refactor if needed, verify final output.
+- Before coding decide folder structure, components, utilities, data model, API routes, validation, state management, styling approach, and testing approach.
+- Static sites must remain dependency-free unless explicitly requested and should use index.html, style.css, script.js, README.md.
+- React/Vite must use correct main entry, component imports, CSS import, and no Next-only APIs.
+- Next.js must follow existing app/pages router conventions, server/client boundaries, metadata, imports, and route placement.
+- Backend tasks should use routes/controllers/services/middleware/validators/utils when creating new structure, with validation, error handling, status codes, and safe defaults.
+- Use reusable components/constants/helpers, clean names, small functions, and separation of concerns. Avoid giant files, repeated code, fake imports, unused imports, placeholder TODOs, broken paths, and duplicate logic.
+- Do not add dependencies unless necessary and already present; if required, explain in warnings.
+- README for generated projects must include what was built, how to run, file structure, preview command, and next steps.
+- Internal coding quality score must be 85+ before returning.
 ${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");

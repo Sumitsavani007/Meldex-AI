@@ -351,8 +351,18 @@ function selectRelevantFiles(root: string, task: string, index: Json) {
 function buildPlan(task: string, index: Json) {
   const scripts = ((index.project as Json)?.scripts || {}) as Record<string, string>;
   const filesToChange = inferFiles(task, index);
+  const project = (index.project || {}) as Json;
   return {
     objective: task,
+    projectType: project.framework || "Unknown",
+    framework: project.framework || "Unknown",
+    architectureFirst: [
+      "Understand request",
+      "Detect project type and framework",
+      "Plan architecture, files, reusable components, state/data flow, and validation",
+      "Generate minimal production-ready code",
+      "Self-review, run checks, autofix, and verify",
+    ],
     assumptions: ["Use the existing project conventions", "Do not read or write secrets", "Preview patches before applying"],
     filesToRead: ((index.fileTree as string[]) || []).slice(0, 12),
     filesToChange,
@@ -416,7 +426,18 @@ Return valid JSON only in Meldex Agent compatible shape:
   "summary": "brief result"
 }
 
-Rules: minimal production-ready patch, no fake imports, no unnecessary dependencies, preserve framework conventions, do not expose hidden chain-of-thought.`;
+Rules: minimal production-ready patch, no fake imports, no unnecessary dependencies, preserve framework conventions, do not expose hidden chain-of-thought.
+Architecture-first coding rules:
+- Internally run: understand request, detect project type, detect framework, plan architecture, plan files, plan reusable components, plan state/data flow, generate code, self-review, run checks, fix errors, refactor if needed, verify final output.
+- Static sites must stay dependency-free and use exactly index.html, style.css, script.js, README.md unless the user explicitly asks for a framework.
+- React/Vite tasks must use correct main entry, component imports, CSS imports, and no Next-only APIs.
+- Next.js tasks must respect existing app/pages router conventions, server/client boundaries, metadata, and route placement.
+- Backend tasks must use routes/controllers/services/middleware/validators/utils when creating a new structure, with validation and clean status codes.
+- Prefer reusable components/constants/helpers over giant files, repeated markup, dead code, unused imports, or placeholder TODOs.
+- Never add dependencies unless already installed or explicitly required. If a dependency is required, explain it in warnings instead of silently installing it.
+- For edits, touch the smallest relevant files and preserve existing style. Do not rewrite unrelated CSS/HTML/JSON for a focused bug.
+- Include README updates for newly generated projects with run instructions, file structure, preview command, and next steps.
+- Internal quality target: code quality, architecture, maintainability, security, performance, and testing >= 85 before returning.`;
   return { task: optimizedTask.slice(0, 3900), profile, reasoning };
 }
 
@@ -438,15 +459,77 @@ function weakAgentResponse(value: AgentResponse) {
   return !Array.isArray(value.plan) || value.plan.length === 0 || (!Array.isArray(value.files) && !!value.summary);
 }
 
-function reviewCliActions(files: FileAction[]) {
+function looksLikeGeneratedProject(files: FileAction[]) {
+  const paths = new Set(files.map((file) => file.path));
+  return paths.has("index.html") || paths.has("package.json") || [...paths].some((file) => /^(src|app|pages|routes|controllers|services|components)\//.test(file));
+}
+
+function isDependencyManifest(file: FileAction) {
+  return /(^|\/)package(-lock)?\.json$|(^|\/)pnpm-lock\.yaml$|(^|\/)yarn\.lock$|(^|\/)bun\.lockb$/i.test(file.path);
+}
+
+function reviewCliActions(files: FileAction[], root = process.cwd(), task = "") {
   const findings: string[] = [];
+  const paths = new Set(files.map((file) => file.path));
   for (const file of files) {
     if (!file.path || file.path.includes("..") || path.isAbsolute(file.path)) findings.push(`Unsafe path: ${file.path}`);
     if (isSecret(file.path)) findings.push(`Secret path blocked: ${file.path}`);
     if (file.operation !== "delete" && !file.content?.trim()) findings.push(`Empty content for ${file.path}`);
     if (/\.(ts|tsx|js|jsx)$/.test(file.path) && /from ["'](?:your-|some-|fake-|placeholder)/i.test(file.content || "")) findings.push(`Placeholder import in ${file.path}`);
+    if (/\.(ts|tsx|js|jsx)$/.test(file.path) && /\bTODO\b|\bFIXME\b|console\.log\(["']todo/i.test(file.content || "")) findings.push(`Placeholder TODO/debug code in ${file.path}`);
+    if (/\.(html|tsx|jsx)$/.test(file.path) && /<img\b(?![^>]*\balt=)/i.test(file.content || "")) findings.push(`Image without alt text in ${file.path}`);
+    if (isDependencyManifest(file) && isStaticOnlyProject(root) && !/react|next|vite|express|node app|backend|api/i.test(task)) findings.push(`Unnecessary dependency manifest for static task: ${file.path}`);
+    if (file.path === "package.json" && file.operation !== "delete") {
+      try {
+        const pkg = JSON.parse(file.content || "{}") as { dependencies?: Json; devDependencies?: Json };
+        const deps = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+        if (deps.some((dep) => /^your-|^some-|placeholder/i.test(dep))) findings.push(`Placeholder dependency in package.json`);
+      } catch {
+        findings.push("Invalid package.json JSON");
+      }
+    }
+  }
+  if (looksLikeGeneratedProject(files) && !paths.has("README.md") && !fs.existsSync(path.join(root, "README.md"))) {
+    findings.push("Generated project is missing README.md");
   }
   return findings;
+}
+
+function reviewCliCommands(commands: string[] = [], root = process.cwd(), task = "") {
+  const findings: string[] = [];
+  const staticTask = isStaticOnlyProject(root) && !/react|next|vite|express|node app|backend|api/i.test(task);
+  for (const command of commands) {
+    if (staticTask && /\b(npm|pnpm|yarn|bun)\s+(?:i|install|add)\b/i.test(command)) {
+      findings.push(`Static task cannot install dependencies: ${command}`);
+    }
+    if (staticTask && /\b(express|vite|next|react)\b/i.test(command) && /\b(npm|pnpm|yarn|bun|npx)\b/i.test(command)) {
+      findings.push(`Static task cannot require framework/server dependency: ${command}`);
+    }
+    if (/\b(npm|pnpm|yarn|bun)\s+(?:i|install|add)\b/i.test(command) && !/install|dependency|package/i.test(task)) {
+      findings.push(`Dependency install command needs explicit user intent: ${command}`);
+    }
+  }
+  return findings;
+}
+
+function codingQualityScore(files: FileAction[], commands: string[] = [], findings: string[] = []) {
+  const paths = files.map((file) => file.path);
+  const hasReadme = paths.includes("README.md");
+  const hasComponents = paths.some((file) => /(^|\/)(components|routes|controllers|services|middleware|validators|utils|lib|data|types)\//.test(file));
+  const hasValidation = commands.some((command) => /build|test|lint|tsc|node -e/i.test(command));
+  const hasTests = paths.some((file) => /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(file)) || commands.some((command) => /\btest\b/i.test(command));
+  const touchesSecrets = paths.some((file) => isSecret(file));
+  const totalLines = files.reduce((sum, file) => sum + (file.content?.split(/\r?\n/).length || 0), 0);
+  const fileCount = Math.max(1, files.length);
+  const avgLines = totalLines / fileCount;
+  const codeQuality = Math.max(55, 94 - findings.length * 8 - (avgLines > 360 ? 8 : 0));
+  const architecture = Math.max(55, 88 + (hasComponents ? 6 : 0) + (fileCount > 1 ? 3 : 0) - (avgLines > 420 ? 12 : 0));
+  const maintainability = Math.max(55, 90 + (hasReadme ? 4 : -5) + (hasComponents ? 4 : 0) - findings.length * 5);
+  const security = touchesSecrets ? 40 : Math.max(70, 96 - findings.filter((item) => /secret|unsafe|dependency/i.test(item)).length * 10);
+  const performance = Math.max(70, 91 - (avgLines > 500 ? 8 : 0));
+  const testing = hasValidation ? (hasTests ? 88 : 78) : 70;
+  const overall = Math.round((codeQuality + architecture + maintainability + security + performance + testing) / 6);
+  return { codeQuality, architecture, maintainability, security, performance, testing, overall };
 }
 
 function inferFiles(task: string, index: Json) {
@@ -1624,10 +1707,16 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     }
     emit("tool_result", { tool: "backend", status: "ok", files: response.files?.length || 0 });
   }
-  const reviewFindings = reviewCliActions(response.files || []);
+  const reviewFindings = [
+    ...reviewCliActions(response.files || [], root, task),
+    ...reviewCliCommands(response.commands || [], root, task),
+  ];
   const tiePatchFindings = validatePatchPlan(response.files || [], root);
+  const codingScore = codingQualityScore(response.files || [], response.commands || [], [...reviewFindings, ...tiePatchFindings]);
+  emit("tool_result", { tool: "coding_quality_score", status: codingScore.overall >= 85 ? "ok" : "needs_improvement", score: codingScore });
   emit("tool_result", { tool: "self_review", status: reviewFindings.length || tiePatchFindings.length ? "failed" : "ok", findings: [...reviewFindings, ...tiePatchFindings] });
   if (reviewFindings.length || tiePatchFindings.length) throw new Error(`Self-review blocked patch: ${[...reviewFindings, ...tiePatchFindings].join("; ")}`);
+  if (codingScore.overall < 85) throw new Error(`Coding quality score below 85: ${codingScore.overall}`);
   const changedPaths = (response.files || []).map((file) => file.path);
   const milPatch = buildMilInsight({
     root,
