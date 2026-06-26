@@ -214,19 +214,39 @@ export function resolveProjectFile(storagePath: string, filePath = "") {
 export async function ensureWorkspaceProject(userId: string, name?: string, description = "AI-generated workspace project") {
   const baseName = name?.trim() || "Untitled Workspace";
   const baseSlug = slugify(baseName);
-  let slug = baseSlug;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const existing = await prisma.workspaceProject.findUnique({ where: { userId_slug: { userId, slug } } });
-    if (!existing) break;
-    slug = `${baseSlug}-${attempt + 2}`;
+  const isUniqueSlugError = (error: unknown) =>
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: string }).code === "P2002";
+
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+    const slug = `${baseSlug}${suffix}`;
+    try {
+      const project = await prisma.workspaceProject.create({
+        data: {
+          userId,
+          name: baseName,
+          slug,
+          storagePath: path.join(workspaceStorageRoot(), userId, slug),
+          description,
+        },
+      });
+      await mkdir(project.storagePath, { recursive: true });
+      return project;
+    } catch (error) {
+      if (!isUniqueSlugError(error)) throw error;
+    }
   }
 
+  const fallbackSlug = `${baseSlug}-${crypto.randomBytes(4).toString("hex")}`;
   const project = await prisma.workspaceProject.create({
     data: {
       userId,
       name: baseName,
-      slug,
-      storagePath: path.join(workspaceStorageRoot(), userId, slug),
+      slug: fallbackSlug,
+      storagePath: path.join(workspaceStorageRoot(), userId, fallbackSlug),
       description,
     },
   });
