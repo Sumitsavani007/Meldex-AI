@@ -171,3 +171,11 @@ body::after {
 .timeline-dot.queued::before  { background: #4a5568; }
 .timeline-dot.error::before   { background: #ff6b8b; }
 
+.mx-focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.mx-focus:focus-visible {
+  outline-color: #63f2be;
+}

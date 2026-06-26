@@ -1,26 +1,42 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ElementType } from "react";
+import { signOut, useSession } from "next-auth/react";
 import {
-  Bot,
-  BrainCircuit,
+  Archive,
   CheckCheck,
   ChevronRight,
-  CloudLightning,
   Code2,
   Copy,
+  CopyPlus,
+  CreditCard,
+  Download,
+  Edit3,
   ExternalLink,
+  FileText,
+  FolderKanban,
   Globe,
-  HardDriveDownload,
+  Image as ImageIcon,
+  LogOut,
   Menu,
   MessageSquare,
   MessageSquarePlus,
+  Mic,
+  MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Paperclip,
+  Pin,
+  RotateCcw,
+  Search,
   Send,
-  Server,
+  Settings,
   SquarePen,
+  StopCircle,
   Terminal,
-  Wifi,
-  WifiOff,
+  Trash2,
+  User,
   X,
   Zap,
 } from "lucide-react";
@@ -34,7 +50,7 @@ type Confidence = "high" | "medium" | "low" | "unverified";
 
 type ChatMode = "chat" | "agent";
 
-type BrainType = "chat" | "search" | "agent" | "memory" | "project" | "planner" | "reasoner" | "multi_agent" | "math" | "time" | "utility" | "knowledge";
+type BrainType = "coding" | "chat" | "search" | "agent" | "memory" | "project" | "planner" | "reasoner" | "multi_agent" | "math" | "time" | "utility" | "knowledge";
 
 type IntentType = "general_chat" | "coding_agent" | "live_search" | "time_query" | "math_query";
 
@@ -60,25 +76,17 @@ type Message = {
 
 type Conversation = {
   id: string;
-  dbId?: string;  // DB-persisted conversation ID
   title: string;
   messages: Message[];
   mode: ChatMode;
+  pinned?: boolean;
+  archived?: boolean;
+  updatedAt?: number;
 };
-
-type ProviderType = "local_ollama" | "openrouter" | "custom_openai_compatible";
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
-const MODEL_OPTIONS = [
-  "qwen3-coder:30b",
-  "qwen2.5-coder:32b",
-  "llama3.1:8b",
-  "qwen/qwen3-coder:free",
-  "anthropic/claude-3-haiku",
-];
-
 const AGENT_KEYWORDS = [
   "build", "create", "landing page", "website", "app", "fix code",
   "edit file", "run project", "banavi aap", "bana", "code", "dashboard",
@@ -101,7 +109,7 @@ const TIME_PATTERNS = [
 
 const CHAT_EXAMPLES = [
   { icon: MessageSquare, text: "kem cho? How are you?" },
-  { icon: BrainCircuit, text: "Explain AI agents in Gujarati" },
+  { icon: Code2, text: "Explain AI agents in Gujarati" },
   { icon: ChevronRight, text: "What is machine learning?" },
   { icon: ChevronRight, text: "Ketla vagya? What time is it?" },
 ];
@@ -126,6 +134,19 @@ function isTimeQuery(text: string): boolean {
   return TIME_PATTERNS.some((p) => p.test(text));
 }
 
+function getDateGroup(updatedAt?: number) {
+  const date = updatedAt ? new Date(updatedAt) : new Date();
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfThatDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const diffDays = Math.floor((startOfToday - startOfThatDay) / 86_400_000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays <= 7) return "Previous 7 Days";
+  if (diffDays <= 30) return "Previous Month";
+  return "Older";
+}
+
 function getCurrentTimeResponse(): string {
   const now = new Date();
   const timeStr = now.toLocaleTimeString("en-IN", {
@@ -139,36 +160,7 @@ function getCurrentTimeResponse(): string {
     month: "long",
     day: "numeric",
   });
-  return `અત્યારે સમય **${timeStr}** છે.\n\n📅 ${dateStr}`;
-}
-
-// ---------------------------------------------------------------------------
-// Brain Status Badge
-// ---------------------------------------------------------------------------
-function BrainBadge({ provider }: { provider: ProviderType | null }) {
-  if (!provider) return null;
-  if (provider === "openrouter") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-iris/15 px-2 py-0.5 text-xs font-medium text-iris">
-        <CloudLightning className="size-3" />
-        Cloud Test Brain
-      </span>
-    );
-  }
-  if (provider === "custom_openai_compatible") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-400">
-        <Server className="size-3" />
-        Custom API
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
-      <HardDriveDownload className="size-3" />
-      Local Brain
-    </span>
-  );
+  return `અત્યારે સમય **${timeStr}** છે.\n\n${dateStr}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -177,14 +169,14 @@ function BrainBadge({ provider }: { provider: ProviderType | null }) {
 function ModeBadge({ mode }: { mode: ChatMode }) {
   if (mode === "agent") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
         <Zap className="size-3" />
         Agent Mode
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
+    <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
       <MessageSquare className="size-3" />
       Chat Mode
     </span>
@@ -196,14 +188,14 @@ function ModeBadge({ mode }: { mode: ChatMode }) {
 // ---------------------------------------------------------------------------
 function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMode) => void }) {
   return (
-    <div className="flex rounded-md border border-slate-200 bg-slate-100 p-0.5 dark:border-white/[0.08] dark:bg-white/[0.04]">
+    <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-white/10 dark:bg-white/5">
       <button
         onClick={() => onChange("chat")}
         className={[
           "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition",
           mode === "chat"
             ? "bg-white text-slate-950 shadow-sm dark:bg-white dark:text-slate-950"
-            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+            : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white",
         ].join(" ")}
       >
         <MessageSquare className="size-3" />
@@ -214,8 +206,8 @@ function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMo
         className={[
           "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition",
           mode === "agent"
-            ? "bg-amber-500/20 text-amber-300"
-            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+            ? "bg-white text-slate-950 shadow-sm dark:bg-white dark:text-slate-950"
+            : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white",
         ].join(" ")}
       >
         <Zap className="size-3" />
@@ -231,13 +223,13 @@ function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMo
 const BRAIN_META: Record<string, { label: string; color: string; bg: string }> = {
   chat:        { label: "CHAT",        color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
   search:      { label: "SEARCH",      color: "text-sky-300",     bg: "bg-sky-400/10 border-sky-400/20" },
-  agent:       { label: "AGENT",       color: "text-iris",        bg: "bg-iris/10 border-iris/20" },
-  memory:      { label: "MEMORY",      color: "text-amber-300",   bg: "bg-amber-400/10 border-amber-400/20" },
-  project:     { label: "PROJECT",     color: "text-cyan-300",    bg: "bg-cyan-400/10 border-cyan-400/20" },
-  planner:     { label: "PLANNER",     color: "text-purple-300",  bg: "bg-purple-400/10 border-purple-400/20" },
-  reasoner:    { label: "REASONER",    color: "text-orange-300",  bg: "bg-orange-400/10 border-orange-400/20" },
-  multi_agent: { label: "MULTI-AGENT", color: "text-rose-300",    bg: "bg-rose-400/10 border-rose-400/20" },
-  math:        { label: "MATH",        color: "text-emerald-300", bg: "bg-emerald-400/10 border-emerald-400/20" },
+  agent:       { label: "AGENT",       color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-600/10 border-blue-600/20" },
+  memory:      { label: "MEMORY",      color: "text-slate-600 dark:text-slate-300", bg: "bg-slate-600/10 border-slate-600/20" },
+  project:     { label: "PROJECT",     color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-600/10 border-blue-600/20" },
+  planner:     { label: "PLANNER",     color: "text-slate-600 dark:text-slate-300", bg: "bg-slate-600/10 border-slate-600/20" },
+  reasoner:    { label: "REASONER",    color: "text-slate-600 dark:text-slate-300", bg: "bg-slate-600/10 border-slate-600/20" },
+  multi_agent: { label: "MULTI-AGENT", color: "text-blue-700 dark:text-blue-300", bg: "bg-blue-600/10 border-blue-600/20" },
+  math:        { label: "MATH",        color: "text-slate-600 dark:text-slate-300", bg: "bg-slate-600/10 border-slate-600/20" },
   time:        { label: "UTILITY",     color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
   utility:     { label: "UTILITY",     color: "text-slate-400",   bg: "bg-slate-400/10 border-slate-400/20" },
   knowledge:   { label: "KNOWLEDGE",   color: "text-teal-300",    bg: "bg-teal-400/10 border-teal-400/20" },
@@ -263,20 +255,20 @@ function ReasoningPanel({ reasoning }: { reasoning?: Message["reasoning"] }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1 text-[10px] text-orange-400/70 transition hover:text-orange-300"
+        className="flex items-center gap-1 text-[10px] text-slate-500 transition hover:text-slate-800 dark:hover:text-slate-200"
       >
         <ChevronRight className={`size-3 transition ${open ? "rotate-90" : ""}`} />
         Reasoning trace · {(reasoning.totalMs / 1000).toFixed(1)}s · {reasoning.confidence} confidence
       </button>
       {open && (
-        <div className="mt-2 space-y-2 rounded-lg border border-orange-400/15 bg-orange-950/20 p-3 text-[11px]">
+        <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-white/10 dark:bg-white/[0.03]">
           <div>
-            <p className="mb-1 font-semibold text-orange-400">💭 Thinking</p>
-            <p className="whitespace-pre-wrap text-slate-400">{reasoning.thinking}</p>
+            <p className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Thinking</p>
+            <p className="whitespace-pre-wrap text-slate-500 dark:text-slate-400">{reasoning.thinking}</p>
           </div>
           <div>
-            <p className="mb-1 font-semibold text-orange-400">✅ Verification</p>
-            <p className="whitespace-pre-wrap text-slate-400">{reasoning.verification}</p>
+            <p className="mb-1 font-semibold text-slate-700 dark:text-slate-200">Verification</p>
+            <p className="whitespace-pre-wrap text-slate-500 dark:text-slate-400">{reasoning.verification}</p>
           </div>
         </div>
       )}
@@ -289,17 +281,14 @@ function ReasoningPanel({ reasoning }: { reasoning?: Message["reasoning"] }) {
 // ---------------------------------------------------------------------------
 function AgentTrace({ agents }: { agents?: { agent: string; durationMs: number }[] }) {
   if (!agents || agents.length === 0) return null;
-  const AGENT_EMOJI: Record<string, string> = {
-    planner: "📋", researcher: "🔍", coder: "💻", tester: "🧪", reviewer: "✅",
-  };
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500">
-      <span className="text-rose-400/70">Pipeline:</span>
+      <span>Pipeline:</span>
       {agents.map((a, i) => (
         <span key={i} className="flex items-center gap-0.5">
           {i > 0 && <span>→</span>}
-          <span className="rounded border border-rose-400/15 bg-rose-400/5 px-1.5 py-0.5 text-rose-300/70">
-            {AGENT_EMOJI[a.agent] ?? "🤖"} {a.agent} ({(a.durationMs / 1000).toFixed(1)}s)
+          <span className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-slate-500 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-400">
+            {a.agent} ({(a.durationMs / 1000).toFixed(1)}s)
           </span>
         </span>
       ))}
@@ -322,7 +311,7 @@ function IntentBadge({ intent, searchProvider }: { intent?: IntentType; searchPr
   }
   if (intent === "coding_agent") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
         <Zap className="size-2.5" />
         Agent
       </span>
@@ -330,14 +319,14 @@ function IntentBadge({ intent, searchProvider }: { intent?: IntentType; searchPr
   }
   if (intent === "math_query") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-iris/25 bg-iris/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-iris">
+      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
         Math
       </span>
     );
   }
   if (intent === "time_query") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-mint/25 bg-mint/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-mint">
+      <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
         Time
       </span>
     );
@@ -351,9 +340,9 @@ function IntentBadge({ intent, searchProvider }: { intent?: IntentType; searchPr
 function ConfidenceBadge({ confidence }: { confidence?: Confidence }) {
   if (!confidence) return null;
   const map: Record<Confidence, { label: string; cls: string }> = {
-    high: { label: "High confidence", cls: "border-mint/25 bg-mint/10 text-mint" },
-    medium: { label: "Medium confidence", cls: "border-amber-400/25 bg-amber-400/10 text-amber-300" },
-    low: { label: "Low confidence", cls: "border-orange-400/25 bg-orange-400/10 text-orange-300" },
+    high: { label: "High confidence", cls: "border-blue-600/20 bg-blue-600/10 text-blue-700 dark:text-blue-300" },
+    medium: { label: "Medium confidence", cls: "border-slate-300 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300" },
+    low: { label: "Low confidence", cls: "border-amber-600/20 bg-amber-600/10 text-amber-700 dark:text-amber-300" },
     unverified: { label: "Unverified", cls: "border-red-400/25 bg-red-400/10 text-red-300" },
   };
   const { label, cls } = map[confidence];
@@ -380,7 +369,7 @@ function SearchQueriesPanel({ queries }: { queries?: string[] }) {
         {queries.length} search {queries.length === 1 ? "query" : "queries"} used
       </button>
       {open && (
-        <div className="mt-1.5 space-y-1 rounded-lg border border-white/8 bg-slate-950/60 p-2">
+        <div className="mt-1.5 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-white/[0.03]">
           {queries.map((q, i) => (
             <p key={i} className="font-mono text-[10px] text-slate-500">{q}</p>
           ))}
@@ -407,7 +396,7 @@ function SourceCards({ sources, provider }: { sources: Source[]; provider?: stri
             href={s.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 rounded-lg border border-sky-400/20 bg-sky-400/8 px-2.5 py-1 text-xs text-sky-300 transition hover:border-sky-400/40 hover:bg-sky-400/15"
+            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-[#262626] dark:bg-[#171717] dark:text-[#a1a1aa] dark:hover:bg-[#202020]"
           >
             <ExternalLink className="size-2.5 shrink-0" />
             <span className="max-w-[180px] truncate">{s.title}</span>
@@ -423,6 +412,8 @@ function SourceCards({ sources, provider }: { sources: Source[]; provider?: stri
 // ---------------------------------------------------------------------------
 function CodeBlock({ children, className }: { children: string; className?: string }) {
   const [copied, setCopied] = useState(false);
+  const [wrapped, setWrapped] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const language = className?.replace("language-", "") ?? "";
 
   function copy() {
@@ -432,18 +423,38 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   }
 
   return (
-    <div className="group relative my-3 rounded-lg border border-slate-200 bg-slate-950 text-sm dark:border-white/10">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
-        <span className="text-xs text-slate-500">{language || "code"}</span>
-        <button
-          onClick={copy}
-          className="flex items-center gap-1 text-xs text-slate-500 transition hover:text-slate-200"
-        >
-          {copied ? <CheckCheck className="size-3.5 text-mint" /> : <Copy className="size-3.5" />}
-          {copied ? "Copied" : "Copy"}
-        </button>
+    <div className="group relative my-4 overflow-hidden rounded-lg border border-[#262626] bg-[#171717] text-sm text-slate-100">
+      <div className="flex items-center justify-between border-b border-[#262626] bg-[#111111] px-3 py-2">
+        <span className="text-xs font-medium text-[#a1a1aa]">{language || "code"}</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setWrapped((value) => !value)}
+            className="mx-focus rounded-md px-2 py-1 text-xs text-[#a1a1aa] transition hover:bg-[#202020] hover:text-white"
+          >
+            {wrapped ? "Unwrap" : "Wrap"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setExpanded((value) => !value)}
+            className="mx-focus rounded-md px-2 py-1 text-xs text-[#a1a1aa] transition hover:bg-[#202020] hover:text-white"
+          >
+            {expanded ? "Collapse" : "Expand"}
+          </button>
+          <button
+            onClick={copy}
+            className="mx-focus flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[#a1a1aa] transition hover:bg-[#202020] hover:text-white"
+          >
+            {copied ? <CheckCheck className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
       </div>
-      <pre className="overflow-x-auto p-4 text-slate-200">
+      <pre className={[
+        "overflow-x-auto p-4 leading-6 text-slate-200",
+        wrapped ? "whitespace-pre-wrap break-words" : "whitespace-pre",
+        expanded ? "max-h-none" : "max-h-[420px]",
+      ].join(" ")}>
         <code>{children}</code>
       </pre>
     </div>
@@ -453,16 +464,30 @@ function CodeBlock({ children, className }: { children: string; className?: stri
 // ---------------------------------------------------------------------------
 // Message Bubble
 // ---------------------------------------------------------------------------
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  onRetry,
+  onEdit,
+}: {
+  message: Message;
+  onRetry?: () => void;
+  onEdit?: () => void;
+}) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
+
+  function copyMessage() {
+    void navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
-      {!isUser && (
-        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
-          <Bot className="size-4" />
-        </span>
-      )}
-      <div className="flex min-w-0 max-w-[85%] flex-col gap-1.5 sm:max-w-[80%] lg:max-w-[70%]">
+      <div className={[
+        "flex min-w-0 flex-col gap-1.5",
+        isUser ? "max-w-[85%] sm:max-w-[76%] lg:max-w-[66%]" : "w-full max-w-3xl",
+      ].join(" ")}>
         {/* Brain + Intent badges above assistant message */}
         {!isUser && (message.brain || (message.intent && message.intent !== "general_chat")) && (
           <div className="flex flex-wrap items-center gap-1.5">
@@ -472,10 +497,10 @@ function MessageBubble({ message }: { message: Message }) {
         )}
         <div
           className={[
-            "rounded-lg px-4 py-3 text-sm leading-6 shadow-sm",
+            "text-[15px] leading-7",
             isUser
-              ? "rounded-tr-sm bg-slate-950 text-white dark:bg-white dark:text-slate-950"
-              : "rounded-tl-sm border border-slate-200 bg-white text-slate-800 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200",
+              ? "rounded-3xl bg-[#f4f4f5] px-4 py-2.5 text-slate-950 dark:bg-[#2f2f2f] dark:text-white"
+              : "text-slate-900 dark:text-white",
           ].join(" ")}
         >
           {isUser ? (
@@ -509,7 +534,7 @@ function MessageBubble({ message }: { message: Message }) {
                       href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-slate-950 underline underline-offset-2 hover:text-slate-700 dark:text-white dark:hover:text-slate-200"
+                      className="text-blue-600 underline underline-offset-2 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                     >
                       {children}
                     </a>
@@ -539,7 +564,7 @@ function MessageBubble({ message }: { message: Message }) {
                 },
                 table({ children }) {
                   return (
-                    <div className="my-3 overflow-x-auto rounded-lg border border-white/10">
+                    <div className="my-3 overflow-x-auto rounded-lg border border-slate-200 dark:border-white/10">
                       <table className="w-full text-xs">{children}</table>
                     </div>
                   );
@@ -548,7 +573,7 @@ function MessageBubble({ message }: { message: Message }) {
                   return <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">{children}</th>;
                 },
                 td({ children }) {
-                  return <td className="border-b border-slate-100 px-3 py-2 text-slate-700 dark:border-white/5 dark:text-slate-300">{children}</td>;
+                  return <td className="border-b border-slate-100 px-3 py-2 text-slate-600 dark:border-white/5 dark:text-slate-300">{children}</td>;
                 },
               }}
             >
@@ -579,12 +604,34 @@ function MessageBubble({ message }: { message: Message }) {
         {!isUser && message.agents && (
           <AgentTrace agents={message.agents} />
         )}
+        <div className={`flex gap-1 opacity-70 transition hover:opacity-100 ${isUser ? "justify-end" : "justify-start"}`}>
+          <button
+            onClick={copyMessage}
+            className="mx-focus rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-[#202020] dark:hover:text-white"
+            title="Copy"
+          >
+            {copied ? <CheckCheck className="size-3.5 text-blue-600 dark:text-blue-400" /> : <Copy className="size-3.5" />}
+          </button>
+          {isUser && onEdit && (
+            <button
+              onClick={onEdit}
+              className="mx-focus rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-[#202020] dark:hover:text-white"
+              title="Edit prompt"
+            >
+              <Edit3 className="size-3.5" />
+            </button>
+          )}
+          {!isUser && onRetry && (
+            <button
+              onClick={onRetry}
+              className="mx-focus rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-[#202020] dark:hover:text-white"
+              title="Retry"
+            >
+              <RotateCcw className="size-3.5" />
+            </button>
+          )}
+        </div>
       </div>
-      {isUser && (
-        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
-          <span className="text-sm font-semibold">U</span>
-        </span>
-      )}
     </div>
   );
 }
@@ -592,19 +639,16 @@ function MessageBubble({ message }: { message: Message }) {
 // ---------------------------------------------------------------------------
 // Typing indicator
 // ---------------------------------------------------------------------------
-function TypingIndicator({ model, mode }: { model: string; mode: ChatMode }) {
-  const label = mode === "agent" ? `Agent working with ${model}…` : `Thinking with ${model}…`;
+function TypingIndicator({ mode }: { mode: ChatMode }) {
+  const label = mode === "agent" ? "Meldex is preparing workspace changes…" : "Meldex is thinking…";
   return (
-    <div className="flex gap-3">
-      <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-mint/10 text-mint">
-        <Bot className="size-4" />
-      </span>
-      <div className="flex items-center gap-2 rounded-lg rounded-tl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
+    <div className="flex w-full justify-start">
+      <div className="flex max-w-3xl items-center gap-2 rounded-2xl px-1 py-3">
         <div className="flex gap-1">
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="size-1.5 animate-bounce rounded-full bg-slate-500 dark:bg-slate-300"
+              className="size-1.5 animate-bounce rounded-full bg-slate-400 dark:bg-[#a1a1aa]"
               style={{ animationDelay: `${i * 150}ms` }}
             />
           ))}
@@ -620,7 +664,7 @@ function TypingIndicator({ model, mode }: { model: string; mode: ChatMode }) {
 // ---------------------------------------------------------------------------
 function AgentSuggestion({ onSwitch, onDismiss }: { onSwitch: () => void; onDismiss: () => void }) {
   return (
-    <div className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-xs text-amber-300 sm:mx-6">
+    <div className="mx-4 mb-2 flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 sm:mx-6">
       <div className="flex items-center gap-2">
         <Zap className="size-3.5 shrink-0" />
         <span>This looks like a coding task — switch to <strong>Agent Mode</strong> for file creation?</span>
@@ -628,11 +672,11 @@ function AgentSuggestion({ onSwitch, onDismiss }: { onSwitch: () => void; onDism
       <div className="flex shrink-0 gap-2">
         <button
           onClick={onSwitch}
-          className="rounded border border-amber-400/40 px-2 py-0.5 font-medium transition hover:bg-amber-400/20"
+          className="mx-focus rounded border border-slate-200 bg-white px-2 py-0.5 font-medium transition hover:bg-slate-100 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
         >
           Switch
         </button>
-        <button onClick={onDismiss} className="text-amber-400/60 transition hover:text-amber-400">
+        <button onClick={onDismiss} className="text-slate-400 transition hover:text-slate-700 dark:hover:text-white">
           <X className="size-3.5" />
         </button>
       </div>
@@ -648,81 +692,262 @@ function Sidebar({
   activeId,
   onSelect,
   onNew,
+  onRename,
+  onPin,
+  onArchive,
+  onDuplicate,
+  onExport,
+  onDelete,
   open,
   onClose,
+  collapsed,
+  onToggleCollapsed,
+  userEmail,
 }: {
   conversations: Conversation[];
   activeId: string;
   onSelect: (id: string) => void;
   onNew: () => void;
+  onRename: (id: string) => void;
+  onPin: (id: string) => void;
+  onArchive: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onExport: (id: string) => void;
+  onDelete: (id: string) => void;
   open: boolean;
   onClose: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  userEmail?: string | null;
 }) {
+  const [query, setQuery] = useState("");
+  const visibleConversations = conversations
+    .filter((conv) => !conv.archived)
+    .filter((conv) => conv.title.toLowerCase().includes(query.toLowerCase()))
+    .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  const pinned = visibleConversations.filter((conv) => conv.pinned);
+  const unpinned = visibleConversations.filter((conv) => !conv.pinned);
+  const groups = ["Today", "Yesterday", "Previous 7 Days", "Previous Month", "Older"]
+    .map((label) => ({ label, items: unpinned.filter((conv) => getDateGroup(conv.updatedAt) === label) }))
+    .filter((group) => group.items.length > 0);
+
   return (
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
           onClick={onClose}
         />
       )}
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white text-slate-950 transition-transform duration-200 dark:border-white/[0.08] dark:bg-[#090d14] dark:text-white lg:relative lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-[#f9f9f9] transition-all duration-200 dark:border-[#262626] dark:bg-[#111111] lg:relative lg:translate-x-0",
+          collapsed ? "lg:w-[68px]" : "w-[260px]",
           open ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-white/[0.08]">
-          <div className="flex min-w-0 items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-lg bg-slate-950 text-white dark:bg-white dark:text-slate-950">
-              <MessageSquare className="size-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">Meldex Chat</span>
-              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">Conversations</span>
-            </span>
-          </div>
+        <div className="flex w-full flex-col">
+        <div className="flex items-center justify-between px-3 py-3">
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="mx-focus hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white lg:grid"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+          {!collapsed && <span className="text-sm font-semibold text-slate-950 dark:text-white">Meldex</span>}
           <div className="flex gap-1">
             <button
               onClick={onNew}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/[0.08] dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
+              className="mx-focus rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
               title="New chat"
             >
               <MessageSquarePlus className="size-4" />
             </button>
             <button
               onClick={onClose}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/[0.08] dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white lg:hidden"
+              className="mx-focus rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:hover:bg-[#202020] dark:hover:text-white lg:hidden"
             >
               <X className="size-4" />
             </button>
           </div>
         </div>
-        <div className="thin-scrollbar flex-1 overflow-y-auto py-2">
-          {conversations.length === 0 && (
-            <p className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">No chats yet</p>
+        {!collapsed && <div className="px-3 pb-3">
+          <button
+            type="button"
+            onClick={onNew}
+            className="mx-focus mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-800 transition hover:bg-slate-200 dark:text-white dark:hover:bg-[#202020]"
+          >
+            <MessageSquarePlus className="size-4" />
+            New Chat
+          </button>
+          <label className="relative block">
+            <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search history"
+              className="mx-focus w-full rounded-lg border-0 bg-slate-200/70 py-2 pl-9 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-500 dark:bg-[#202020] dark:text-white dark:placeholder:text-[#71717a]"
+            />
+          </label>
+        </div>}
+        <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-3">
+          {collapsed ? (
+            <div className="grid gap-1 pt-1">
+              {[MessageSquarePlus, Search, FolderKanban, FileText, CreditCard, User].map((Icon, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={index === 0 ? onNew : undefined}
+                  className="mx-focus grid size-11 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
+                >
+                  <Icon className="size-4" />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              {visibleConversations.length === 0 && (
+                <p className="px-3 py-3 text-xs text-slate-500 dark:text-[#71717a]">No chats yet</p>
+              )}
+              {pinned.length > 0 && (
+                <HistorySection
+                  label="Pinned"
+                  conversations={pinned}
+                  activeId={activeId}
+                  onSelect={onSelect}
+                  onClose={onClose}
+                  onRename={onRename}
+                  onPin={onPin}
+                  onArchive={onArchive}
+                  onDuplicate={onDuplicate}
+                  onExport={onExport}
+                  onDelete={onDelete}
+                />
+              )}
+              {groups.map((group) => (
+                <HistorySection
+                  key={group.label}
+                  label={group.label}
+                  conversations={group.items}
+                  activeId={activeId}
+                  onSelect={onSelect}
+                  onClose={onClose}
+                  onRename={onRename}
+                  onPin={onPin}
+                  onArchive={onArchive}
+                  onDuplicate={onDuplicate}
+                  onExport={onExport}
+                  onDelete={onDelete}
+                />
+              ))}
+              <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
+              <SidebarLink href="/workspace" icon={FolderKanban} label="Projects" />
+              <SidebarLink href="/workspace" icon={FileText} label="Files" />
+              <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
+              <SidebarLink href="/settings/billing" icon={CreditCard} label="Billing" />
+              <SidebarLink href="/settings/profile" icon={User} label="Profile" />
+              <SidebarLink href="/settings" icon={Settings} label="Help" />
+            </>
           )}
-          {conversations.map((conv) => (
-            <button
-              key={conv.id}
-              onClick={() => { onSelect(conv.id); onClose(); }}
-              className={[
-                "group mx-2 flex w-[calc(100%-16px)] items-center gap-2 truncate rounded-md px-3 py-2 text-left text-sm transition",
-                conv.id === activeId
-                  ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white",
-              ].join(" ")}
-            >
-              {conv.mode === "agent"
-                ? <Zap className="size-3 shrink-0 text-amber-400/60" />
-                : <MessageSquare className="size-3 shrink-0 text-sky-400/60" />
-              }
-              <span className="truncate">{conv.title}</span>
-            </button>
-          ))}
+        </div>
+        <div className="border-t border-slate-200 p-2 dark:border-[#262626]">
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            className={[
+              "mx-focus flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-slate-700 transition hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white",
+              collapsed ? "justify-center" : "",
+            ].join(" ")}
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-[#2f2f2f]">
+              {(userEmail?.[0] ?? "U").toUpperCase()}
+            </span>
+            {!collapsed && (
+              <>
+                <span className="min-w-0 flex-1 truncate">{userEmail ?? "Account"}</span>
+                <LogOut className="size-4 text-slate-400" />
+              </>
+            )}
+          </button>
+        </div>
         </div>
       </aside>
     </>
+  );
+}
+
+function SidebarLink({ href, icon: Icon, label }: { href: string; icon: ElementType; label: string }) {
+  return (
+    <a
+      href={href}
+      className="mx-focus flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
+    >
+      <Icon className="size-4" />
+      <span>{label}</span>
+    </a>
+  );
+}
+
+function HistorySection({
+  label,
+  conversations,
+  activeId,
+  onSelect,
+  onClose,
+  onRename,
+  onPin,
+  onArchive,
+  onDuplicate,
+  onExport,
+  onDelete,
+}: {
+  label: string;
+  conversations: Conversation[];
+  activeId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+  onRename: (id: string) => void;
+  onPin: (id: string) => void;
+  onArchive: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onExport: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <section className="mt-3">
+      <p className="px-3 pb-1 text-xs font-medium text-slate-500 dark:text-[#71717a]">{label}</p>
+      <div className="space-y-0.5">
+        {conversations.map((conv) => (
+          <div
+            key={conv.id}
+            className={[
+              "group flex w-full items-center gap-1 rounded-lg px-2 py-1 text-left text-sm transition",
+              conv.id === activeId
+                ? "bg-slate-200 text-slate-950 dark:bg-[#202020] dark:text-white"
+                : "text-slate-700 hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white",
+            ].join(" ")}
+          >
+            <button
+              onClick={() => { onSelect(conv.id); onClose(); }}
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left"
+            >
+              {conv.pinned ? <Pin className="size-3 shrink-0" /> : <MessageSquare className="size-3 shrink-0" />}
+              <span className="truncate">{conv.title}</span>
+            </button>
+            <div className="hidden shrink-0 items-center gap-0.5 group-hover:flex">
+              <button onClick={() => onRename(conv.id)} className="mx-focus rounded p-1 hover:bg-white/60 dark:hover:bg-white/10" title="Rename"><Edit3 className="size-3" /></button>
+              <button onClick={() => onPin(conv.id)} className="mx-focus rounded p-1 hover:bg-white/60 dark:hover:bg-white/10" title="Pin"><Pin className="size-3" /></button>
+              <button onClick={() => onDuplicate(conv.id)} className="mx-focus rounded p-1 hover:bg-white/60 dark:hover:bg-white/10" title="Duplicate"><CopyPlus className="size-3" /></button>
+              <button onClick={() => onExport(conv.id)} className="mx-focus rounded p-1 hover:bg-white/60 dark:hover:bg-white/10" title="Export"><Download className="size-3" /></button>
+              <button onClick={() => onArchive(conv.id)} className="mx-focus rounded p-1 hover:bg-white/60 dark:hover:bg-white/10" title="Archive"><Archive className="size-3" /></button>
+              <button onClick={() => onDelete(conv.id)} className="mx-focus rounded p-1 text-red-500 hover:bg-red-500/10" title="Delete"><Trash2 className="size-3" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -751,7 +976,7 @@ function formatAgentResult(result: {
   if (result.terminalRuns && result.terminalRuns.length > 0) {
     const runs = result.terminalRuns
       .map((r) => {
-        const status = r.code === 0 ? "✅" : "❌";
+        const status = r.code === 0 ? "Passed" : "Failed";
         const out = r.stdout?.trim() ? `\n\`\`\`\n${r.stdout.trim().slice(0, 500)}\n\`\`\`` : "";
         return `${status} \`${r.command}\`${out}`;
       })
@@ -770,51 +995,54 @@ function formatAgentResult(result: {
 // Main Page
 // ---------------------------------------------------------------------------
 export default function ChatPage() {
+  const { data: session } = useSession();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string>("");
   const [mode, setMode] = useState<ChatMode>("chat");
   const [input, setInput] = useState("");
-  const [model, setModel] = useState("qwen3-coder:30b");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [brainProvider, setBrainProvider] = useState<ProviderType | null>(null);
-  const [brainOnline, setBrainOnline] = useState<boolean | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showAgentSuggestion, setShowAgentSuggestion] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const activeConv = conversations.find((c) => c.id === activeConvId) ?? null;
+  const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "OWNER";
 
   useEffect(() => {
-    const storedModel = localStorage.getItem("meldex:ollamaModel");
-    if (storedModel) setModel(storedModel);
     const storedMode = localStorage.getItem("meldex:chatMode") as ChatMode | null;
     if (storedMode === "chat" || storedMode === "agent") setMode(storedMode);
-
-    fetch("/api/models/test")
-      .then((r) => r.json())
-      .then((d: { status?: string; provider?: ProviderType }) => {
-        if (d.provider) setBrainProvider(d.provider);
-        setBrainOnline(d.status === "ok");
-      })
-      .catch(() => setBrainOnline(false));
-
-    // Load persisted conversations from DB
-    fetch("/api/conversations")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d: { conversations?: { id: string; title: string; updatedAt: string }[] } | null) => {
-        if (!d?.conversations?.length) return;
-        setConversations((prev) => {
-          const existing = new Set(prev.map((c) => c.dbId));
-          const fresh = d.conversations!.filter((c) => !existing.has(c.id)).map((c) => ({
-            id: uid(), dbId: c.id, title: c.title, messages: [], mode: "chat" as ChatMode,
-          }));
-          return [...prev, ...fresh];
-        });
-      })
-      .catch(() => {});
+    setSidebarCollapsed(localStorage.getItem("meldex:sidebarCollapsed") === "true");
+    const storedConversations = localStorage.getItem("meldex:conversations");
+    if (storedConversations) {
+      try {
+        const parsed = JSON.parse(storedConversations) as Conversation[];
+        setConversations(parsed);
+        setActiveConvId(parsed.find((c) => !c.archived)?.id ?? parsed[0]?.id ?? "");
+        return;
+      } catch {
+        localStorage.removeItem("meldex:conversations");
+      }
+    }
+    const id = uid();
+    setConversations([{ id, title: "New chat", messages: [], mode: "chat", updatedAt: Date.now() }]);
+    setActiveConvId(id);
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin) {
+      setMode("chat");
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (conversations.length > 0) {
+      localStorage.setItem("meldex:conversations", JSON.stringify(conversations));
+    }
+  }, [conversations]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -829,14 +1057,15 @@ export default function ChatPage() {
 
   // Show agent suggestion when user types agent keywords in chat mode
   useEffect(() => {
-    if (mode === "chat" && input.trim() && isAgentTask(input)) {
+    if (isAdmin && mode === "chat" && input.trim() && isAgentTask(input)) {
       setShowAgentSuggestion(true);
     } else {
       setShowAgentSuggestion(false);
     }
-  }, [input, mode]);
+  }, [input, mode, isAdmin]);
 
   function changeMode(m: ChatMode) {
+    if (m === "agent" && !isAdmin) return;
     setMode(m);
     localStorage.setItem("meldex:chatMode", m);
     // Update active conversation mode
@@ -854,18 +1083,15 @@ export default function ChatPage() {
       title: "New chat",
       messages: [],
       mode: withMode ?? mode,
+      updatedAt: Date.now(),
     };
     setConversations((prev) => [conv, ...prev]);
     setActiveConvId(id);
     setError("");
   }, [mode]);
 
-  useEffect(() => {
-    if (conversations.length === 0) createNewChat();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function sendMessage() {
-    const content = input.trim();
+  async function sendMessage(overrideContent?: string) {
+    const content = (overrideContent ?? input).trim();
     if (!content || loading || !activeConvId) return;
 
     setShowAgentSuggestion(false);
@@ -884,7 +1110,7 @@ export default function ChatPage() {
           if (c.id !== activeConvId) return c;
           const title =
             c.title === "New chat" ? content.slice(0, 40) + (content.length > 40 ? "…" : "") : c.title;
-          return { ...c, title, messages: [...c.messages, userMsg, assistantMsg] };
+          return { ...c, title, updatedAt: Date.now(), messages: [...c.messages, userMsg, assistantMsg] };
         })
       );
       setInput("");
@@ -901,20 +1127,23 @@ export default function ChatPage() {
         if (c.id !== activeConvId) return c;
         const title =
           c.title === "New chat" ? content.slice(0, 40) + (content.length > 40 ? "…" : "") : c.title;
-        return { ...c, title, mode, messages: updatedMessages };
+        return { ...c, title, mode, updatedAt: Date.now(), messages: updatedMessages };
       })
     );
     setInput("");
     setError("");
     setLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
-      if (mode === "agent") {
+      if (mode === "agent" && isAdmin) {
         // Call /api/agent for coding tasks
         const response = await fetch("/api/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task: content, model }),
+          signal: controller.signal,
+          body: JSON.stringify({ task: content }),
         });
         const data: {
           summary?: string;
@@ -934,7 +1163,7 @@ export default function ChatPage() {
         };
         setConversations((prev) =>
           prev.map((c) =>
-            c.id === activeConvId ? { ...c, messages: [...c.messages, assistantMsg] } : c
+            c.id === activeConvId ? { ...c, updatedAt: Date.now(), messages: [...c.messages, assistantMsg] } : c
           )
         );
       } else {
@@ -942,17 +1171,16 @@ export default function ChatPage() {
         const response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
-            model,
             mode: "chat",
-            conversationId: conversations.find((c) => c.id === activeConvId)?.dbId,
             messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
           }),
         });
         const data: {
           message?: string;
           error?: string;
-          provider?: ProviderType;
+          provider?: string;
           intent?: IntentType;
           brain?: BrainType;
           brainLabel?: string;
@@ -968,16 +1196,6 @@ export default function ChatPage() {
         } = await response.json();
 
         if (!response.ok) throw new Error(data.error ?? "Chat request failed");
-
-        // Persist the DB conversation ID on first response
-        if ((data as { conversationId?: string }).conversationId) {
-          const dbConvId = (data as { conversationId?: string }).conversationId!;
-          setConversations((prev) =>
-            prev.map((c) => c.id === activeConvId && !c.dbId ? { ...c, dbId: dbConvId } : c)
-          );
-        }
-
-        if (data.provider) setBrainProvider(data.provider);
 
         const assistantMsg: Message = {
           id: uid(),
@@ -998,22 +1216,113 @@ export default function ChatPage() {
         };
         setConversations((prev) =>
           prev.map((c) =>
-            c.id === activeConvId ? { ...c, messages: [...c.messages, assistantMsg] } : c
+            c.id === activeConvId ? { ...c, updatedAt: Date.now(), messages: [...c.messages, assistantMsg] } : c
           )
         );
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Request failed");
+      if (err instanceof DOMException && err.name === "AbortError") {
+        setError("");
+      } else {
+        setError(err instanceof Error ? err.message : "Request failed");
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
   const messages = activeConv?.messages ?? [];
   const examples = mode === "agent" ? AGENT_EXAMPLES : CHAT_EXAMPLES;
 
+  function renameConversation(id: string) {
+    const current = conversations.find((c) => c.id === id)?.title ?? "";
+    const title = window.prompt("Rename conversation", current)?.trim();
+    if (!title) return;
+    setConversations((prev) => prev.map((c) => c.id === id ? { ...c, title, updatedAt: Date.now() } : c));
+  }
+
+  function pinConversation(id: string) {
+    setConversations((prev) => prev.map((c) => c.id === id ? { ...c, pinned: !c.pinned, updatedAt: Date.now() } : c));
+  }
+
+  function archiveConversation(id: string) {
+    setConversations((prev) => {
+      const next = prev.map((c) => c.id === id ? { ...c, archived: true, updatedAt: Date.now() } : c);
+      if (activeConvId === id) setActiveConvId(next.find((c) => !c.archived)?.id ?? "");
+      return next;
+    });
+  }
+
+  function duplicateConversation(id: string) {
+    const source = conversations.find((c) => c.id === id);
+    if (!source) return;
+    const nextId = uid();
+    const copy: Conversation = {
+      ...source,
+      id: nextId,
+      title: `${source.title} copy`,
+      pinned: false,
+      archived: false,
+      updatedAt: Date.now(),
+      messages: source.messages.map((message) => ({ ...message, id: uid() })),
+    };
+    setConversations((prev) => [copy, ...prev]);
+    setActiveConvId(nextId);
+  }
+
+  function exportConversation(id: string) {
+    const source = conversations.find((c) => c.id === id);
+    if (!source) return;
+    const markdown = [
+      `# ${source.title}`,
+      "",
+      ...source.messages.map((message) => `## ${message.role === "user" ? "User" : "Meldex"}\n\n${message.content}`),
+    ].join("\n\n");
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${source.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "conversation"}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function deleteConversation(id: string) {
+    if (!window.confirm("Delete this conversation?")) return;
+    setConversations((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      if (activeConvId === id) setActiveConvId(next.find((c) => !c.archived)?.id ?? "");
+      return next;
+    });
+  }
+
+  function editPrompt(message: Message) {
+    setInput(message.content);
+    textareaRef.current?.focus();
+  }
+
+  function retryLastAssistant() {
+    const lastUser = [...messages].reverse().find((message) => message.role === "user");
+    if (!lastUser || loading) return;
+    void sendMessage(lastUser.content);
+  }
+
+  function stopGeneration() {
+    abortRef.current?.abort();
+    setLoading(false);
+  }
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      localStorage.setItem("meldex:sidebarCollapsed", String(next));
+      return next;
+    });
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-950 dark:bg-[#0b0f17] dark:text-white">
+    <div className="flex h-screen overflow-hidden bg-white text-slate-950 dark:bg-[#0d0d0d] dark:text-white">
       {/* Sidebar */}
       <Sidebar
         conversations={conversations}
@@ -1024,75 +1333,65 @@ export default function ChatPage() {
           if (conv) setMode(conv.mode);
         }}
         onNew={() => createNewChat()}
+        onRename={renameConversation}
+        onPin={pinConversation}
+        onArchive={archiveConversation}
+        onDuplicate={duplicateConversation}
+        onExport={exportConversation}
+        onDelete={deleteConversation}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={toggleSidebarCollapsed}
+        userEmail={session?.user?.email}
       />
 
       {/* Main chat column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 backdrop-blur dark:border-white/[0.08] dark:bg-[#0b0f17]/90 sm:px-4">
+        <header className="flex shrink-0 items-center justify-between bg-white/90 px-3 py-3 backdrop-blur sm:px-4 dark:bg-[#0d0d0d]/90">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white lg:hidden"
+              className="mx-focus rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white lg:hidden"
+              aria-label="Open sidebar"
             >
               <Menu className="size-5" />
             </button>
-            <BrainBadge provider={brainProvider} />
-            {brainOnline !== null && (
-              <span title={brainOnline ? "Brain online" : "Brain offline"} className="hidden sm:block">
-                {brainOnline ? (
-                  <Wifi className="size-4 text-mint" />
-                ) : (
-                  <WifiOff className="size-4 text-red-400" />
-                )}
-              </span>
-            )}
-            <ModeBadge mode={mode} />
+            <div className="rounded-lg px-2 py-1.5 text-sm font-medium text-slate-800 dark:text-white">
+              Meldex
+            </div>
+            {isAdmin && <ModeBadge mode={mode} />}
           </div>
 
           <div className="flex items-center gap-2">
-            <ModeSelector mode={mode} onChange={changeMode} />
-            <label className="hidden items-center gap-2 text-xs text-slate-400 sm:flex">
-              <select
-                value={model}
-                onChange={(e) => {
-                  setModel(e.target.value);
-                  localStorage.setItem("meldex:ollamaModel", e.target.value);
-                }}
-                className="rounded-md border border-slate-200 bg-white py-1 pl-2 pr-6 text-xs text-slate-800 focus:border-slate-400 focus:ring-1 focus:ring-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-100"
-              >
-                {MODEL_OPTIONS.map((m) => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-                {!MODEL_OPTIONS.includes(model) && (
-                  <option value={model}>{model}</option>
-                )}
-              </select>
-            </label>
+            {isAdmin && <ModeSelector mode={mode} onChange={changeMode} />}
             <button
               onClick={() => createNewChat()}
-              className="hidden rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white sm:block"
+              className="mx-focus hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white sm:block"
               title="New chat"
             >
               <MessageSquarePlus className="size-4" />
+            </button>
+            <button
+              type="button"
+              className="mx-focus rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
+              aria-label="More options"
+            >
+              <MoreHorizontal className="size-4" />
             </button>
           </div>
         </header>
 
         {/* Messages */}
-        <div className="thin-scrollbar flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0b0f17]">
+        <div className="thin-scrollbar flex-1 overflow-y-auto">
           {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-6 p-6 text-center">
+            <div className="flex h-full flex-col items-center justify-center gap-7 p-6 text-center">
               <div>
-                <div className="mx-auto mb-4 grid size-14 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
-                  {mode === "agent" ? <Zap className="size-7 text-amber-500" /> : <Bot className="size-7" />}
-                </div>
-                <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
-                  {mode === "agent" ? "Agent Mode" : "Chat Mode"}
+                <h2 className="text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
+                  How can I help?
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
                   {mode === "agent"
                     ? "Ask me to build, create files, fix code, or run tasks."
                     : "Ask me anything — Gujarati, Hindi, or English."}
@@ -1105,9 +1404,9 @@ export default function ChatPage() {
                     <button
                       key={p.text}
                       onClick={() => setInput(p.text)}
-                      className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-3 text-left text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
+                      className="mx-focus flex items-start gap-2 rounded-2xl border border-slate-200 bg-white p-3 text-left text-sm text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:border-[#262626] dark:bg-[#171717] dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
                     >
-                      <Icon className="mt-0.5 size-4 shrink-0 text-slate-500 dark:text-slate-400" />
+                      <Icon className="mt-0.5 size-4 shrink-0 text-slate-400" />
                       {p.text}
                     </button>
                   );
@@ -1115,13 +1414,18 @@ export default function ChatPage() {
               </div>
             </div>
           ) : (
-            <div className="mx-auto max-w-5xl space-y-4 px-3 py-6 sm:px-6">
+            <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
               {messages.map((msg) => (
-                <MessageBubble key={msg.id} message={msg} />
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  onEdit={msg.role === "user" ? () => editPrompt(msg) : undefined}
+                  onRetry={msg.role === "assistant" ? retryLastAssistant : undefined}
+                />
               ))}
-              {loading && <TypingIndicator model={model} mode={mode} />}
+              {loading && <TypingIndicator mode={mode} />}
               {error && (
-                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+                <div className="rounded-lg border border-red-600/20 bg-red-600/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                   {error}
                 </div>
               )}
@@ -1139,9 +1443,9 @@ export default function ChatPage() {
         )}
 
         {/* Input area */}
-        <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 dark:border-white/[0.08] dark:bg-[#0b0f17] sm:px-4 sm:py-4">
-          <div className="mx-auto flex max-w-4xl items-end gap-2 sm:gap-3">
-            <div className="relative flex-1">
+        <div className="shrink-0 bg-white px-3 pb-4 pt-2 dark:bg-[#0d0d0d] sm:px-4 sm:pb-5">
+          <div className="mx-auto max-w-3xl">
+            <div className="rounded-[24px] border border-slate-200 bg-white p-2 shadow-sm dark:border-[#262626] dark:bg-[#171717]">
               <textarea
                 ref={textareaRef}
                 value={input}
@@ -1155,34 +1459,50 @@ export default function ChatPage() {
                 }}
                 placeholder={
                   mode === "agent"
-                    ? "Describe a coding task… (Shift+Enter for new line)"
-                    : "Message Meldex AI… (Shift+Enter for new line)"
+                    ? "Describe a coding task..."
+                    : "Message Meldex AI..."
                 }
-                className={[
-                  "w-full resize-none rounded-lg border bg-white px-4 py-3 text-sm text-slate-950 placeholder-slate-400 shadow-sm transition focus:outline-none focus:ring-1 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder-slate-500",
-                  mode === "agent"
-                    ? "border-amber-400/30 focus:border-amber-500/60 focus:ring-amber-500/30"
-                    : "border-slate-200 focus:border-slate-400 focus:ring-slate-300 dark:border-white/[0.08]",
-                ].join(" ")}
+                className="mx-focus max-h-[220px] min-h-11 w-full resize-none border-0 bg-transparent px-3 py-2 text-[15px] leading-6 text-slate-950 shadow-none outline-none placeholder:text-slate-400 focus:ring-0 dark:text-white dark:placeholder:text-[#71717a]"
               />
+              <div className="flex items-center justify-between gap-2 px-1 pb-1">
+                <div className="flex items-center gap-1">
+                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Attach files">
+                    <Paperclip className="size-4" />
+                  </button>
+                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Attach image">
+                    <ImageIcon className="size-4" />
+                  </button>
+                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Voice input">
+                    <Mic className="size-4" />
+                  </button>
+                </div>
+                {loading ? (
+                  <button
+                    type="button"
+                    onClick={stopGeneration}
+                    className="mx-focus grid size-9 place-items-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    aria-label="Stop generation"
+                  >
+                    <StopCircle className="size-4" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => void sendMessage()}
+                    disabled={!input.trim()}
+                    className="mx-focus grid size-9 place-items-center rounded-full bg-slate-950 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    aria-label="Send message"
+                  >
+                    <Send className="size-4" />
+                  </button>
+                )}
+              </div>
             </div>
-            <button
-              onClick={() => void sendMessage()}
-              disabled={loading || !input.trim()}
-              className={[
-                "mb-0.5 grid size-10 shrink-0 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40",
-                mode === "agent" ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200",
-              ].join(" ")}
-              aria-label="Send message"
-            >
-              <Send className="size-4" />
-            </button>
           </div>
-          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-500">
+          {isAdmin && <p className="mt-2 text-center text-xs text-slate-500 dark:text-[#71717a]">
             {mode === "agent"
               ? "Agent Mode: can create/edit files and run safe commands."
               : "Chat Mode: conversational only, no file changes."}
-          </p>
+          </p>}
         </div>
       </div>
     </div>
