@@ -91,39 +91,39 @@ export default function TokensPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8 text-white">
+    <main className="mx-auto max-w-4xl px-4 py-8 text-slate-950 dark:text-white">
       <div className="mb-6">
         <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-md border border-white/10 bg-white/[0.04]">
-            <KeyRound className="size-4 text-emerald-300" />
+          <div className="grid size-9 place-items-center rounded-md border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]">
+            <KeyRound className="size-4 text-blue-600 dark:text-blue-300" />
           </div>
           <div>
             <h1 className="text-xl font-semibold">Access Tokens</h1>
-            <p className="text-sm text-slate-400">Create mdx_ tokens for the Meldex VS Code extension. Raw tokens are shown once.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Create mdx_ tokens for the Meldex VS Code extension. Raw tokens are shown once.</p>
           </div>
         </div>
       </div>
 
       {newToken && (
-        <section className="mb-6 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-200">
+        <section className="mb-6 rounded-md border border-emerald-600/25 bg-emerald-600/10 p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-200">
             <CheckCircle2 className="size-4" /> Token created. Copy it now.
           </div>
           <div className="mt-3 flex gap-2">
-            <code className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-3 py-2 font-mono text-xs text-emerald-200 break-all">{newToken}</code>
-            <button onClick={copyRawToken} className="inline-flex items-center gap-2 rounded-md border border-emerald-400/30 px-3 py-2 text-xs text-emerald-100">
+            <code className="min-w-0 flex-1 rounded-md border border-emerald-600/20 bg-white px-3 py-2 font-mono text-xs text-emerald-800 break-all dark:bg-black/40 dark:text-emerald-200">{newToken}</code>
+            <button onClick={copyRawToken} className="inline-flex items-center gap-2 rounded-md border border-emerald-600/30 px-3 py-2 text-xs text-emerald-700 dark:border-emerald-400/30 dark:text-emerald-100">
               {copied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />} {copied ? "Copied" : "Copy"}
             </button>
           </div>
-          <p className="mt-2 text-xs text-emerald-100/70">After refresh, this raw token is gone forever.</p>
+          <p className="mt-2 text-xs text-emerald-700/80 dark:text-emerald-100/70">After refresh, this raw token is gone forever.</p>
         </section>
       )}
 
-      <section className="mb-6 rounded-md border border-white/10 bg-white/[0.04] p-4">
+      <section className="mb-6 rounded-md border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.04]">
         <h2 className="text-sm font-semibold">Create token</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-[1fr_150px]">
-          <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none focus:border-white/40" placeholder="Token name" />
-          <select value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm outline-none">
+          <input value={name} onChange={(e) => setName(e.target.value)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 dark:border-white/10 dark:bg-black/30 dark:focus:border-white/40" placeholder="Token name" />
+          <select value={expiresInDays} onChange={(e) => setExpiresInDays(Number(e.target.value))} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm outline-none dark:border-white/10 dark:bg-black/30">
             <option value={30}>30 days</option>
             <option value={90}>90 days</option>
             <option value={365}>1 year</option>
@@ -131,29 +131,29 @@ export default function TokensPage() {
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {ALL_SCOPES.map((scope) => (
-            <label key={scope} className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-slate-300">
+            <label key={scope} className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-white/10 dark:bg-black/20 dark:text-slate-300">
               <input type="checkbox" checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
               {scope}
             </label>
           ))}
         </div>
-        <button onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0} className="mt-4 inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-black disabled:opacity-40">
+        <button onClick={createToken} disabled={creating || !name.trim() || scopes.length === 0} className="mt-4 inline-flex items-center gap-2 rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40 dark:bg-white dark:text-black">
           {creating ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} Create token
         </button>
       </section>
 
-      {error && <div className="mb-4 flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"><AlertCircle className="size-4" />{error}</div>}
+      {error && <div className="mb-4 flex items-center gap-2 rounded-md border border-red-600/30 bg-red-600/10 p-3 text-sm text-red-700 dark:text-red-200"><AlertCircle className="size-4" />{error}</div>}
 
       <section>
         <h2 className="mb-3 text-sm font-semibold">Tokens</h2>
         {loading ? (
-          <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="size-4 animate-spin" /> Loading...</div>
+          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400"><Loader2 className="size-4 animate-spin" /> Loading...</div>
         ) : tokens.length === 0 ? (
-          <div className="rounded-md border border-white/10 bg-white/[0.04] p-6 text-center text-sm text-slate-400">No tokens yet.</div>
+          <div className="rounded-md border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">No tokens yet.</div>
         ) : (
-          <div className="overflow-hidden rounded-md border border-white/10">
+          <div className="overflow-hidden rounded-md border border-slate-200 dark:border-white/10">
             <table className="w-full text-left text-sm">
-              <thead className="bg-white/[0.04] text-xs text-slate-400">
+              <thead className="bg-slate-50 text-xs text-slate-500 dark:bg-white/[0.04] dark:text-slate-400">
                 <tr>
                   <th className="p-3">Name</th>
                   <th className="p-3">Token</th>
@@ -165,18 +165,18 @@ export default function TokensPage() {
               </thead>
               <tbody>
                 {tokens.map((token) => (
-                  <tr key={token.id} className="border-t border-white/10">
+                  <tr key={token.id} className="border-t border-slate-200 dark:border-white/10">
                     <td className="p-3 font-medium">{token.name}</td>
-                    <td className="p-3 font-mono text-xs text-slate-300">{token.maskedToken}</td>
-                    <td className="p-3 text-xs text-slate-400">{token.scopes.join(", ")}</td>
-                    <td className="p-3 text-xs text-slate-400">
+                    <td className="p-3 font-mono text-xs text-slate-600 dark:text-slate-300">{token.maskedToken}</td>
+                    <td className="p-3 text-xs text-slate-500 dark:text-slate-400">{token.scopes.join(", ")}</td>
+                    <td className="p-3 text-xs text-slate-500 dark:text-slate-400">
                       <div>Created {new Date(token.createdAt).toLocaleDateString()}</div>
                       <div>Expires {token.expiresAt ? new Date(token.expiresAt).toLocaleDateString() : "Never"}</div>
                       <div>Last used {token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleDateString() : "Never"}</div>
                     </td>
                     <td className="p-3 text-xs">{token.status}</td>
                     <td className="p-3 text-right">
-                      <button onClick={() => revokeToken(token.id)} disabled={token.status === "revoked"} className="rounded-md p-2 text-slate-400 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-30" title="Revoke token">
+                      <button onClick={() => revokeToken(token.id)} disabled={token.status === "revoked"} className="rounded-md p-2 text-slate-500 hover:bg-red-600/10 hover:text-red-700 disabled:opacity-30 dark:text-slate-400 dark:hover:text-red-200" title="Revoke token">
                         <Trash2 className="size-4" />
                       </button>
                     </td>

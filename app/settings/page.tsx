@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Brush, CreditCard, Languages, Monitor, Moon, Shield, Trash2, User, CircleHelp, Sun } from "lucide-react";
+import { Bell, Brush, CreditCard, KeyRound, Languages, Monitor, Moon, Shield, Trash2, User, CircleHelp, Sun } from "lucide-react";
 import { PageHeader, SectionShell } from "@/components/ui";
 import { useThemePreference } from "@/components/theme-provider";
 
@@ -11,6 +11,7 @@ const userSettings = [
   { href: "/settings", label: "Notifications", description: "Product and account notifications.", icon: Bell },
   { href: "/settings", label: "Language", description: "Preferred language and regional format.", icon: Languages },
   { href: "/settings/security", label: "Security", description: "Password, sessions, and recovery.", icon: Shield },
+  { href: "/settings/tokens", label: "Access Tokens", description: "Create tokens for VS Code, CLI, and benchmarks.", icon: KeyRound },
   { href: "/settings/security", label: "Sessions", description: "Review devices signed in to your account.", icon: Monitor },
   { href: "/settings/billing", label: "Billing", description: "Plan, invoices, and subscription status.", icon: CreditCard },
   { href: "/settings", label: "Delete Account", description: "Export or permanently remove your account.", icon: Trash2 },
