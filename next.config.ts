@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
+        source: "/((?!api/workspaces/[^/]+/preview).*)",
         headers: [
           // Prevent content-type sniffing
           { key: "X-Content-Type-Options", value: "nosniff" },
