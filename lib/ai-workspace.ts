@@ -435,6 +435,18 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
 }
 
 export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>) {
+  const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
+Website Designer Agent V2:
+- Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
+- Detect category internally from Restaurant, Hotel, Cafe, Portfolio, Agency, AI Startup, SaaS, E-commerce, Landing Page, Corporate, Healthcare, Education, Finance, Travel, Event, Photography, Construction, Real Estate, Gaming, Developer Tool, Open Source, Admin Dashboard, Blog, Documentation.
+- Give every website a distinct design system: palette, typography, spacing, radius, buttons, cards, shadows, icons, animation language.
+- Never return only a centered heading, paragraph, button, and footer. Use complete sections for the category.
+- Restaurant: hero, menu, popular items, chef, gallery, testimonials, location, contact, reservation CTA, footer.
+- SaaS: hero, features, how it works, integrations, pricing, testimonials, FAQ, CTA, footer.
+- Portfolio: hero, projects, skills, experience, testimonials, contact, footer.
+- For animated/modern/beautiful/premium/creative prompts, include tasteful IntersectionObserver reveals, hover motion, smooth scrolling, gradient/glass effects, responsive grids, and reduced-motion support.
+- Static website tasks must remain dependency-free unless explicitly asked: create index.html, style.css, script.js, README.md.
+- Internal visual score must be 90+ for hierarchy, spacing, typography, responsiveness, animation, color, component quality, completeness, and accessibility before returning.` : "";
   const system = `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:
 {
@@ -444,7 +456,8 @@ Return JSON only:
   "summary": "short final summary",
   "warnings": []
 }
-Rules: use relative paths, avoid secrets, do not add dependencies for static HTML, prefer minimal patches, and create complete working files.`;
+Rules: use relative paths, avoid secrets, do not add dependencies for static HTML, prefer minimal patches, and create complete working files.
+${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");
   const raw = await generateChatCompletion({

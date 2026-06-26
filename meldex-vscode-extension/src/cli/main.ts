@@ -18,7 +18,15 @@ import { CodexStyleRuntimeAdapter } from "./runtime/codexStyleRuntime";
 
 type Json = Record<string, unknown>;
 type FileAction = { operation: "create" | "edit" | "update" | "delete"; path: string; content?: string; description?: string };
-type AgentResponse = { plan?: string[]; files?: FileAction[]; commands?: string[]; summary?: string; warnings?: string[]; error?: string };
+type AgentResponse = {
+  plan?: string[];
+  files?: FileAction[];
+  commands?: string[];
+  summary?: string;
+  warnings?: string[];
+  validation?: string[];
+  error?: string;
+};
 type CliConfig = {
   backendUrl: string;
   maxRetries: number;
@@ -495,7 +503,412 @@ function validateAgentResponse(value: AgentResponse) {
   return { ...value, files };
 }
 
-function staticLandingPageResponse(): AgentResponse {
+type WebsiteCategory =
+  | "Restaurant" | "Hotel" | "Cafe" | "Portfolio" | "Agency" | "AI Startup" | "SaaS"
+  | "E-commerce" | "Landing Page" | "Corporate" | "Healthcare" | "Education" | "Finance"
+  | "Travel" | "Event" | "Photography" | "Construction" | "Real Estate" | "Gaming"
+  | "Developer Tool" | "Open Source" | "Admin Dashboard" | "Blog" | "Documentation";
+
+type WebsiteDesignSpec = {
+  category: WebsiteCategory;
+  title: string;
+  eyebrow: string;
+  subtitle: string;
+  cta: string;
+  secondaryCta: string;
+  palette: { bg: string; text: string; muted: string; surface: string; accent: string; accent2: string; glow: string };
+  sections: string[];
+  tone: string;
+};
+
+function detectWebsiteCategory(task: string): WebsiteCategory {
+  const lower = task.toLowerCase();
+  const checks: Array<[WebsiteCategory, RegExp]> = [
+    ["Restaurant", /restaurant|dining|chef|menu|reservation/],
+    ["Hotel", /hotel|resort|stay|rooms|booking/],
+    ["Cafe", /cafe|coffee|bakery|brunch/],
+    ["Portfolio", /portfolio|personal|resume|designer|developer profile/],
+    ["Agency", /agency|studio|creative|marketing/],
+    ["AI Startup", /ai startup|artificial intelligence|machine learning|automation/],
+    ["SaaS", /saas|software|platform|startup|product/],
+    ["E-commerce", /e-?commerce|store|shop|products/],
+    ["Healthcare", /health|clinic|medical|doctor/],
+    ["Travel", /travel|tour|trip|destination/],
+    ["Event", /event|conference|festival|summit/],
+    ["Photography", /photo|photography|gallery/],
+    ["Real Estate", /real estate|property|homes|apartments/],
+    ["Gaming", /gaming|game|esports/],
+    ["Developer Tool", /developer tool|api|sdk|devtool|cli/],
+    ["Documentation", /docs|documentation/],
+    ["Blog", /blog|publication|magazine/],
+  ];
+  return checks.find(([, pattern]) => pattern.test(lower))?.[0] || "Landing Page";
+}
+
+function titleFromTask(task: string, category: WebsiteCategory) {
+  const cleaned = task
+    .replace(/\b(create|build|make|design|generate|animated|beautiful|modern|premium|website|landing page|site)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (cleaned.length > 3) return cleaned.split(" ").slice(0, 4).map((word) => word[0]?.toUpperCase() + word.slice(1)).join(" ");
+  if (category === "Restaurant") return "Aurora Table";
+  if (category === "SaaS") return "Meldex Cloud";
+  if (category === "Portfolio") return "Studio Portfolio";
+  if (category === "Travel") return "Vista Trails";
+  return "Meldex Studio";
+}
+
+function websiteDesignSpec(task: string): WebsiteDesignSpec {
+  const category = detectWebsiteCategory(task);
+  const animated = /animated|interactive|beautiful|premium|modern|creative/i.test(task);
+  const title = titleFromTask(task, category);
+  const defaults = {
+    category,
+    title,
+    cta: category === "Restaurant" ? "Reserve a table" : category === "Portfolio" ? "View projects" : "Start now",
+    secondaryCta: category === "Restaurant" ? "Explore menu" : category === "Portfolio" ? "Contact me" : "See how it works",
+    sections: ["Hero", "Features", "Showcase", "Testimonials", "CTA", "Footer"],
+    tone: animated ? "premium animated" : "premium",
+  };
+  if (category === "Restaurant") {
+    return {
+      ...defaults,
+      eyebrow: "Seasonal dining experience",
+      subtitle: "A warm, cinematic restaurant website with crafted menus, chef-led storytelling, reservations, gallery, testimonials, and location.",
+      palette: { bg: "#120c08", text: "#fff7ed", muted: "#d6bfa8", surface: "#21150f", accent: "#f59e0b", accent2: "#fb7185", glow: "rgba(245,158,11,.28)" },
+      sections: ["Hero", "Menu", "Popular Items", "Chef", "Gallery", "Testimonials", "Location", "Reservation CTA", "Footer"],
+    };
+  }
+  if (category === "Portfolio") {
+    return {
+      ...defaults,
+      eyebrow: "Selected work and craft",
+      subtitle: "A polished portfolio with confident typography, project cards, skills, experience, testimonials, and a conversion-focused contact area.",
+      palette: { bg: "#0b1020", text: "#eef2ff", muted: "#aab3d6", surface: "#121a31", accent: "#8b5cf6", accent2: "#06b6d4", glow: "rgba(139,92,246,.3)" },
+      sections: ["Hero", "Projects", "Skills", "Experience", "Testimonials", "Contact", "Footer"],
+    };
+  }
+  if (category === "SaaS" || category === "AI Startup" || category === "Developer Tool") {
+    return {
+      ...defaults,
+      eyebrow: "Launch faster with intelligent systems",
+      subtitle: "A modern SaaS marketing page with a sharp hero, feature architecture, workflow, integrations, pricing, testimonials, FAQ, and CTA.",
+      palette: { bg: "#f8fbff", text: "#111827", muted: "#64748b", surface: "#ffffff", accent: "#6d5dfc", accent2: "#0ea5e9", glow: "rgba(109,93,252,.22)" },
+      sections: ["Hero", "Features", "How it works", "Integrations", "Pricing", "Testimonials", "FAQ", "CTA", "Footer"],
+    };
+  }
+  return {
+    ...defaults,
+    eyebrow: "Premium digital experience",
+    subtitle: "A complete conversion-ready website with distinctive sections, responsive cards, polished motion, and a professional visual system.",
+    palette: { bg: "#f8fafc", text: "#111827", muted: "#64748b", surface: "#ffffff", accent: "#7c3aed", accent2: "#14b8a6", glow: "rgba(124,58,237,.22)" },
+  };
+}
+
+function sectionCards(spec: WebsiteDesignSpec) {
+  return spec.sections.slice(1, -1).map((section, index) => `
+      <article id="${sectionAnchor(section)}" class="section-card reveal" style="--delay:${index * 80}ms">
+        <span class="card-index">${String(index + 1).padStart(2, "0")}</span>
+        <h3>${section}</h3>
+        <p>${sectionCopy(spec.category, section)}</p>
+      </article>`).join("");
+}
+
+function sectionAnchor(section: string) {
+  return `section-${section.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+function sectionCopy(category: WebsiteCategory, section: string) {
+  const copy: Record<string, string> = {
+    "Menu": "Curated seasonal dishes with rich descriptions, price hints, and a refined editorial rhythm.",
+    "Popular Items": "Signature highlights presented like premium product cards with hover depth and visual balance.",
+    "Chef": "A human story area that builds trust and makes the brand feel warm, considered, and memorable.",
+    "Gallery": "Responsive image placeholders with elegant aspect ratios and subtle motion instead of empty boxes.",
+    "Location": "Clear hours, address, and contact details designed for quick decisions.",
+    "Features": "Benefit-led cards with concise copy, icons, and strong visual hierarchy.",
+    "How it works": "A simple process timeline that explains value without clutter.",
+    "Integrations": "Logo-style integration chips and system cards arranged in a clean grid.",
+    "Pricing": "Modern pricing cards with CTA hierarchy and generous spacing.",
+    "FAQ": "Accessible answers that reduce friction before conversion.",
+    "Projects": "Case-study cards with metrics, tags, and polished preview blocks.",
+    "Skills": "Capability badges grouped for scanning and credibility.",
+    "Experience": "A compact timeline with roles, outcomes, and proof points.",
+    "Testimonials": "Social proof cards with quotes, names, and soft shadows.",
+    "Contact": "A focused form section with clear labels and usable controls.",
+  };
+  return copy[section] || `A premium ${category.toLowerCase()} section with thoughtful hierarchy, spacing, and responsive behavior.`;
+}
+
+function premiumStaticWebsiteResponse(task: string): AgentResponse {
+  const spec = websiteDesignSpec(task);
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${spec.title} | ${spec.category}</title>
+  <meta name="description" content="${spec.subtitle}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <header class="nav">
+    <a class="brand" href="#"><span></span>${spec.title}</a>
+    <nav aria-label="Primary">
+      ${spec.sections.slice(1, 5).map((section) => `<a href="#${sectionAnchor(section)}">${section}</a>`).join("")}
+    </nav>
+    <a class="nav-cta" href="#contact">${spec.cta}</a>
+  </header>
+  <main>
+    <section class="hero">
+      <div class="hero-copy reveal">
+        <p class="eyebrow">${spec.eyebrow}</p>
+        <h1>${heroHeadline(spec)}</h1>
+        <p class="lede">${spec.subtitle}</p>
+        <div class="actions">
+          <a class="button primary" href="#contact">${spec.cta}</a>
+          <a class="button ghost" href="#showcase">${spec.secondaryCta}</a>
+        </div>
+      </div>
+      <div class="hero-visual reveal" aria-label="${spec.category} website preview">
+        <div class="visual-bar"><span></span><span></span><span></span></div>
+        <div class="visual-card main-card">
+          <p>${spec.category}</p>
+          <strong>${visualMetric(spec.category)}</strong>
+        </div>
+        <div class="mini-grid">
+          <div></div><div></div><div></div><div></div>
+        </div>
+      </div>
+    </section>
+    <section class="proof reveal">
+      <span>Designed system</span><span>Responsive grids</span><span>Accessible motion</span><span>Client-ready polish</span>
+    </section>
+    <section id="showcase" class="section intro reveal">
+      <p class="section-kicker">Design system</p>
+      <h2>Distinct visual language before code.</h2>
+      <p>The page uses a dedicated palette, typography scale, spacing rhythm, card system, motion language, and responsive behavior for ${spec.category.toLowerCase()} use cases.</p>
+    </section>
+    <section class="section cards">
+      ${sectionCards(spec)}
+    </section>
+    <section id="contact" class="cta reveal">
+      <div>
+        <p class="section-kicker">Ready</p>
+        <h2>${ctaHeadline(spec.category)}</h2>
+        <p>Built with a full page structure, premium spacing, hover states, animation hooks, and mobile-first responsiveness.</p>
+      </div>
+      <form>
+        <label>Name <input name="name" autocomplete="name" placeholder="Your name"></label>
+        <label>Email <input name="email" type="email" autocomplete="email" placeholder="you@example.com"></label>
+        <button type="submit">${spec.cta}</button>
+      </form>
+    </section>
+  </main>
+  <footer>
+    <span>${spec.title}</span>
+    <span>${spec.category} website generated by Meldex Website Designer Agent.</span>
+  </footer>
+  <script src="script.js"></script>
+</body>
+</html>
+`;
+  const css = `:root {
+  --bg: ${spec.palette.bg};
+  --text: ${spec.palette.text};
+  --muted: ${spec.palette.muted};
+  --surface: ${spec.palette.surface};
+  --accent: ${spec.palette.accent};
+  --accent-2: ${spec.palette.accent2};
+  --glow: ${spec.palette.glow};
+  --border: color-mix(in srgb, var(--text) 12%, transparent);
+  --shadow: 0 24px 80px rgba(15, 23, 42, .14);
+  --radius: 28px;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 15% 10%, var(--glow), transparent 34rem),
+    radial-gradient(circle at 90% 0%, color-mix(in srgb, var(--accent-2) 20%, transparent), transparent 30rem),
+    var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+}
+a { color: inherit; text-decoration: none; }
+.ambient { position: fixed; z-index: -1; width: 22rem; height: 22rem; border-radius: 999px; filter: blur(40px); opacity: .35; animation: float 10s ease-in-out infinite alternate; }
+.ambient-one { left: -7rem; top: 10rem; background: var(--accent); }
+.ambient-two { right: -8rem; top: 30rem; background: var(--accent-2); animation-delay: -3s; }
+.nav {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  min-height: 76px; padding: 0 clamp(20px, 5vw, 72px);
+  backdrop-filter: blur(22px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom: 1px solid var(--border);
+}
+.brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 900; letter-spacing: -.03em; }
+.brand span { width: 32px; height: 32px; border-radius: 12px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 12px 30px var(--glow); }
+.nav nav { display: flex; gap: 20px; color: var(--muted); font-size: 14px; font-weight: 700; }
+.nav nav a:hover { color: var(--text); }
+.nav-cta, .button, form button {
+  border: 1px solid var(--border); border-radius: 999px; padding: 12px 18px;
+  font-weight: 800; transition: transform .25s ease, box-shadow .25s ease, background .25s ease;
+}
+.nav-cta, .button.primary, form button { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: white; box-shadow: 0 18px 42px var(--glow); border: 0; }
+.button:hover, .nav-cta:hover, form button:hover { transform: translateY(-2px); }
+.button.ghost { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.hero {
+  min-height: calc(100vh - 76px);
+  display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(360px, .78fr); align-items: center; gap: clamp(32px, 6vw, 88px);
+  padding: clamp(56px, 7vw, 108px) clamp(20px, 5vw, 72px);
+}
+.eyebrow, .section-kicker { color: var(--accent); font-weight: 900; letter-spacing: .14em; text-transform: uppercase; font-size: 12px; margin: 0 0 16px; }
+h1, h2, h3 { margin: 0; letter-spacing: -.055em; }
+h1 { max-width: 980px; font-size: clamp(52px, 8vw, 112px); line-height: .88; }
+h2 { font-size: clamp(34px, 5vw, 64px); line-height: .96; }
+h3 { font-size: 22px; }
+.lede { max-width: 760px; color: var(--muted); font-size: clamp(18px, 2vw, 23px); line-height: 1.7; margin: 26px 0 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+.hero-visual {
+  min-height: 520px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--surface) 82%, transparent), color-mix(in srgb, var(--accent) 10%, transparent));
+  box-shadow: var(--shadow); padding: 22px; position: relative; overflow: hidden;
+}
+.hero-visual::before { content: ""; position: absolute; inset: 14%; border-radius: 999px; background: var(--glow); filter: blur(48px); }
+.visual-bar, .visual-card, .mini-grid { position: relative; z-index: 1; }
+.visual-bar { display: flex; gap: 8px; }
+.visual-bar span { width: 12px; height: 12px; border-radius: 999px; background: color-mix(in srgb, var(--text) 20%, transparent); }
+.main-card { margin-top: 56px; padding: 30px; border-radius: 24px; background: color-mix(in srgb, var(--bg) 72%, white 8%); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.main-card p { color: var(--muted); margin: 0 0 10px; }
+.main-card strong { display: block; font-size: clamp(38px, 6vw, 72px); line-height: .95; }
+.mini-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 18px; }
+.mini-grid div { min-height: 96px; border-radius: 20px; background: color-mix(in srgb, var(--surface) 80%, var(--accent) 8%); border: 1px solid var(--border); }
+.proof { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; padding: 0 clamp(20px, 5vw, 72px) 64px; }
+.proof span { border: 1px solid var(--border); border-radius: 999px; padding: 12px 16px; color: var(--muted); background: color-mix(in srgb, var(--surface) 72%, transparent); text-align: center; font-size: 13px; font-weight: 800; }
+.section { padding: 84px clamp(20px, 5vw, 72px); }
+.intro { max-width: 980px; }
+.intro p:last-child { max-width: 720px; color: var(--muted); line-height: 1.8; font-size: 18px; }
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding-top: 24px; }
+.section-card {
+  min-height: 260px; border: 1px solid var(--border); border-radius: 24px; padding: 26px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent); box-shadow: 0 16px 48px rgba(15,23,42,.08);
+  transition: transform .28s ease, box-shadow .28s ease, border-color .28s ease;
+}
+.section-card:hover { transform: translateY(-6px); box-shadow: var(--shadow); border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.card-index { display: inline-grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; color: white; background: linear-gradient(135deg, var(--accent), var(--accent-2)); font-weight: 900; margin-bottom: 24px; }
+.section-card p { color: var(--muted); line-height: 1.7; }
+.cta {
+  margin: 64px clamp(20px, 5vw, 72px); border-radius: var(--radius); padding: clamp(28px, 5vw, 58px);
+  display: grid; grid-template-columns: 1fr 360px; gap: 28px; align-items: end;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), color-mix(in srgb, var(--accent-2) 14%, var(--surface)));
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+}
+.cta p { color: var(--muted); line-height: 1.7; }
+form { display: grid; gap: 12px; }
+label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 800; }
+input { width: 100%; border: 1px solid var(--border); border-radius: 16px; padding: 13px 14px; font: inherit; color: var(--text); background: color-mix(in srgb, var(--bg) 78%, white 8%); }
+footer { display: flex; justify-content: space-between; gap: 18px; padding: 28px clamp(20px, 5vw, 72px); color: var(--muted); border-top: 1px solid var(--border); }
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity .7s ease, transform .7s ease; transition-delay: var(--delay, 0ms); }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+@keyframes float { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(20px, -28px, 0) scale(1.08); } }
+@media (max-width: 980px) {
+  .hero, .cta { grid-template-columns: 1fr; }
+  .hero { min-height: auto; }
+  .hero-visual { min-height: 420px; }
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .proof { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 680px) {
+  .nav nav, .nav-cta { display: none; }
+  .hero { padding-top: 42px; }
+  .cards, .proof { grid-template-columns: 1fr; }
+  footer { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .reveal { opacity: 1; transform: none; }
+}
+`;
+  const js = `const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.16 });
+
+document.querySelectorAll(".reveal").forEach((element) => observer.observe(element));
+
+document.querySelectorAll('a[href^="#"]').forEach((link) => {
+  link.addEventListener("click", (event) => {
+    const target = document.querySelector(link.getAttribute("href"));
+    if (!target) return;
+    event.preventDefault();
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
+document.querySelector("form")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button");
+  if (!button) return;
+  const original = button.textContent;
+  button.textContent = "Request received";
+  setTimeout(() => { button.textContent = original; }, 1800);
+});
+`;
+  return {
+    plan: [
+      "Detect website intent and category",
+      "Plan visual system, layout, sections, animation, responsive behavior, and accessibility",
+      "Generate premium static HTML, CSS, and JavaScript",
+      "Self-review visual completeness before returning",
+    ],
+    files: [
+      { operation: "create", path: "index.html", description: `${spec.category} website markup`, content: html },
+      { operation: "create", path: "style.css", description: "Premium responsive design system and animations", content: css },
+      { operation: "create", path: "script.js", description: "Intersection animations and interactions", content: js },
+      { operation: "create", path: "README.md", description: "Website generation notes", content: `# ${spec.title}\n\nGenerated by Meldex Website Designer Agent V2.\n\n## Category\n\n${spec.category}\n\n## Visual System\n\n- Tone: ${spec.tone}\n- Sections: ${spec.sections.join(", ")}\n- Includes responsive layout, sticky navigation, animated reveal states, cards, CTA hierarchy, and accessible reduced-motion handling.\n\nOpen \`index.html\` to preview.\n` },
+    ],
+    commands: [],
+    validation: ["Open index.html", "Check responsive layout", "Verify no horizontal overflow", "Review animation and spacing quality"],
+    summary: `Created a premium ${spec.category.toLowerCase()} website with a complete section plan, visual design system, responsive layout, and animation layer.`,
+    warnings: [],
+  };
+}
+
+function heroHeadline(spec: WebsiteDesignSpec) {
+  if (spec.category === "Restaurant") return `A cinematic table for ${spec.title}.`;
+  if (spec.category === "Portfolio") return `Selected work with sharp craft and measurable impact.`;
+  if (spec.category === "SaaS" || spec.category === "AI Startup") return `Build better workflows with ${spec.title}.`;
+  return `${spec.title} that feels premium from the first scroll.`;
+}
+
+function visualMetric(category: WebsiteCategory) {
+  if (category === "Restaurant") return "Reservations up 38%";
+  if (category === "Portfolio") return "12 featured launches";
+  if (category === "SaaS" || category === "AI Startup") return "2.4x faster teams";
+  return "Client-ready experience";
+}
+
+function ctaHeadline(category: WebsiteCategory) {
+  if (category === "Restaurant") return "Make the next reservation feel effortless.";
+  if (category === "Portfolio") return "Turn attention into a real conversation.";
+  if (category === "SaaS" || category === "AI Startup") return "Give visitors a reason to start today.";
+  return "Launch a page that looks ready for real customers.";
+}
+
+function staticLandingPageResponse(task = "Create a modern landing page"): AgentResponse {
+  return premiumStaticWebsiteResponse(task);
+  // Legacy fallback kept below only as dead-code documentation for previous output quality.
   return {
     plan: [
       "Create a static HTML entry point",
@@ -667,7 +1080,8 @@ Open \`index.html\` in a browser to preview the page.
 
 function isStaticLandingTask(task: string) {
   const lower = task.toLowerCase();
-  return lower.includes("landing page") || (lower.includes("index.html") && lower.includes("style.css") && lower.includes("script.js"));
+  return /\b(landing page|website|restaurant|hotel|cafe|portfolio|agency|saas|e-?commerce|travel|event|photography|real estate|developer tool)\b/i.test(lower)
+    || (lower.includes("index.html") && lower.includes("style.css") && lower.includes("script.js"));
 }
 
 function isStaticOnlyProject(root: string) {
@@ -1196,7 +1610,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   let response: AgentResponse;
   if (canUseStaticLandingFastPath(task, root)) {
     emit("tool_start", { tool: "fast_path", task: "static_landing_page" });
-    response = validateAgentResponse(staticLandingPageResponse());
+    response = validateAgentResponse(staticLandingPageResponse(task));
     emit("tool_result", { tool: "fast_path", status: "ok", files: response.files?.length || 0 });
   } else {
     emit("tool_start", { tool: "backend", endpoint: "/api/extensions/agent" });

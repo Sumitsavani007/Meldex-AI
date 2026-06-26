@@ -58,6 +58,19 @@ Rules:
 - Do not expose hidden chain-of-thought
 - Do not invent fake imports or unnecessary dependencies`;
 
+const WEBSITE_DESIGNER_V2 = `Website Designer Agent V2 rules for website/static/landing-page tasks:
+- Never generate a bare hero/footer page. Internally run: intent detection, category detection, visual designer, UX planner, layout planner, section planner, animation planner, palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, improve if needed.
+- Detect category internally from: Restaurant, Hotel, Cafe, Portfolio, Agency, AI Startup, SaaS, E-commerce, Landing Page, Corporate, Healthcare, Education, Finance, Travel, Event, Photography, Construction, Real Estate, Gaming, Developer Tool, Open Source, Admin Dashboard, Blog, Documentation.
+- Create a distinct design system before code: palette, typography, spacing, radius, buttons, cards, shadows, icons, animations.
+- Use complete section plans. Restaurant includes hero, menu, popular items, chef, gallery, testimonials, location, reservation CTA, footer. SaaS includes hero, features, how it works, integrations, pricing, testimonials, FAQ, CTA, footer. Portfolio includes hero, projects, skills, experience, testimonials, contact, footer.
+- If prompt says animated, modern, beautiful, premium, creative, or interactive, include tasteful IntersectionObserver reveals, hover motion, smooth scrolling, gradient/glass effects, and reduced-motion support.
+- Static HTML tasks should create only index.html, style.css, script.js, README.md unless the user explicitly asks for a framework.
+- Quality bar: output must feel client-ready, comparable to a skilled frontend engineer, not a basic school assignment. Internal visual score must be 90+ before returning.`;
+
+function isWebsiteTask(task: string) {
+  return /\b(website|landing page|restaurant|hotel|cafe|portfolio|agency|saas|e-?commerce|travel|event|photography|real estate|developer tool|animated|beautiful|premium)\b/i.test(task);
+}
+
 export async function POST(req: NextRequest) {
   // Auth
   const token = extractBearerToken(req.headers.get("authorization"));
@@ -99,7 +112,7 @@ export async function POST(req: NextRequest) {
       maxTokens,
       timeoutMs,
       messages: [
-        { role: "system", content: `${AGENT_SYSTEM}\nReturn JSON only. No markdown fences.` },
+        { role: "system", content: `${AGENT_SYSTEM}\n${isWebsiteTask(task) ? `\n${WEBSITE_DESIGNER_V2}` : ""}\nReturn JSON only. No markdown fences.` },
         { role: "user", content: ctxParts.join("\n\n") },
       ],
     });
