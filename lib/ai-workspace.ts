@@ -476,6 +476,35 @@ async function listPhysicalFiles(storagePath: string) {
   return files;
 }
 
+export async function findStaticPreviewEntry(storagePath: string) {
+  const files = await listPhysicalFiles(storagePath);
+  if (files.includes("index.html")) return "index.html";
+  return files
+    .filter((filePath) => filePath.toLowerCase().endsWith(".html"))
+    .sort((a, b) => a.split("/").length - b.split("/").length || a.localeCompare(b))[0] || null;
+}
+
+export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prompt = "") {
+  const hasIndex = files.some((file) => safeRelative(file.path).toLowerCase() === "index.html");
+  if (hasIndex || !isStaticWebsitePrompt(prompt)) return files;
+
+  let normalizedEntry = false;
+  return files.map((file) => {
+    const relative = safeRelative(file.path);
+    const isHtml = relative.toLowerCase().endsWith(".html");
+    const isPlaceholderPath = /^relative\/path\/[^/]+\.html$/i.test(relative);
+    const isLikelyStaticEntry = isHtml && !normalizedEntry && (isPlaceholderPath || files.filter((item) => safeRelative(item.path).toLowerCase().endsWith(".html")).length === 1);
+
+    if (!isLikelyStaticEntry) return { ...file, path: relative };
+    normalizedEntry = true;
+    return {
+      ...file,
+      path: "index.html",
+      description: file.description || `Normalized ${relative} to static preview entry`,
+    };
+  });
+}
+
 export async function createWorkspaceSnapshot(userId: string, projectId: string, taskId?: string, label = "before-task") {
   const project = await getOwnedWorkspaceProject(userId, projectId);
   const files = await listPhysicalFiles(project.storagePath);
@@ -516,30 +545,38 @@ export async function restoreWorkspaceSnapshot(userId: string, projectId: string
 
 export async function verifyStaticPreview(userId: string, projectId: string) {
   const project = await getOwnedWorkspaceProject(userId, projectId);
-  const indexPath = path.join(project.storagePath, "index.html");
+  const entry = await findStaticPreviewEntry(project.storagePath);
   let html = "";
+  if (!entry) {
+    return { verified: false, httpStatus: 404, message: "No HTML preview entry found", url: `/api/workspaces/${projectId}/preview` };
+  }
   try {
-    html = await readFile(indexPath, "utf8");
+    html = await readFile(resolveProjectFile(project.storagePath, entry).absolute, "utf8");
   } catch {
-    return { verified: false, httpStatus: 404, message: "index.html not found", url: `/api/workspaces/${projectId}/preview` };
+    return { verified: false, httpStatus: 404, message: `${entry} not found`, url: `/api/workspaces/${projectId}/preview` };
   }
   const hasHtml = /<!doctype html|<html|<body/i.test(html);
   const linkedAssets = [...html.matchAll(/(?:href|src)=["']([^"']+)["']/gi)]
     .map((match) => match[1])
     .filter((asset) => !asset.startsWith("http") && !asset.startsWith("#") && !asset.startsWith("data:"));
   const missing: string[] = [];
+  const entryDir = path.posix.dirname(entry);
   for (const asset of linkedAssets) {
+    const assetPath = asset.startsWith("/")
+      ? safeRelative(asset.replace(/^\//, ""))
+      : safeRelative(path.posix.join(entryDir === "." ? "" : entryDir, asset));
     try {
-      await stat(path.join(project.storagePath, safeRelative(asset.replace(/^\//, ""))));
+      await stat(resolveProjectFile(project.storagePath, assetPath).absolute);
     } catch {
       missing.push(asset);
     }
   }
+  const previewUrl = entry === "index.html" ? `/api/workspaces/${projectId}/preview` : `/api/workspaces/${projectId}/preview?file=${encodeURIComponent(entry)}`;
   return {
     verified: hasHtml && missing.length === 0,
     httpStatus: hasHtml ? 200 : 422,
     message: hasHtml && missing.length === 0 ? "HTTP 200 verified. HTML and linked assets loaded." : `Preview verification failed${missing.length ? `, missing: ${missing.join(", ")}` : ""}.`,
-    url: `/api/workspaces/${projectId}/preview`,
+    url: previewUrl,
   };
 }
 

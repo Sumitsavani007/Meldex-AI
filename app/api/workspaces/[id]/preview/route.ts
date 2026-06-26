@@ -3,7 +3,7 @@ import path from "path";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
-import { getOwnedWorkspaceProject, resolveProjectFile, verifyStaticPreview } from "@/lib/ai-workspace";
+import { findStaticPreviewEntry, getOwnedWorkspaceProject, resolveProjectFile, verifyStaticPreview } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -41,7 +41,7 @@ export async function GET(
       return NextResponse.json(verification, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const filePath = searchParams.get("file") || "index.html";
+    const filePath = searchParams.get("file") || await findStaticPreviewEntry(project.storagePath) || "index.html";
     const { absolute } = resolveProjectFile(project.storagePath, filePath);
     const body = await readFile(absolute);
     const type = contentTypes[path.extname(absolute).toLowerCase()] || "text/plain; charset=utf-8";

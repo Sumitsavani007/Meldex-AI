@@ -12,6 +12,7 @@ import {
   offlineStaticWorkspace,
   providerErrorResponse,
   readProjectFile,
+  normalizeWorkspaceFileActions,
   updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
@@ -108,7 +109,7 @@ export async function POST(
       });
     }
     const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
-    const files = Array.isArray(response.files) ? response.files : [];
+    const files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.prompt);
     const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
 
     for (const file of files) {
