@@ -164,7 +164,7 @@ function BrainBadge({ provider }: { provider: ProviderType | null }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-mint/15 px-2 py-0.5 text-xs font-medium text-mint">
+    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
       <HardDriveDownload className="size-3" />
       Local Brain
     </span>
@@ -184,7 +184,7 @@ function ModeBadge({ mode }: { mode: ChatMode }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-sky-400/15 px-2 py-0.5 text-xs font-medium text-sky-400">
+    <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs font-medium text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-300">
       <MessageSquare className="size-3" />
       Chat Mode
     </span>
@@ -196,14 +196,14 @@ function ModeBadge({ mode }: { mode: ChatMode }) {
 // ---------------------------------------------------------------------------
 function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMode) => void }) {
   return (
-    <div className="flex rounded-lg border border-white/10 bg-slate-950 p-0.5">
+    <div className="flex rounded-md border border-slate-200 bg-slate-100 p-0.5 dark:border-white/[0.08] dark:bg-white/[0.04]">
       <button
         onClick={() => onChange("chat")}
         className={[
           "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition",
           mode === "chat"
-            ? "bg-sky-500/20 text-sky-300"
-            : "text-slate-500 hover:text-slate-300",
+            ? "bg-white text-slate-950 shadow-sm dark:bg-white dark:text-slate-950"
+            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
         ].join(" ")}
       >
         <MessageSquare className="size-3" />
@@ -215,7 +215,7 @@ function ModeSelector({ mode, onChange }: { mode: ChatMode; onChange: (m: ChatMo
           "flex items-center gap-1.5 rounded-md px-3 py-1 text-xs font-medium transition",
           mode === "agent"
             ? "bg-amber-500/20 text-amber-300"
-            : "text-slate-500 hover:text-slate-300",
+            : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
         ].join(" ")}
       >
         <Zap className="size-3" />
@@ -432,7 +432,7 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   }
 
   return (
-    <div className="group relative my-3 rounded-lg border border-white/10 bg-slate-950 text-sm">
+    <div className="group relative my-3 rounded-lg border border-slate-200 bg-slate-950 text-sm dark:border-white/10">
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5">
         <span className="text-xs text-slate-500">{language || "code"}</span>
         <button
@@ -458,7 +458,7 @@ function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex gap-3 ${isUser ? "justify-end" : "justify-start"}`}>
       {!isUser && (
-        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-mint/10 text-mint">
+        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
           <Bot className="size-4" />
         </span>
       )}
@@ -472,10 +472,10 @@ function MessageBubble({ message }: { message: Message }) {
         )}
         <div
           className={[
-            "rounded-xl px-4 py-3 text-sm leading-6",
+            "rounded-lg px-4 py-3 text-sm leading-6 shadow-sm",
             isUser
-              ? "rounded-tr-sm border border-mint/25 bg-mint/10 text-slate-100"
-              : "rounded-tl-sm border border-white/10 bg-white/[0.04] text-slate-200",
+              ? "rounded-tr-sm bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+              : "rounded-tl-sm border border-slate-200 bg-white text-slate-800 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200",
           ].join(" ")}
         >
           {isUser ? (
@@ -493,7 +493,7 @@ function MessageBubble({ message }: { message: Message }) {
                   }
                   return (
                     <code
-                      className="rounded bg-white/10 px-1 py-0.5 font-mono text-xs text-slate-200"
+                      className="rounded bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-800 dark:bg-white/10 dark:text-slate-200"
                       {...props}
                     >
                       {children}
@@ -509,7 +509,7 @@ function MessageBubble({ message }: { message: Message }) {
                       href={href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-mint underline underline-offset-2 hover:text-mint/80"
+                      className="text-slate-950 underline underline-offset-2 hover:text-slate-700 dark:text-white dark:hover:text-slate-200"
                     >
                       {children}
                     </a>
@@ -523,19 +523,19 @@ function MessageBubble({ message }: { message: Message }) {
                 },
                 blockquote({ children }) {
                   return (
-                    <blockquote className="my-2 border-l-2 border-iris pl-3 text-slate-400">
+                    <blockquote className="my-2 border-l-2 border-slate-300 pl-3 text-slate-500 dark:border-white/20 dark:text-slate-400">
                       {children}
                     </blockquote>
                   );
                 },
                 h1({ children }) {
-                  return <h1 className="mt-3 text-lg font-bold text-white">{children}</h1>;
+                  return <h1 className="mt-3 text-lg font-bold text-slate-950 dark:text-white">{children}</h1>;
                 },
                 h2({ children }) {
-                  return <h2 className="mt-3 text-base font-semibold text-white">{children}</h2>;
+                  return <h2 className="mt-3 text-base font-semibold text-slate-950 dark:text-white">{children}</h2>;
                 },
                 h3({ children }) {
-                  return <h3 className="mt-2 text-sm font-semibold text-slate-200">{children}</h3>;
+                  return <h3 className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">{children}</h3>;
                 },
                 table({ children }) {
                   return (
@@ -545,10 +545,10 @@ function MessageBubble({ message }: { message: Message }) {
                   );
                 },
                 th({ children }) {
-                  return <th className="border-b border-white/10 bg-white/5 px-3 py-2 text-left font-semibold text-slate-200">{children}</th>;
+                  return <th className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-800 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">{children}</th>;
                 },
                 td({ children }) {
-                  return <td className="border-b border-white/5 px-3 py-2 text-slate-300">{children}</td>;
+                  return <td className="border-b border-slate-100 px-3 py-2 text-slate-700 dark:border-white/5 dark:text-slate-300">{children}</td>;
                 },
               }}
             >
@@ -581,7 +581,7 @@ function MessageBubble({ message }: { message: Message }) {
         )}
       </div>
       {isUser && (
-        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-iris/10 text-iris">
+        <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
           <span className="text-sm font-semibold">U</span>
         </span>
       )}
@@ -599,12 +599,12 @@ function TypingIndicator({ model, mode }: { model: string; mode: ChatMode }) {
       <span className="mt-1 grid size-8 shrink-0 place-items-center rounded-lg bg-mint/10 text-mint">
         <Bot className="size-4" />
       </span>
-      <div className="flex items-center gap-2 rounded-xl rounded-tl-sm border border-white/10 bg-white/[0.04] px-4 py-3">
+      <div className="flex items-center gap-2 rounded-lg rounded-tl-sm border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
         <div className="flex gap-1">
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="size-1.5 animate-bounce rounded-full bg-mint/60"
+              className="size-1.5 animate-bounce rounded-full bg-slate-500 dark:bg-slate-300"
               style={{ animationDelay: `${i * 150}ms` }}
             />
           ))}
@@ -662,29 +662,37 @@ function Sidebar({
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-30 bg-slate-950/60 lg:hidden"
           onClick={onClose}
         />
       )}
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-white/10 bg-slate-950 transition-transform duration-200 lg:relative lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white text-slate-950 transition-transform duration-200 dark:border-white/[0.08] dark:bg-[#090d14] dark:text-white lg:relative lg:translate-x-0",
           open ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <span className="text-sm font-semibold text-white">Chats</span>
+        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-white/[0.08]">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid size-9 place-items-center rounded-lg bg-slate-950 text-white dark:bg-white dark:text-slate-950">
+              <MessageSquare className="size-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">Meldex Chat</span>
+              <span className="block truncate text-xs text-slate-500 dark:text-slate-400">Conversations</span>
+            </span>
+          </div>
           <div className="flex gap-1">
             <button
               onClick={onNew}
-              className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+              className="rounded-md border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/[0.08] dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white"
               title="New chat"
             >
               <MessageSquarePlus className="size-4" />
             </button>
             <button
               onClick={onClose}
-              className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
+              className="rounded-md border border-slate-200 p-1.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/[0.08] dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white lg:hidden"
             >
               <X className="size-4" />
             </button>
@@ -692,17 +700,17 @@ function Sidebar({
         </div>
         <div className="thin-scrollbar flex-1 overflow-y-auto py-2">
           {conversations.length === 0 && (
-            <p className="px-4 py-3 text-xs text-slate-600">No chats yet</p>
+            <p className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">No chats yet</p>
           )}
           {conversations.map((conv) => (
             <button
               key={conv.id}
               onClick={() => { onSelect(conv.id); onClose(); }}
               className={[
-                "group flex w-full items-center gap-2 truncate px-4 py-2 text-left text-sm transition",
+                "group mx-2 flex w-[calc(100%-16px)] items-center gap-2 truncate rounded-md px-3 py-2 text-left text-sm transition",
                 conv.id === activeId
-                  ? "bg-mint/10 text-mint"
-                  : "text-slate-400 hover:bg-white/5 hover:text-slate-200",
+                  ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-white",
               ].join(" ")}
             >
               {conv.mode === "agent"
@@ -1005,7 +1013,7 @@ export default function ChatPage() {
   const examples = mode === "agent" ? AGENT_EXAMPLES : CHAT_EXAMPLES;
 
   return (
-    <div className="flex h-[calc(100vh-64px)] overflow-hidden bg-slate-900">
+    <div className="flex h-screen overflow-hidden bg-slate-50 text-slate-950 dark:bg-[#0b0f17] dark:text-white">
       {/* Sidebar */}
       <Sidebar
         conversations={conversations}
@@ -1023,11 +1031,11 @@ export default function ChatPage() {
       {/* Main chat column */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="flex shrink-0 items-center justify-between border-b border-white/10 bg-slate-900/80 px-3 py-3 backdrop-blur sm:px-4">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 backdrop-blur dark:border-white/[0.08] dark:bg-[#0b0f17]/90 sm:px-4">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
+              className="rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white lg:hidden"
             >
               <Menu className="size-5" />
             </button>
@@ -1053,7 +1061,7 @@ export default function ChatPage() {
                   setModel(e.target.value);
                   localStorage.setItem("meldex:ollamaModel", e.target.value);
                 }}
-                className="rounded border border-white/10 bg-slate-950 py-1 pl-2 pr-6 text-xs text-slate-100 focus:border-mint focus:ring-1 focus:ring-mint"
+                className="rounded-md border border-slate-200 bg-white py-1 pl-2 pr-6 text-xs text-slate-800 focus:border-slate-400 focus:ring-1 focus:ring-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-100"
               >
                 {MODEL_OPTIONS.map((m) => (
                   <option key={m} value={m}>{m}</option>
@@ -1065,7 +1073,7 @@ export default function ChatPage() {
             </label>
             <button
               onClick={() => createNewChat()}
-              className="hidden rounded-md border border-white/10 p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white sm:block"
+              className="hidden rounded-md border border-slate-200 p-1.5 text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white sm:block"
               title="New chat"
             >
               <MessageSquarePlus className="size-4" />
@@ -1074,14 +1082,14 @@ export default function ChatPage() {
         </header>
 
         {/* Messages */}
-        <div className="thin-scrollbar flex-1 overflow-y-auto">
+        <div className="thin-scrollbar flex-1 overflow-y-auto bg-slate-50 dark:bg-[#0b0f17]">
           {messages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-6 p-6 text-center">
               <div>
-                <div className="mx-auto mb-4 grid size-14 place-items-center rounded-xl bg-mint/10 text-mint">
-                  {mode === "agent" ? <Zap className="size-7 text-amber-400" /> : <Bot className="size-7" />}
+                <div className="mx-auto mb-4 grid size-14 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-200">
+                  {mode === "agent" ? <Zap className="size-7 text-amber-500" /> : <Bot className="size-7" />}
                 </div>
-                <h2 className="text-xl font-semibold text-white">
+                <h2 className="text-xl font-semibold text-slate-950 dark:text-white">
                   {mode === "agent" ? "Agent Mode" : "Chat Mode"}
                 </h2>
                 <p className="mt-1 text-sm text-slate-400">
@@ -1097,9 +1105,9 @@ export default function ChatPage() {
                     <button
                       key={p.text}
                       onClick={() => setInput(p.text)}
-                      className="flex items-start gap-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-left text-sm text-slate-300 transition hover:border-mint/40 hover:bg-mint/5 hover:text-white"
+                      className="flex items-start gap-2 rounded-lg border border-slate-200 bg-white p-3 text-left text-sm text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-white"
                     >
-                      <Icon className="mt-0.5 size-4 shrink-0 text-mint" />
+                      <Icon className="mt-0.5 size-4 shrink-0 text-slate-500 dark:text-slate-400" />
                       {p.text}
                     </button>
                   );
@@ -1107,13 +1115,13 @@ export default function ChatPage() {
               </div>
             </div>
           ) : (
-            <div className="space-y-4 px-3 py-6 sm:px-6">
+            <div className="mx-auto max-w-5xl space-y-4 px-3 py-6 sm:px-6">
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
               {loading && <TypingIndicator model={model} mode={mode} />}
               {error && (
-                <div className="rounded-lg border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                   {error}
                 </div>
               )}
@@ -1131,8 +1139,8 @@ export default function ChatPage() {
         )}
 
         {/* Input area */}
-        <div className="shrink-0 border-t border-white/10 bg-slate-900 px-3 py-3 sm:px-4 sm:py-4">
-          <div className="mx-auto flex max-w-3xl items-end gap-2 sm:gap-3">
+        <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-3 dark:border-white/[0.08] dark:bg-[#0b0f17] sm:px-4 sm:py-4">
+          <div className="mx-auto flex max-w-4xl items-end gap-2 sm:gap-3">
             <div className="relative flex-1">
               <textarea
                 ref={textareaRef}
@@ -1151,10 +1159,10 @@ export default function ChatPage() {
                     : "Message Meldex AI… (Shift+Enter for new line)"
                 }
                 className={[
-                  "w-full resize-none rounded-xl border bg-slate-950 px-4 py-3 text-sm text-slate-100 placeholder-slate-500 transition focus:outline-none focus:ring-1",
+                  "w-full resize-none rounded-lg border bg-white px-4 py-3 text-sm text-slate-950 placeholder-slate-400 shadow-sm transition focus:outline-none focus:ring-1 dark:bg-white/[0.04] dark:text-slate-100 dark:placeholder-slate-500",
                   mode === "agent"
-                    ? "border-amber-400/20 focus:border-amber-400/60 focus:ring-amber-400/40"
-                    : "border-white/10 focus:border-mint/60 focus:ring-mint/40",
+                    ? "border-amber-400/30 focus:border-amber-500/60 focus:ring-amber-500/30"
+                    : "border-slate-200 focus:border-slate-400 focus:ring-slate-300 dark:border-white/[0.08]",
                 ].join(" ")}
               />
             </div>
@@ -1162,15 +1170,15 @@ export default function ChatPage() {
               onClick={() => void sendMessage()}
               disabled={loading || !input.trim()}
               className={[
-                "mb-0.5 grid size-10 shrink-0 place-items-center rounded-xl text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-40",
-                mode === "agent" ? "bg-amber-400 hover:bg-amber-400/90" : "bg-mint hover:bg-mint/90",
+                "mb-0.5 grid size-10 shrink-0 place-items-center rounded-lg transition disabled:cursor-not-allowed disabled:opacity-40",
+                mode === "agent" ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200",
               ].join(" ")}
               aria-label="Send message"
             >
               <Send className="size-4" />
             </button>
           </div>
-          <p className="mt-2 text-center text-xs text-slate-600">
+          <p className="mt-2 text-center text-xs text-slate-500 dark:text-slate-500">
             {mode === "agent"
               ? "Agent Mode: can create/edit files and run safe commands."
               : "Chat Mode: conversational only, no file changes."}
