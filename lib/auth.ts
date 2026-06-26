@@ -25,6 +25,7 @@ const credentialsSchema = z.object({
 
 export const { auth, handlers, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   // Required when running behind a reverse proxy (Nginx)
   trustHost: true,
@@ -55,8 +56,9 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         token.id = user.id;
         token.role = (user as unknown as { role: string }).role || "USER";
       }
-      // On every token refresh, re-read role from DB to pick up role changes.
-      if (!user && token.id) {
+      // OAuth adapter users may not include custom fields like role on the
+      // first callback, so always re-read role when we have a user id.
+      if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
           select: { role: true },
