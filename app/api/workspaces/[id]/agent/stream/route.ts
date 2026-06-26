@@ -14,6 +14,7 @@ import {
   getOwnedWorkspaceProject,
   offlineStaticWorkspace,
   readProjectFile,
+  updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
   type WorkspaceAgentResponse,
@@ -83,8 +84,15 @@ export async function POST(
           await send("thinking", "Thinking", { taskId, snapshotId: snapshot.id });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("tool_start", "Reading workspace");
-          const context = await buildWorkspaceContext(project.id, project.storagePath);
+          const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.data.prompt);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length });
+          await send("memory_loaded", context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task" : "Loaded workspace memory", {
+            relatedTaskCount: context.memoryContext.relatedTaskCount,
+            reusedStyle: context.memoryContext.reusedStyle,
+            avoidedIssue: context.memoryContext.avoidedIssue,
+          });
+          if (context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
+          if (context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
           await send("thinking", "Planning files");
 
           let response: WorkspaceAgentResponse;
@@ -186,8 +194,23 @@ export async function POST(
             include: { diffs: true, runs: true, previews: true, logs: true, events: { orderBy: { sequence: "asc" } } },
           });
           await prisma.workspaceProject.update({ where: { id: project.id }, data: { qualityScore, lastPreviewUrl: verification.url } });
+          const memory = await updateWorkspaceMemorySnapshot({
+            userId: session.user.id,
+            projectId: project.id,
+            prompt: body.data.prompt,
+            summary,
+            plan,
+            changedFiles,
+            qualityScore,
+            verification,
+            status: updatedTask.status,
+            errors: verification.verified ? [] : [verification.message],
+            fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
+            commands: ["static-preview-verify"],
+          });
+          await send("memory_updated", "Updated workspace memory", { recentTasks: memory.recentTasks.length, knownIssues: memory.knownIssues.length });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode });
-          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode });
+          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory });
           completed = true;
           controller.close();
         } catch (err) {

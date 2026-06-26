@@ -31,6 +31,20 @@ export type WorkspaceAgentResponse = {
   warnings?: string[];
 };
 
+export type WorkspaceMemorySnapshot = {
+  projectSummary: string;
+  architecture: string[];
+  recentTasks: Array<{ prompt: string; summary: string; status: string; qualityScore: number; filesChanged: string[]; createdAt: string }>;
+  recentDecisions: string[];
+  knownIssues: string[];
+  successfulFixes: string[];
+  codingStyle: string[];
+  designStyle: string[];
+  lastSuccessfulCommands: string[];
+  activePreviewCommand: string;
+  updatedAt: string;
+};
+
 export type WorkspaceProviderFailure = {
   kind: "credits" | "timeout" | "rate_limit" | "unavailable" | "auth" | "unknown";
   code: string;
@@ -101,6 +115,60 @@ function redact(value: string) {
     .replace(/sk-[A-Za-z0-9_-]+/g, "sk-****")
     .replace(/sk-or-[A-Za-z0-9_-]+/g, "sk-or-****")
     .replace(/(password|token|api[_-]?key|secret)=([^\s&]+)/gi, "$1=****");
+}
+
+function safeMemoryText(value = "", max = 900) {
+  return redact(value)
+    .replace(/```[\s\S]*?```/g, "[code omitted]")
+    .replace(/\b[A-Za-z0-9_-]{24,}\b/g, (match) => match.startsWith("mdx_") || match.startsWith("sk") ? "****" : match)
+    .slice(0, max)
+    .trim();
+}
+
+function uniqueLimit(values: string[], limit: number) {
+  return [...new Set(values.map((item) => safeMemoryText(item, 240)).filter(Boolean))].slice(0, limit);
+}
+
+function emptyWorkspaceMemory(): WorkspaceMemorySnapshot {
+  return {
+    projectSummary: "",
+    architecture: [],
+    recentTasks: [],
+    recentDecisions: [],
+    knownIssues: [],
+    successfulFixes: [],
+    codingStyle: [],
+    designStyle: [],
+    lastSuccessfulCommands: [],
+    activePreviewCommand: "static-preview-verify",
+    updatedAt: new Date(0).toISOString(),
+  };
+}
+
+function normalizeMemory(raw: unknown): WorkspaceMemorySnapshot {
+  const value = (raw || {}) as Partial<WorkspaceMemorySnapshot>;
+  return {
+    ...emptyWorkspaceMemory(),
+    ...value,
+    projectSummary: safeMemoryText(value.projectSummary || "", 1000),
+    architecture: uniqueLimit(Array.isArray(value.architecture) ? value.architecture : [], 20),
+    recentTasks: Array.isArray(value.recentTasks) ? value.recentTasks.slice(0, 8).map((task) => ({
+      prompt: safeMemoryText(task.prompt, 260),
+      summary: safeMemoryText(task.summary, 360),
+      status: safeMemoryText(task.status, 40),
+      qualityScore: Number(task.qualityScore || 0),
+      filesChanged: uniqueLimit(Array.isArray(task.filesChanged) ? task.filesChanged : [], 16),
+      createdAt: safeMemoryText(task.createdAt, 40),
+    })) : [],
+    recentDecisions: uniqueLimit(Array.isArray(value.recentDecisions) ? value.recentDecisions : [], 20),
+    knownIssues: uniqueLimit(Array.isArray(value.knownIssues) ? value.knownIssues : [], 20),
+    successfulFixes: uniqueLimit(Array.isArray(value.successfulFixes) ? value.successfulFixes : [], 20),
+    codingStyle: uniqueLimit(Array.isArray(value.codingStyle) ? value.codingStyle : [], 16),
+    designStyle: uniqueLimit(Array.isArray(value.designStyle) ? value.designStyle : [], 16),
+    lastSuccessfulCommands: uniqueLimit(Array.isArray(value.lastSuccessfulCommands) ? value.lastSuccessfulCommands : [], 12),
+    activePreviewCommand: safeMemoryText(value.activePreviewCommand || "static-preview-verify", 120),
+    updatedAt: safeMemoryText(value.updatedAt || new Date(0).toISOString(), 40),
+  };
 }
 
 export function sanitizeStreamPayload(payload?: Record<string, unknown>) {
@@ -188,7 +256,7 @@ async function walkTree(root: string, relativePath = ""): Promise<WorkspaceTreeN
   const { absolute } = resolveProjectFile(root, relativePath);
   const entries = await readdir(absolute, { withFileTypes: true }).catch(() => []);
   const nodes = await Promise.all(entries
-    .filter((entry) => !entry.name.startsWith(".DS_Store"))
+    .filter((entry) => entry.name !== ".meldex" && !entry.name.startsWith(".DS_Store"))
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
     .map(async (entry) => {
       const child = path.join(relativePath, entry.name).split(path.sep).join("/");
@@ -216,6 +284,131 @@ export async function listProjectTree(projectId: string) {
     children: node.children ? applyStatus(node.children) : undefined,
   }));
   return applyStatus(tree);
+}
+
+async function memoryStoragePath(projectId: string) {
+  const project = await prisma.workspaceProject.findFirst({ where: { id: projectId, deletedAt: null } });
+  if (!project) throw new Error("Workspace project not found");
+  const dir = path.join(project.storagePath, ".meldex");
+  await mkdir(dir, { recursive: true });
+  return path.join(dir, "memory.json");
+}
+
+export async function readWorkspaceMemorySnapshot(userId: string, projectId: string) {
+  const project = await getOwnedWorkspaceProject(userId, projectId);
+  const key = `workspace:${project.id}`;
+  const context = await prisma.projectContext.findUnique({ where: { userId_projectName: { userId, projectName: key } } });
+  const raw = context?.recentEdits && typeof context.recentEdits === "object" ? context.recentEdits : {};
+  const memory = normalizeMemory({
+    ...(raw as object),
+    projectSummary: context?.summary || (raw as WorkspaceMemorySnapshot).projectSummary || "",
+    updatedAt: context?.updatedAt?.toISOString() || (raw as WorkspaceMemorySnapshot).updatedAt,
+  });
+  return { project, key, memory };
+}
+
+export function workspaceMemoryPrompt(memory: WorkspaceMemorySnapshot, prompt: string) {
+  const lower = prompt.toLowerCase();
+  const wantsContinuity = /\b(continue|previous|same|again|restore|yesterday|last|better|fix it|same issue|same style)\b/i.test(prompt);
+  const relatedTasks = memory.recentTasks
+    .map((task) => ({ task, score: lower.split(/[^a-z0-9]+/).filter((word) => word.length > 3 && task.prompt.toLowerCase().includes(word)).length + (wantsContinuity ? 3 : 0) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((item) => item.task);
+  const lines = [
+    memory.projectSummary ? `Project summary: ${memory.projectSummary}` : "",
+    memory.architecture.length ? `Architecture: ${memory.architecture.slice(0, 6).join("; ")}` : "",
+    memory.designStyle.length ? `Design style: ${memory.designStyle.slice(0, 6).join("; ")}` : "",
+    memory.codingStyle.length ? `Coding style: ${memory.codingStyle.slice(0, 6).join("; ")}` : "",
+    memory.recentDecisions.length ? `Recent decisions: ${memory.recentDecisions.slice(0, 6).join("; ")}` : "",
+    memory.knownIssues.length ? `Known issues: ${memory.knownIssues.slice(0, 5).join("; ")}` : "",
+    memory.successfulFixes.length ? `Successful fixes: ${memory.successfulFixes.slice(0, 5).join("; ")}` : "",
+    relatedTasks.length ? `Relevant previous tasks: ${relatedTasks.map((task) => `${task.prompt} => ${task.summary}`).join(" | ")}` : "",
+    memory.lastSuccessfulCommands.length ? `Last successful commands: ${memory.lastSuccessfulCommands.slice(0, 4).join("; ")}` : "",
+  ].filter(Boolean).join("\n");
+  return {
+    snippet: lines ? `[Relevant Workspace Memory]\n${lines.slice(0, 2600)}` : "",
+    relatedTaskCount: relatedTasks.length,
+    reusedStyle: memory.designStyle.length > 0 || memory.codingStyle.length > 0,
+    avoidedIssue: memory.knownIssues.length > 0,
+  };
+}
+
+export async function updateWorkspaceMemorySnapshot(input: {
+  userId: string;
+  projectId: string;
+  prompt: string;
+  summary: string;
+  plan: string[];
+  changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }>;
+  qualityScore: number;
+  verification?: { verified?: boolean; message?: string; url?: string };
+  status: string;
+  errors?: string[];
+  fixes?: string[];
+  commands?: string[];
+}) {
+  const { project, key, memory } = await readWorkspaceMemorySnapshot(input.userId, input.projectId);
+  const filesChanged = uniqueLimit(input.changedFiles.map((file) => file.path), 24);
+  const architecture = uniqueLimit([
+    project.name ? `Workspace ${project.name}` : "",
+    filesChanged.some((file) => file.endsWith(".html")) ? "Static HTML workspace" : "",
+    filesChanged.some((file) => file.endsWith(".tsx") || file.endsWith(".jsx")) ? "Component-based frontend" : "",
+    ...memory.architecture,
+  ], 20);
+  const designStyle = uniqueLimit([
+    ...input.plan.filter((step) => /style|design|responsive|theme|layout|visual/i.test(step)),
+    ...input.changedFiles.map((file) => file.description || "").filter((text) => /style|design|layout|responsive|animation/i.test(text)),
+    ...memory.designStyle,
+  ], 16);
+  const codingStyle = uniqueLimit([
+    ...input.plan.filter((step) => /component|helper|validation|clean|structure|reuse/i.test(step)),
+    ...memory.codingStyle,
+  ], 16);
+  const next = normalizeMemory({
+    ...memory,
+    projectSummary: safeMemoryText(input.summary || memory.projectSummary || `Workspace ${project.name}`, 1000),
+    architecture,
+    recentTasks: [{
+      prompt: input.prompt,
+      summary: input.summary,
+      status: input.status,
+      qualityScore: input.qualityScore,
+      filesChanged,
+      createdAt: new Date().toISOString(),
+    }, ...memory.recentTasks].slice(0, 8),
+    recentDecisions: uniqueLimit([
+      ...input.plan.map((step) => `Planned: ${step}`),
+      ...memory.recentDecisions,
+    ], 20),
+    knownIssues: uniqueLimit([...(input.errors || []), ...(input.verification?.verified ? [] : [input.verification?.message || "Preview not verified"]), ...memory.knownIssues], 20),
+    successfulFixes: uniqueLimit([...(input.fixes || []), ...(input.status === "SUCCEEDED" ? [`Completed: ${input.summary}`] : []), ...memory.successfulFixes], 20),
+    codingStyle,
+    designStyle,
+    lastSuccessfulCommands: uniqueLimit([...(input.commands || []), ...(input.verification?.verified ? ["static-preview-verify"] : []), ...memory.lastSuccessfulCommands], 12),
+    activePreviewCommand: "static-preview-verify",
+    updatedAt: new Date().toISOString(),
+  });
+  await prisma.projectContext.upsert({
+    where: { userId_projectName: { userId: input.userId, projectName: key } },
+    create: {
+      userId: input.userId,
+      projectName: key,
+      summary: next.projectSummary,
+      recentFiles: filesChanged as Prisma.InputJsonValue,
+      recentEdits: next as unknown as Prisma.InputJsonValue,
+      lastActive: new Date(),
+    },
+    update: {
+      summary: next.projectSummary,
+      recentFiles: filesChanged as Prisma.InputJsonValue,
+      recentEdits: next as unknown as Prisma.InputJsonValue,
+      lastActive: new Date(),
+    },
+  });
+  await writeFile(await memoryStoragePath(input.projectId), JSON.stringify(next, null, 2), "utf8").catch(() => undefined);
+  return next;
 }
 
 export async function readProjectFile(userId: string, projectId: string, filePath: string) {
@@ -273,7 +466,7 @@ async function listPhysicalFiles(storagePath: string) {
     const { absolute } = resolveProjectFile(storagePath, relativePath);
     const entries = await readdir(absolute, { withFileTypes: true }).catch(() => []);
     for (const entry of entries) {
-      if (entry.name === ".DS_Store") continue;
+      if (entry.name === ".DS_Store" || entry.name === ".meldex") continue;
       const child = path.join(relativePath, entry.name).split(path.sep).join("/");
       if (entry.isDirectory()) await visit(child);
       else files.push(child);
@@ -350,7 +543,7 @@ export async function verifyStaticPreview(userId: string, projectId: string) {
   };
 }
 
-export async function buildWorkspaceContext(projectId: string, storagePath: string) {
+export async function buildWorkspaceContext(projectId: string, storagePath: string, userId?: string, prompt = "") {
   const tree = await walkTree(storagePath);
   const files: string[] = [];
   const flatten = (nodes: WorkspaceTreeNode[]) => {
@@ -368,7 +561,9 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
       return { path: filePath, content: "" };
     }
   }));
-  return { projectId, projectFiles: files.slice(0, 80), relevantFiles: relevant };
+  const memory = userId ? (await readWorkspaceMemorySnapshot(userId, projectId).catch(() => null))?.memory : undefined;
+  const memoryContext = memory ? workspaceMemoryPrompt(memory, prompt) : { snippet: "", relatedTaskCount: 0, reusedStyle: false, avoidedIssue: false };
+  return { projectId, projectFiles: files.slice(0, 80), relevantFiles: relevant, memory, memoryContext };
 }
 
 function parseAgentJson(raw: string): WorkspaceAgentResponse {
@@ -477,7 +672,7 @@ ${websiteDesignerRules}`;
     timeoutMs: 120_000,
     messages: [
       { role: "system", content: system },
-      { role: "user", content: `Task:\n${prompt}\n\nProject files:\n${context.projectFiles.join("\n") || "(empty)"}\n\nRelevant context:\n${fileContext || "(empty workspace)"}` },
+      { role: "user", content: `Task:\n${prompt}\n\nProject files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context:\n${fileContext || "(empty workspace)"}` },
     ],
   });
   return parseAgentJson(raw);

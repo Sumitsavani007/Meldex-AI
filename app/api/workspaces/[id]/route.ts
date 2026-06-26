@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { getOwnedWorkspaceProject, listProjectTree, verifyStaticPreview } from "@/lib/ai-workspace";
+import { getOwnedWorkspaceProject, listProjectTree, readWorkspaceMemorySnapshot, verifyStaticPreview } from "@/lib/ai-workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ export async function GET(
   try {
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
-    const [tree, tasks, preview] = await Promise.all([
+    const [tree, tasks, preview, memorySnapshot] = await Promise.all([
       listProjectTree(project.id),
       prisma.workspaceTask.findMany({
         where: { projectId: project.id },
@@ -31,8 +31,9 @@ export async function GET(
         include: { diffs: true, runs: true, previews: true, events: { orderBy: { sequence: "asc" } } },
       }),
       verifyStaticPreview(session.user.id, project.id),
+      readWorkspaceMemorySnapshot(session.user.id, project.id).then((result) => result.memory).catch(() => null),
     ]);
-    return NextResponse.json({ project, tree, tasks, preview }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ project, tree, tasks, preview, memory: memorySnapshot }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Workspace not found" }, { status: 404 });
   }

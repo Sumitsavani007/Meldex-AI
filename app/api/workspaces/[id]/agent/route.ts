@@ -12,6 +12,7 @@ import {
   offlineStaticWorkspace,
   providerErrorResponse,
   readProjectFile,
+  updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
   deleteProjectFile,
@@ -63,7 +64,17 @@ export async function POST(
       },
     });
 
-    const context = await buildWorkspaceContext(project.id, project.storagePath);
+    const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.prompt);
+    await prisma.workspaceLog.create({
+      data: {
+        userId: session.user.id,
+        projectId: project.id,
+        taskId: task.id,
+        event: "memory_loaded",
+        message: context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task." : "Loaded workspace memory.",
+        metadata: { relatedTaskCount: context.memoryContext.relatedTaskCount, reusedStyle: context.memoryContext.reusedStyle, avoidedIssue: context.memoryContext.avoidedIssue },
+      },
+    });
     let response: WorkspaceAgentResponse;
     let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
     let offlineMode = false;
@@ -189,6 +200,20 @@ export async function POST(
       where: { id: project.id },
       data: { qualityScore, lastPreviewUrl: verification.url },
     });
+    const memory = await updateWorkspaceMemorySnapshot({
+      userId: session.user.id,
+      projectId: project.id,
+      prompt: body.prompt,
+      summary,
+      plan,
+      changedFiles,
+      qualityScore,
+      verification,
+      status: updatedTask.status,
+      errors: verification.verified ? [] : [verification.message],
+      fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
+      commands: ["static-preview-verify"],
+    });
 
     return NextResponse.json({
       task: updatedTask,
@@ -200,6 +225,7 @@ export async function POST(
       qualityScore,
       offlineMode,
       providerFailure,
+      memory,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (taskId) {

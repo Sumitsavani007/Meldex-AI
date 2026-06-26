@@ -82,9 +82,24 @@ type WorkspaceState = {
   tree: TreeNode[];
   tasks: Task[];
   preview: { url: string; verified: boolean; httpStatus?: number; message?: string; status?: string; lastCheckedAt?: string } | null;
+  memory: WorkspaceMemory | null;
 };
 
-type WorkspaceTab = "Overview" | "Files" | "Changes" | "Logs" | "Settings";
+type WorkspaceMemory = {
+  projectSummary: string;
+  architecture: string[];
+  recentTasks: Array<{ prompt: string; summary: string; status: string; qualityScore: number; filesChanged: string[]; createdAt: string }>;
+  recentDecisions: string[];
+  knownIssues: string[];
+  successfulFixes: string[];
+  codingStyle: string[];
+  designStyle: string[];
+  lastSuccessfulCommands: string[];
+  activePreviewCommand: string;
+  updatedAt: string;
+};
+
+type WorkspaceTab = "Overview" | "Files" | "Changes" | "Logs" | "Memory" | "Settings";
 
 const examples = [
   "Create a landing page",
@@ -185,7 +200,7 @@ function Timeline({ task, loading, events = [] }: { task?: Task; loading: boolea
 export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const { status } = useSession({ required: true });
   const router = useRouter();
-  const [state, setState] = useState<WorkspaceState>({ project: null, projects: [], tree: [], tasks: [], preview: null });
+  const [state, setState] = useState<WorkspaceState>({ project: null, projects: [], tree: [], tasks: [], preview: null, memory: null });
   const [prompt, setPrompt] = useState("Create a simple landing page");
   const [selectedFile, setSelectedFile] = useState("");
   const [fileContent, setFileContent] = useState("");
@@ -200,6 +215,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
   const [previewStopped, setPreviewStopped] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
+  const [memoryDraft, setMemoryDraft] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
@@ -258,7 +274,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       tree: data.tree || [],
       tasks: data.tasks || [],
       preview: data.preview || null,
+      memory: data.memory || null,
     });
+    setMemoryDraft(data.memory?.projectSummary || "");
     if (data.preview?.verified) setPreviewStopped(false);
   }
 
@@ -445,9 +463,43 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setTimeout(() => setCopiedPreview(false), 1800);
   }
 
+  async function saveMemorySummary() {
+    if (!state.project) return;
+    const response = await fetch(`/api/workspaces/${state.project.id}/memory`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "projectSummary", value: memoryDraft }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error || "Memory save failed");
+      return;
+    }
+    setState((current) => ({ ...current, memory: data.memory }));
+    setMessage("Workspace memory saved");
+  }
+
+  async function clearMemory() {
+    if (!state.project || !window.confirm("Clear workspace memory?")) return;
+    const response = await fetch(`/api/workspaces/${state.project.id}/memory`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clear: true }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setMessage(data.error || "Memory clear failed");
+      return;
+    }
+    setState((current) => ({ ...current, memory: data.memory }));
+    setMemoryDraft("");
+    setMessage("Workspace memory cleared");
+  }
+
   const showFilesPanel = activeTab === "Overview" || activeTab === "Files";
   const showChangesPanel = activeTab === "Overview" || activeTab === "Changes";
   const showLogsPanel = activeTab === "Logs";
+  const showMemoryPanel = activeTab === "Memory";
   const showSettingsPanel = activeTab === "Settings";
 
   return (
@@ -477,7 +529,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               </div>
             </div>
             <nav className="mt-3 flex items-center gap-5 text-sm">
-              {(["Overview", "Files", "Changes", "Logs", "Settings"] as WorkspaceTab[]).map((tab) => (
+              {(["Overview", "Files", "Changes", "Logs", "Memory", "Settings"] as WorkspaceTab[]).map((tab) => (
                 <button key={tab} onClick={() => {
                   setActiveTab(tab);
                   if (tab === "Logs") setLogsOpen(true);
@@ -549,7 +601,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         </aside>}
 
         <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-white/10 dark:bg-black">
-          {!showLogsPanel && !showSettingsPanel && <div className="border-b border-slate-200 p-3 dark:border-white/10">
+          {!showLogsPanel && !showSettingsPanel && !showMemoryPanel && <div className="border-b border-slate-200 p-3 dark:border-white/10">
             <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-violet-600" /> Agent prompt</div>
             <div className="mt-2 flex gap-2">
               <textarea
@@ -580,7 +632,53 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
           <div className={`grid min-h-0 flex-1 ${logsOpen || showLogsPanel ? "grid-rows-[minmax(240px,1fr)_190px]" : "grid-rows-[minmax(240px,1fr)_44px]"}`}>
             <div className="min-h-0 overflow-y-auto p-3">
-              {showSettingsPanel ? (
+              {showMemoryPanel ? (
+                <div className="space-y-3">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold">Project Memory</h2>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Safe summaries, decisions, style, known issues, and recent tasks. Secrets are redacted.</p>
+                      </div>
+                      <button onClick={clearMemory} disabled={!state.memory} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-500/20 dark:text-red-300">Clear</button>
+                    </div>
+                    <label className="mt-4 block text-xs font-semibold text-slate-500">Project summary</label>
+                    <textarea value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-violet-300 dark:border-white/10 dark:bg-white/5" placeholder="What should Meldex remember about this workspace?" />
+                    <button onClick={saveMemorySummary} disabled={!state.project} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Save memory</button>
+                  </div>
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {[
+                      ["Recent decisions", state.memory?.recentDecisions || []],
+                      ["Active style", [...(state.memory?.designStyle || []), ...(state.memory?.codingStyle || [])]],
+                      ["Known issues", state.memory?.knownIssues || []],
+                      ["Successful fixes", state.memory?.successfulFixes || []],
+                      ["Last successful commands", state.memory?.lastSuccessfulCommands || []],
+                      ["Architecture", state.memory?.architecture || []],
+                    ].map(([title, items]) => (
+                      <div key={title as string} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
+                        <h3 className="text-sm font-semibold">{title as string}</h3>
+                        <div className="mt-3 space-y-2">
+                          {(items as string[]).length ? (items as string[]).slice(0, 6).map((item, index) => (
+                            <div key={`${item}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-white/[0.04] dark:text-slate-300">{item}</div>
+                          )) : <p className="text-xs text-slate-500">No memory saved yet.</p>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
+                    <h3 className="text-sm font-semibold">Recent tasks</h3>
+                    <div className="mt-3 divide-y divide-slate-100 dark:divide-white/10">
+                      {state.memory?.recentTasks?.length ? state.memory.recentTasks.slice(0, 6).map((task) => (
+                        <div key={`${task.createdAt}-${task.prompt}`} className="py-3 text-sm">
+                          <div className="font-medium">{task.prompt}</div>
+                          <div className="mt-1 text-xs text-slate-500">{task.status} · score {task.qualityScore} · {task.filesChanged.join(", ") || "no files"}</div>
+                          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{task.summary}</p>
+                        </div>
+                      )) : <p className="text-xs text-slate-500">Run a task and Meldex will remember useful context here.</p>}
+                    </div>
+                  </div>
+                </div>
+              ) : showSettingsPanel ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
                   <h2 className="text-sm font-semibold">Workspace Settings</h2>
                   <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Workspace settings are managed automatically in this release.</p>

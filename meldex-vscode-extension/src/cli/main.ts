@@ -11,7 +11,7 @@ import { autonomousPromptSection, buildAutonomousPlan, planNeedsUserInput, safeR
 import { buildFixTask } from "../agent/fixGenerator";
 import { errorFingerprint, parseAgentError, type ParsedError } from "../agent/errorParser";
 import { blockUnsafePatch, buildMilInsight, insightSummary } from "../agent/milEngine";
-import { learnFromTask, readWorkspaceMemory } from "../agent/workspaceMemory";
+import { learnFromTask, readWorkspaceMemory, retrieveRelevantMemory } from "../agent/workspaceMemory";
 import { runBenchmarkLab } from "../agent/benchmarkLab";
 import { buildToolIntelligencePlan, learnToolSequence, TOOL_REGISTRY, validatePatchPlan } from "../agent/toolIntelligenceEngine";
 import { CodexStyleRuntimeAdapter } from "./runtime/codexStyleRuntime";
@@ -1626,6 +1626,21 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   });
   const plan = buildPlan(task, index);
   const memory = readWorkspaceMemory(meldexDir(root));
+  const relevantMemory = retrieveRelevantMemory(memory, task);
+  runtime.event("project_instructions_loaded", {
+    source: "context_memory",
+    relatedTasks: relevantMemory.relatedTasks,
+    relatedErrors: relevantMemory.relatedErrors,
+    reusedStyle: relevantMemory.reusedStyle,
+  });
+  emit("tool_result", {
+    tool: "context_memory",
+    status: "ok",
+    loaded: Boolean(relevantMemory.snippet),
+    relatedTasks: relevantMemory.relatedTasks,
+    relatedErrors: relevantMemory.relatedErrors,
+    reusedStyle: relevantMemory.reusedStyle,
+  });
   const projectMeta = (index.project || {}) as Json;
   const milBefore = buildMilInsight({
     root,
@@ -1676,7 +1691,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     task,
     index,
     packedContext.files,
-    [autonomousPromptSection(aoePlan), packedContext.instructions ? `Project instructions:\n${packedContext.instructions}` : ""].filter(Boolean).join("\n\n")
+    [autonomousPromptSection(aoePlan), relevantMemory.snippet, packedContext.instructions ? `Project instructions:\n${packedContext.instructions}` : ""].filter(Boolean).join("\n\n")
   );
   emit("tool_result", { tool: "qwen_optimizer", status: "ok", profile: optimized.profile, reasoning: optimized.reasoning });
   emit("plan", plan);
@@ -1875,6 +1890,12 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
       summary: insightSummary(milAfter),
     });
     learnFromTask(meldexDir(root), {
+      prompt: task,
+      summary: response.summary || "Task completed",
+      files: applied,
+      validation: commandResults.join(", "),
+      qualityScore: milAfter.quality.overall,
+      activePreviewCommand: requestNeedsServer(task) ? detectServerCommand(root).command : undefined,
       predictions: milAfter.prediction.likelyNextRequests,
       selfImprovement: milAfter.selfImprovement,
       style: [
@@ -1888,12 +1909,18 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   const summary = response.summary || `Prepared ${patches.length} file change(s).`;
   updateMemory(root, task, summary, patches.map((patch) => patch.path));
   learnFromTask(meldexDir(root), {
+    prompt: task,
+    summary,
+    files: patches.map((patch) => patch.path),
+    validation: applied.length ? "applied" : "preview only",
+    qualityScore: 0,
     projectSummary: String((index.project as Json)?.framework || "Unknown"),
     architectureSummary: aoePlan.architecture,
     edits: patches.map((patch) => patch.path),
     commands: response.commands || plan.commandsToRun,
     fixes: applied.length ? [`Completed: ${summary}`] : [],
     style: ["Use existing project conventions", "Prefer minimal patches", "Verify before delivery"],
+    decisions: Array.isArray(response.plan) ? response.plan : [],
     predictions: milBefore.prediction.likelyNextRequests,
     selfImprovement: milBefore.selfImprovement,
   });
