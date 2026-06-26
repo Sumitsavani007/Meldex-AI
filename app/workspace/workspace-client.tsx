@@ -15,7 +15,6 @@ import {
   FileCode2,
   FileText,
   Folder,
-  History,
   LayoutDashboard,
   Loader2,
   Play,
@@ -89,8 +88,6 @@ type WorkspaceState = {
 const navItems = [
   ["Chat", "/chat", Bot],
   ["Workspace", "/workspace", LayoutDashboard],
-  ["Projects", "/dashboard", Folder],
-  ["History", "/workspace", History],
   ["Tokens", "/settings/tokens", Code2],
   ["Billing", "/settings/billing", WalletCards],
   ["Settings", "/settings", Settings],
@@ -385,12 +382,15 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-white">
-      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/85 backdrop-blur dark:border-white/10 dark:bg-black/80">
-        <div className="flex h-14 items-center gap-3 px-4">
-          <Link href="/" className="font-semibold">Meldex AI</Link>
-          <nav className="hidden items-center gap-1 md:flex">
+      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
+        <div className="flex h-14 items-center gap-3 px-4 lg:px-5">
+          <Link href="/" className="flex items-center gap-2 rounded-md font-semibold">
+            <span className="grid size-8 place-items-center rounded-md bg-zinc-950 text-xs text-white dark:bg-white dark:text-zinc-950">M</span>
+            <span>Meldex AI</span>
+          </Link>
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Workspace navigation">
             {navItems.map(([label, href, Icon]) => (
-              <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs ${label === "Workspace" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
+              <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${label === "Workspace" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
                 <Icon className="size-3.5" /> {label}
               </Link>
             ))}

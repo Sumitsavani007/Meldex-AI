@@ -30,7 +30,7 @@ export function Header() {
     ? "/master/login"
     : "/login";
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat")) return null;
+  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat") || pathname.startsWith("/workspace")) return null;
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
