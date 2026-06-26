@@ -377,8 +377,61 @@ function parseAgentJson(raw: string): WorkspaceAgentResponse {
   const candidate = (fenced?.[1] || trimmed).trim();
   const first = candidate.indexOf("{");
   const last = candidate.lastIndexOf("}");
-  if (first === -1 || last <= first) return { plan: ["Read model response"], files: [], commands: [], summary: raw };
-  return JSON.parse(candidate.slice(first, last + 1)) as WorkspaceAgentResponse;
+  if (first === -1 || last <= first) return parseLooseWorkspaceResponse(raw);
+  try {
+    return JSON.parse(candidate.slice(first, last + 1)) as WorkspaceAgentResponse;
+  } catch {
+    return parseLooseWorkspaceResponse(raw);
+  }
+}
+
+function extractFence(raw: string, language: string) {
+  const pattern = new RegExp(`\\\`\\\`\\\`${language}\\\\s*([\\\\s\\\\S]*?)\\\`\\\`\\\``, "i");
+  return raw.match(pattern)?.[1]?.trim();
+}
+
+function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
+  const html = extractFence(raw, "html") || (/<!doctype html|<html[\s>]/i.test(raw) ? raw.trim() : "");
+  const css = extractFence(raw, "css");
+  const js = extractFence(raw, "js|javascript");
+  const files: WorkspaceFileAction[] = [];
+
+  if (html) {
+    files.push({
+      operation: "create",
+      path: "index.html",
+      content: html,
+      description: "HTML generated from non-JSON model response",
+    });
+  }
+  if (css) {
+    files.push({
+      operation: "create",
+      path: "style.css",
+      content: css,
+      description: "CSS generated from non-JSON model response",
+    });
+  }
+  if (js) {
+    files.push({
+      operation: "create",
+      path: "script.js",
+      content: js,
+      description: "JavaScript generated from non-JSON model response",
+    });
+  }
+
+  if (files.length) {
+    return {
+      plan: ["Read model response", "Recovered generated files", "Verify preview"],
+      files,
+      commands: ["static-preview-verify"],
+      summary: "Recovered usable workspace files from the model response.",
+      warnings: ["Model returned loose code instead of strict JSON."],
+    };
+  }
+
+  return { plan: ["Read model response"], files: [], commands: [], summary: raw };
 }
 
 export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>) {

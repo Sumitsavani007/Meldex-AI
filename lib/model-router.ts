@@ -220,6 +220,15 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
     return await callOpenAICompatible(baseUrl, apiKey, primaryModel, options, extraHeaders);
   } catch (err) {
     if (err instanceof ModelRouterError && err.code === "insufficient_credits") {
+      for (const fallbackModel of fallbackModels) {
+        try {
+          const result = await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
+          return `> Primary model (${primaryModel}) exceeded the current credit token budget. Using fallback: ${fallbackModel}\n\n${result}`;
+        } catch {
+          // try next fallback before attempting a smaller primary response
+        }
+      }
+
       const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
       if (reducedMaxTokens) {
         return callOpenAICompatible(
