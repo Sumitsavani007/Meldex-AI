@@ -114,46 +114,23 @@ export default function LoginForm({
   ];
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-8 text-slate-950 dark:bg-[#0b0f17] dark:text-white">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-white/[0.08] dark:bg-white/[0.03] lg:grid-cols-[1fr_420px]">
-        <div className="hidden border-r border-slate-200 bg-slate-50 p-8 dark:border-white/[0.08] dark:bg-white/[0.02] lg:flex lg:flex-col lg:justify-between">
-          <div>
-            <div className="inline-flex size-10 items-center justify-center rounded-lg bg-slate-950 text-white dark:bg-white dark:text-slate-950">
-              <ShieldCheck className="size-5" />
-            </div>
-            <h2 className="mt-6 max-w-sm text-3xl font-semibold tracking-tight">
-              {mode === "master" ? "Master control access." : "Continue to Meldex workspace."}
-            </h2>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {mode === "master"
-                ? "Manage providers, vault, runtime diagnostics, users, and deployment settings from the new control center."
-                : "Use Google, email, or an access token to open chat, agent workspace, token settings, and live backend tools."}
-            </p>
-          </div>
-          <div className="grid gap-2 text-sm text-slate-600 dark:text-slate-400">
-            {["Google sign-in", "Access token login", "Chat and agent access"].map((item) => (
-              <div key={item} className="flex items-center gap-2">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="w-full">
+    <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
+        {/* Card */}
+        <div className="bg-slate-800/60 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
 
           {/* Header */}
-          <div className="border-b border-slate-200 px-8 pb-6 pt-8 text-center dark:border-white/[0.08]">
-            <div className="mb-4 inline-flex size-12 items-center justify-center rounded-lg bg-slate-950 text-white dark:bg-white dark:text-slate-950">
-              <span className="text-xl font-bold">M</span>
+          <div className="px-8 pt-8 pb-6 text-center border-b border-white/5">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-mint/10 border border-mint/20 mb-4">
+              <span className="text-mint font-bold text-xl">M</span>
             </div>
-            <h1 className="text-2xl font-bold text-slate-950 dark:text-white">{title}</h1>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p>
+            <h1 className="text-2xl font-bold text-white">{title}</h1>
+            <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
           </div>
 
           {/* Tabs */}
           <div className="px-8 pt-6">
-            <div className="flex gap-1 rounded-md border border-slate-200 bg-slate-100 p-1 dark:border-white/[0.08] dark:bg-white/[0.04]">
+            <div className="flex gap-1 bg-slate-900/60 rounded-xl p-1 border border-white/5">
               {TABS.map(({ id, label, icon }) => (
                 <button
                   key={id}
@@ -161,8 +138,8 @@ export default function LoginForm({
                   onClick={() => { setTab(id); setError(""); }}
                   className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-medium py-2 px-3 rounded-lg transition-all duration-200 ${
                     tab === id
-                      ? "border border-slate-200 bg-white text-slate-950 shadow-sm dark:border-white/[0.08] dark:bg-white dark:text-slate-950"
-                      : "text-slate-500 hover:bg-white/60 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
+                      ? "bg-mint/20 text-mint border border-mint/30 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
                   }`}
                 >
                   {icon}
@@ -175,7 +152,7 @@ export default function LoginForm({
           <div className="px-8 pb-8 pt-5">
             {/* Error */}
             {error && (
-              <div className="mb-5 flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 mb-5 text-red-300 text-sm flex items-start gap-2">
                 <span className="mt-0.5 shrink-0">⚠</span>
                 <span>{error}</span>
               </div>
@@ -196,7 +173,7 @@ export default function LoginForm({
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
-                      className="w-full rounded-md border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-950 placeholder-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:placeholder-slate-500"
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-700/40 border border-slate-600/60 hover:border-slate-500/60 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50 focus:ring-1 focus:ring-mint/20 transition text-sm"
                       required
                     />
                   </div>
@@ -219,7 +196,7 @@ export default function LoginForm({
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full rounded-md border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm text-slate-950 placeholder-slate-400 transition focus:border-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-300 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:placeholder-slate-500"
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-700/40 border border-slate-600/60 hover:border-slate-500/60 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50 focus:ring-1 focus:ring-mint/20 transition text-sm"
                       required
                     />
                     <button
@@ -236,7 +213,7 @@ export default function LoginForm({
                 <button
                   type="submit"
                   disabled={loading}
-                  className="mt-2 w-full rounded-md bg-slate-950 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  className="w-full bg-mint/20 hover:bg-mint/30 disabled:opacity-50 text-mint border border-mint/40 font-semibold py-2.5 rounded-lg transition-all mt-2 text-sm"
                 >
                   {loading ? "Signing in…" : "Sign In"}
                 </button>
@@ -281,7 +258,7 @@ export default function LoginForm({
                       value={apiToken}
                       onChange={(e) => setApiToken(e.target.value)}
                       placeholder="mdx_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      className="w-full rounded-md border border-slate-200 bg-white py-2.5 pl-10 pr-10 font-mono text-sm text-slate-950 placeholder-slate-400 transition focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/20 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:placeholder-slate-500"
+                      className="w-full pl-10 pr-10 py-2.5 bg-slate-700/40 border border-slate-600/60 hover:border-slate-500/60 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/20 transition text-sm font-mono"
                       required
                       spellCheck={false}
                       autoComplete="off"
@@ -301,7 +278,7 @@ export default function LoginForm({
                 <button
                   type="submit"
                   disabled={loading || !apiToken.trim()}
-                  className="mt-2 w-full rounded-md border border-amber-500/30 bg-amber-500/15 py-2.5 text-sm font-semibold text-amber-700 transition hover:bg-amber-500/25 disabled:opacity-40 dark:text-amber-300"
+                  className="w-full bg-amber-500/15 hover:bg-amber-500/25 disabled:opacity-40 text-amber-300 border border-amber-500/30 font-semibold py-2.5 rounded-lg transition-all mt-2 text-sm"
                 >
                   {loading ? "Verifying token…" : "Sign In with API Token"}
                 </button>
@@ -318,7 +295,7 @@ export default function LoginForm({
                 <button
                   type="button"
                   onClick={() => signIn("google", { callbackUrl })}
-                  className="flex w-full items-center justify-center gap-3 rounded-md border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:hover:bg-white/[0.08]"
+                  className="w-full flex items-center justify-center gap-3 bg-slate-700/40 hover:bg-slate-600/50 text-white border border-slate-600/60 hover:border-slate-500 font-medium py-2.5 rounded-lg transition text-sm"
                 >
                   <Chrome className="w-4 h-4 text-blue-400" />
                   Continue with Google
@@ -327,7 +304,7 @@ export default function LoginForm({
                 <button
                   type="button"
                   onClick={() => signIn("github", { callbackUrl })}
-                  className="flex w-full items-center justify-center gap-3 rounded-md border border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-800 transition hover:bg-slate-50 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-white dark:hover:bg-white/[0.08]"
+                  className="w-full flex items-center justify-center gap-3 bg-slate-700/40 hover:bg-slate-600/50 text-white border border-slate-600/60 hover:border-slate-500 font-medium py-2.5 rounded-lg transition text-sm"
                 >
                   <Github className="w-4 h-4" />
                   Continue with GitHub
