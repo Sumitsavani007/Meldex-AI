@@ -6,20 +6,16 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Archive,
-  Bot,
   Clock3,
   Copy,
   ExternalLink,
-  LayoutDashboard,
   Loader2,
-  MessageSquare,
   Plus,
-  Settings,
+  Search,
   Sparkles,
   Trash2,
-  WalletCards,
-  Code2,
 } from "lucide-react";
+import { UserPanelSidebar } from "@/components/user-panel-sidebar";
 
 type ProjectCardData = {
   id: string;
@@ -41,36 +37,6 @@ const quickPrompts = [
   "Build an ecommerce homepage",
 ];
 
-const navItems = [
-  ["Dashboard", "/dashboard", LayoutDashboard],
-  ["Workspaces", "/workspace", Bot],
-  ["Chat", "/chat", MessageSquare],
-  ["Tokens", "/settings/tokens", Code2],
-  ["Billing", "/settings/billing", WalletCards],
-  ["Settings", "/settings", Settings],
-] as const;
-
-function WorkspaceTopbar({ status }: { status: string }) {
-  return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90">
-      <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
-        <Link href="/dashboard" className="flex items-center gap-2 rounded-md font-semibold">
-          <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-xs text-white shadow-sm shadow-violet-600/20">M</span>
-          <span>Meldex AI</span>
-        </Link>
-        <nav className="hidden items-center gap-1 md:flex" aria-label="User navigation">
-          {navItems.map(([label, href, Icon]) => (
-            <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${label === "Workspaces" ? "bg-violet-600 text-white shadow-sm shadow-violet-600/20" : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
-              <Icon className="size-3.5" aria-hidden="true" /> {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="ml-auto rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-white/8 dark:text-slate-300">{status}</div>
-      </div>
-    </header>
-  );
-}
-
 function WorkspaceProjectCard({
   project,
   onArchive,
@@ -84,21 +50,21 @@ function WorkspaceProjectCard({
   const tasks = project._count?.tasks ?? 0;
   const previewReady = Boolean(project.lastPreviewUrl || project.previews?.[0]?.verified);
   return (
-    <article className="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-zinc-950">
+    <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md dark:border-white/10 dark:bg-[#111113] dark:hover:border-violet-400/25">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{project.name}</h2>
           <p className="mt-1 text-xs text-zinc-500">Updated {new Date(project.updatedAt).toLocaleString()}</p>
         </div>
-        <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-600 dark:bg-white/8 dark:text-zinc-300">{project.status}</span>
+        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{project.status}</span>
       </div>
       <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
-        <div className="rounded-md bg-zinc-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Files</div><div className="font-semibold">{files}</div></div>
-        <div className="rounded-md bg-zinc-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Tasks</div><div className="font-semibold">{tasks}</div></div>
-        <div className="rounded-md bg-zinc-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Preview</div><div className="font-semibold">{previewReady ? "Ready" : "None"}</div></div>
+        <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Files</div><div className="font-semibold">{files}</div></div>
+        <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Tasks</div><div className="font-semibold">{tasks}</div></div>
+        <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Preview</div><div className="font-semibold">{previewReady ? "Ready" : "None"}</div></div>
       </div>
       <div className="mt-4 flex items-center gap-2">
-        <Link href={`/workspace/${project.id}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-zinc-950 px-3 py-2 text-xs font-semibold text-white dark:bg-white dark:text-zinc-950">
+        <Link href={`/workspace/${project.id}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-violet-600/20">
           Open <ExternalLink className="size-3.5" />
         </Link>
         <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-2 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Duplicate workspace is not available in V1" aria-label="Duplicate workspace disabled">
@@ -119,7 +85,7 @@ function WorkspaceEmptyState({ onCreate, loading }: { onCreate: (prompt: string)
   const [prompt, setPrompt] = useState("Create a landing page");
   return (
     <section className="mx-auto flex min-h-[420px] max-w-3xl flex-col items-center justify-center px-4 text-center">
-      <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-zinc-950">
+      <div className="mb-4 flex size-12 items-center justify-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-600/20">
         <Sparkles className="size-5" aria-hidden="true" />
       </div>
       <h1 className="text-3xl font-semibold tracking-tight">What do you want to build?</h1>
@@ -135,10 +101,10 @@ function WorkspaceEmptyState({ onCreate, loading }: { onCreate: (prompt: string)
             }
           }}
           rows={3}
-          className="min-h-24 flex-1 resize-none rounded-xl border border-zinc-200 bg-white px-4 py-3 text-left text-sm outline-none transition focus:border-zinc-400 dark:border-white/10 dark:bg-white/5"
+          className="min-h-20 flex-1 resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm outline-none transition focus:border-violet-300 dark:border-white/10 dark:bg-white/5"
           aria-label="Workspace prompt"
         />
-        <button onClick={() => onCreate(prompt)} disabled={loading || !prompt.trim()} className="flex w-24 items-center justify-center rounded-xl bg-zinc-950 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-zinc-950" aria-label="Create workspace">
+        <button onClick={() => onCreate(prompt)} disabled={loading || !prompt.trim()} className="flex w-24 items-center justify-center rounded-xl bg-violet-600 text-sm font-semibold text-white disabled:opacity-50" aria-label="Create workspace">
           {loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
         </button>
       </div>
@@ -214,34 +180,53 @@ export function WorkspaceIndexClient() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-white">
-      <WorkspaceTopbar status={statusText} />
-      {projects.length === 0 ? (
-        <WorkspaceEmptyState onCreate={createWorkspace} loading={loading} />
-      ) : (
-        <main className="mx-auto max-w-6xl px-4 py-8">
-          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">Workspace</h1>
-              <p className="mt-1 text-sm text-zinc-500">Create, continue, preview, and track your AI-built projects.</p>
+    <div className="min-h-screen bg-[#f7f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
+      <div className="flex min-h-screen">
+        <UserPanelSidebar />
+        <div className="min-w-0 flex-1">
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f7f7fb]/92 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/92 sm:px-6 lg:px-8">
+            <div className="mx-auto flex max-w-[1440px] items-center gap-4">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="grid size-6 place-items-center rounded-md bg-violet-600 text-[11px] font-semibold text-white">02</span>
+                  <p className="truncate text-sm font-semibold">Workspace Overview</p>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-white/8 dark:text-slate-300">{statusText}</span>
+                </div>
+              </div>
+              <label className="hidden h-10 w-full max-w-[360px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
+                <Search className="size-4" />
+                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
+              </label>
             </div>
-            <button onClick={() => createWorkspace("Create a landing page")} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-zinc-950 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-zinc-950">
-              {loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} New workspace
-            </button>
-          </div>
-          <div className="mb-6 rounded-lg border border-zinc-200 bg-white p-4 dark:border-white/10 dark:bg-zinc-950">
-            <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Clock3 className="size-4" /> Quick prompts</div>
-            <div className="flex flex-wrap gap-2">
-              {quickPrompts.map((prompt) => (
-                <button key={prompt} onClick={() => createWorkspace(prompt)} className="rounded-full border border-zinc-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8">{prompt}</button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => <WorkspaceProjectCard key={project.id} project={project} onArchive={archiveWorkspace} onDelete={deleteWorkspace} />)}
-          </div>
-        </main>
-      )}
+          </header>
+          {projects.length === 0 ? (
+            <WorkspaceEmptyState onCreate={createWorkspace} loading={loading} />
+          ) : (
+            <main className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h1 className="text-2xl font-semibold tracking-tight">Workspace</h1>
+                  <p className="mt-1 text-sm text-zinc-500">Create, continue, preview, and track your AI-built projects.</p>
+                </div>
+                <button onClick={() => createWorkspace("Create a landing page")} disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 disabled:opacity-50">
+                  {loading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />} New workspace
+                </button>
+              </div>
+              <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#111113]">
+                <div className="mb-3 flex items-center gap-2 text-sm font-semibold"><Clock3 className="size-4 text-violet-600" /> Quick prompts</div>
+                <div className="flex flex-wrap gap-2">
+                  {quickPrompts.map((prompt) => (
+                    <button key={prompt} onClick={() => createWorkspace(prompt)} className="rounded-full border border-slate-200 px-3 py-1.5 text-xs text-zinc-600 hover:bg-violet-50 hover:text-violet-700 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8">{prompt}</button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {projects.map((project) => <WorkspaceProjectCard key={project.id} project={project} onArchive={archiveWorkspace} onDelete={deleteWorkspace} />)}
+              </div>
+            </main>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -6,27 +6,22 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   ArrowUpRight,
-  Bot,
   CheckCircle2,
   ChevronRight,
   Clock3,
-  Code2,
   Copy,
   FileCode2,
   FileText,
   Folder,
-  LayoutDashboard,
   Loader2,
-  MessageSquare,
   Play,
   RefreshCw,
   RotateCcw,
-  Settings,
   Sparkles,
   Square,
   TerminalSquare,
-  WalletCards,
 } from "lucide-react";
+import { UserPanelSidebar } from "@/components/user-panel-sidebar";
 
 type TreeNode = {
   name: string;
@@ -85,15 +80,6 @@ type WorkspaceState = {
   tasks: Task[];
   preview: { url: string; verified: boolean; httpStatus?: number; message?: string } | null;
 };
-
-const navItems = [
-  ["Dashboard", "/dashboard", LayoutDashboard],
-  ["Workspaces", "/workspace", Bot],
-  ["Chat", "/chat", MessageSquare],
-  ["Tokens", "/settings/tokens", Code2],
-  ["Billing", "/settings/billing", WalletCards],
-  ["Settings", "/settings", Settings],
-] as const;
 
 const examples = [
   "Create a landing page",
@@ -383,28 +369,39 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
 
   return (
-    <div className="min-h-screen bg-[#f8f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90">
-        <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
-          <Link href="/dashboard" className="flex items-center gap-2 rounded-md font-semibold">
-            <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-xs text-white shadow-sm shadow-violet-600/20">M</span>
-            <span>Meldex AI</span>
-          </Link>
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Workspace navigation">
-            {navItems.map(([label, href, Icon]) => (
-              <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${label === "Workspaces" ? "bg-violet-600 text-white shadow-sm shadow-violet-600/20" : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
-                <Icon className="size-3.5" /> {label}
-              </Link>
-            ))}
-          </nav>
-          <div className="ml-auto flex items-center gap-2 text-xs text-zinc-500">
-            <span>{message}</span>
-            <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="rounded-lg border border-slate-200 bg-white p-2 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/8" title="Refresh">
-              <RefreshCw className="size-3.5" />
-            </button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#f7f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
+      <div className="flex h-screen overflow-hidden">
+        <UserPanelSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="shrink-0 border-b border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/92 lg:px-6">
+            <div className="flex items-center justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <Link href="/workspace" className="hover:text-violet-600">Workspaces</Link>
+                  <ChevronRight className="size-3" />
+                  <span className="truncate">{state.project?.name || "Workspace"}</span>
+                  <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{loading ? "Running" : message}</span>
+                </div>
+                <h1 className="mt-1 truncate text-lg font-semibold">{state.project?.name || "Workspace Overview"}</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 disabled:opacity-45">
+                  {loading ? <Square className="size-4" /> : <Play className="size-4" />} {loading ? "Stop" : "Run"}
+                </button>
+                <button disabled title="Workspace sharing is not available in this release" className="mx-focus h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-400 dark:border-white/10 dark:bg-white/[0.04]">Share</button>
+                <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]" title="Refresh">
+                  <RefreshCw className="size-4" />
+                </button>
+              </div>
+            </div>
+            <nav className="mt-3 flex items-center gap-5 text-sm">
+              {["Overview", "Files", "Changes", "Logs", "Settings"].map((tab) => (
+                <button key={tab} disabled={tab === "Settings"} title={tab === "Settings" ? "Workspace settings are not available in this release" : tab} className={`pb-2 font-medium ${tab === "Overview" ? "border-b-2 border-violet-600 text-violet-600" : "text-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400"}`}>
+                  {tab}
+                </button>
+              ))}
+            </nav>
+          </header>
 
       <div className="grid grid-cols-4 border-b border-zinc-200 bg-white text-xs dark:border-white/10 dark:bg-black lg:hidden">
         {(["chat", "files", "preview", "logs"] as const).map((tab) => (
@@ -450,24 +447,26 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         </section>
       )}
 
-      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} h-[calc(100vh-112px)] grid-cols-1 overflow-hidden lg:grid lg:h-[calc(100vh-64px)] lg:grid-cols-[260px_minmax(420px,1fr)_420px]`}>
-        <aside className="hidden min-h-0 border-r border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-950 lg:flex lg:flex-col">
-          <div className="border-b border-zinc-200 p-3 dark:border-white/10">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Project files</div>
-            <div className="mt-1 text-sm font-medium">{state.project?.name || "No workspace yet"}</div>
+      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid lg:grid-cols-[280px_minmax(520px,1fr)_300px]`}>
+        <aside className="hidden min-h-0 border-r border-slate-200 bg-white dark:border-white/10 dark:bg-[#111113] lg:flex lg:flex-col">
+          <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
+            <div>
+              <div className="text-xs font-semibold text-slate-500">Files</div>
+              <div className="mt-1 truncate text-sm font-medium">{state.project?.name || "No workspace yet"}</div>
+            </div>
+            <button disabled title="File actions are handled by the agent" className="text-slate-400">...</button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {files.length ? state.tree.map((node) => <FileNode key={node.path} node={node} active={selectedFile} onOpen={openFile} />) : (
               <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-xs text-zinc-500 dark:border-white/10">Files will appear live as Meldex creates them.</div>
             )}
           </div>
-          <div className="border-t border-zinc-200 p-3 text-xs text-zinc-500 dark:border-white/10">{files.length} file(s)</div>
         </aside>
 
-        <section className="flex min-h-0 flex-col border-r border-zinc-200 bg-white dark:border-white/10 dark:bg-black">
-          <div className="border-b border-zinc-200 p-4 dark:border-white/10">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-blue-600" /> What do you want to build?</div>
-            <div className="mt-3 flex gap-2">
+        <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-white/10 dark:bg-black">
+          <div className="border-b border-slate-200 p-3 dark:border-white/10">
+            <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-violet-600" /> Agent prompt</div>
+            <div className="mt-2 flex gap-2">
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
@@ -478,16 +477,16 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                   }
                 }}
                 rows={3}
-                className="min-h-20 flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm outline-none transition focus:border-zinc-400 dark:border-white/10 dark:bg-white/5"
+                className="min-h-16 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-violet-300 dark:border-white/10 dark:bg-white/5"
                 placeholder="Create a website"
                 aria-label="Workspace prompt"
               />
-              <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="flex w-24 items-center justify-center rounded-lg bg-zinc-950 text-sm font-semibold text-white disabled:opacity-50 dark:bg-white dark:text-zinc-950" aria-label={loading ? "Stop task" : "Send prompt"}>
+              <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="flex w-20 items-center justify-center rounded-xl bg-violet-600 text-sm font-semibold text-white disabled:opacity-50" aria-label={loading ? "Stop task" : "Send prompt"}>
                 {loading ? <Square className="size-4" /> : <Play className="size-4" />}
               </button>
             </div>
             {queuedPrompt && <div className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Queued · will run next: {queuedPrompt}</div>}
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2">
               {examples.map((example) => (
                 <button key={example} onClick={() => setPrompt(example)} className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8">{example}</button>
               ))}
@@ -495,8 +494,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           </div>
 
           <div className={`grid min-h-0 flex-1 ${logsOpen ? "grid-rows-[minmax(240px,1fr)_190px]" : "grid-rows-[minmax(240px,1fr)_44px]"}`}>
-            <div className="min-h-0 overflow-y-auto p-4">
-              <div className="mb-4 rounded-lg border border-zinc-200 p-4 dark:border-white/10">
+            <div className="min-h-0 overflow-y-auto p-3">
+              <div className="mb-3 rounded-2xl border border-slate-200 p-3 dark:border-white/10">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Agent timeline</h2>
                   <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-500 dark:bg-white/8">{activeTask?.status || "Idle"}</span>
@@ -504,8 +503,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <Timeline task={activeTask} loading={loading} events={streamEvents} />
               </div>
 
-              <div className="rounded-lg border border-zinc-200 dark:border-white/10">
-                <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-2 dark:border-white/10">
+              <div className="rounded-2xl border border-slate-200 dark:border-white/10">
+                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-white/10">
                   <span className="text-sm font-semibold">{selectedFile || "File preview"}</span>
                   {selectedFile && <span className="text-xs text-zinc-500">Read-only</span>}
                 </div>
@@ -513,12 +512,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               </div>
             </div>
 
-            <div className="border-t border-zinc-200 bg-zinc-950 p-3 text-zinc-100 dark:border-white/10">
+            <div className="border-t border-slate-200 bg-white p-3 text-slate-900 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-100">
               <button onClick={() => setLogsOpen((value) => !value)} className="flex w-full items-center gap-2 text-left text-xs font-semibold" aria-expanded={logsOpen}>
                 <TerminalSquare className="size-3.5" /> Logs / terminal / build output
               </button>
               {logsOpen && (
-                <div className="mt-2 h-32 overflow-y-auto rounded-md bg-black/40 p-2 font-mono text-[11px] leading-5 text-zinc-300">
+                <div className="mt-2 h-32 overflow-y-auto rounded-xl bg-slate-950 p-2 font-mono text-[11px] leading-5 text-zinc-300">
                   {[...(activeTask?.events || []), ...streamEvents].length
                     ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
                     : <div>[idle] Workspace ready</div>}
@@ -530,9 +529,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           </div>
         </section>
 
-        <aside className="hidden min-h-0 flex-col bg-zinc-50 dark:bg-zinc-950 lg:flex">
-          <div className="flex items-center justify-between border-b border-zinc-200 p-3 dark:border-white/10">
-            <h2 className="text-sm font-semibold">Live preview</h2>
+        <aside className="hidden min-h-0 flex-col bg-[#f7f7fb] dark:bg-[#111113] lg:flex">
+          <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
+            <h2 className="text-sm font-semibold">Changes</h2>
             <div className="flex items-center gap-1">
               <button onClick={refreshPreview} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Refresh preview"><RefreshCw className="size-3.5" /></button>
               {previewUrl ? (
@@ -544,14 +543,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <button onClick={stopPreview} className="rounded-md border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8" title="Stop preview"><Square className="size-3.5" /></button>
             </div>
           </div>
-          <div className="border-b border-zinc-200 p-3 dark:border-white/10">
+          <div className="border-b border-slate-200 p-3 dark:border-white/10">
             <div className="flex items-center justify-between text-xs">
               <span className="text-zinc-500">Preview URL</span>
               <span className={state.preview?.verified ? "text-emerald-600" : "text-zinc-500"}>{state.preview?.verified ? "HTTP 200 verified" : "Not verified"}</span>
             </div>
             <div className="mt-1 truncate rounded-md bg-white px-2 py-1 text-xs text-zinc-500 dark:bg-white/5">{previewUrl || "No preview yet"}</div>
           </div>
-          <div className="aspect-[4/3] border-b border-zinc-200 bg-white dark:border-white/10">
+          <div className="aspect-[4/3] border-b border-slate-200 bg-white dark:border-white/10">
             {state.project && files.some((file) => file.path === "index.html") ? (
               <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" sandbox="allow-scripts" />
             ) : (
@@ -560,7 +559,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            <div className="mb-3 rounded-lg border border-zinc-200 bg-white p-3 dark:border-white/10 dark:bg-black">
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold">Quality score</span>
                 <span className="text-lg font-semibold">{activeTask?.qualityScore || state.project?.qualityScore || 0}</span>
@@ -568,7 +567,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <div className="mt-2 h-2 rounded-full bg-zinc-100 dark:bg-white/10"><div className="h-2 rounded-full bg-emerald-500" style={{ width: `${activeTask?.qualityScore || state.project?.qualityScore || 0}%` }} /></div>
             </div>
 
-            <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-white/10 dark:bg-black">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-sm font-semibold">Changed files</span>
                 <span className="text-xs text-zinc-500">+{totalAdded} -{totalRemoved}</span>
@@ -589,7 +588,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               </div>
             </div>
 
-            <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3 dark:border-white/10 dark:bg-black">
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Clock3 className="size-4" /> Task history</div>
               {state.tasks.slice(0, 8).map((task) => (
                 <div key={task.id} className="border-t border-zinc-100 py-2 text-xs first:border-t-0 dark:border-white/10">
@@ -601,6 +600,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           </div>
         </aside>
       </main>
+        </div>
+      </div>
     </div>
   );
 }
