@@ -126,7 +126,13 @@ async function callOpenAICompatible(
     throw new ModelRouterError("Rate limit exceeded.", "rate_limit", 429, model, requestId, retryAfter);
   }
   if (response.status === 402) {
-    throw new ModelRouterError("Insufficient OpenRouter credits or balance.", "insufficient_credits", 402, model, requestId, retryAfter);
+    const detail = await response.text().catch(() => "");
+    let reason = detail || "Insufficient OpenRouter credits or balance.";
+    try {
+      const parsed = JSON.parse(detail) as { error?: { message?: string } };
+      reason = parsed.error?.message || reason;
+    } catch {}
+    throw new ModelRouterError(reason, "insufficient_credits", 402, model, requestId, retryAfter);
   }
   if (response.status === 404) {
     throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404, model, requestId, retryAfter);
@@ -168,6 +174,16 @@ async function callOpenAICompatible(
   return content;
 }
 
+function affordableMaxTokens(reason: string, requested?: number) {
+  const match = reason.match(/can only afford\s+(\d+)/i);
+  if (!match) return null;
+  const affordable = Number(match[1]);
+  if (!Number.isFinite(affordable) || affordable < 256) return null;
+  const next = Math.max(256, affordable - 64);
+  if (requested && next >= requested) return null;
+  return next;
+}
+
 // ---------------------------------------------------------------------------
 // OpenRouter — reads model from runtime config (vault > env > default)
 // ---------------------------------------------------------------------------
@@ -203,6 +219,18 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
   try {
     return await callOpenAICompatible(baseUrl, apiKey, primaryModel, options, extraHeaders);
   } catch (err) {
+    if (err instanceof ModelRouterError && err.code === "insufficient_credits") {
+      const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
+      if (reducedMaxTokens) {
+        return callOpenAICompatible(
+          baseUrl,
+          apiKey,
+          primaryModel,
+          { ...options, maxTokens: reducedMaxTokens },
+          extraHeaders
+        );
+      }
+    }
     if (!(err instanceof ModelRouterError) || err.code !== "rate_limit") throw err;
 
     // Primary hit rate limit — try fallbacks
