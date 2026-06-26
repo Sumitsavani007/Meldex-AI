@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ElementType } from "react";
 import { signOut, useSession } from "next-auth/react";
@@ -14,10 +15,10 @@ import {
   Download,
   Edit3,
   ExternalLink,
-  FileText,
   FolderKanban,
   Globe,
   Image as ImageIcon,
+  LayoutDashboard,
   LogOut,
   Menu,
   MessageSquare,
@@ -795,15 +796,29 @@ function Sidebar({
         <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-3">
           {collapsed ? (
             <div className="grid gap-1 pt-1">
-              {[MessageSquarePlus, Search, FolderKanban, FileText, CreditCard, User].map((Icon, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  onClick={index === 0 ? onNew : undefined}
+              <button
+                type="button"
+                onClick={onNew}
+                className="mx-focus grid size-11 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
+                title="New chat"
+              >
+                <MessageSquarePlus className="size-4" />
+              </button>
+              {([
+                ["/dashboard", LayoutDashboard, "Dashboard"],
+                ["/workspace", FolderKanban, "Workspaces"],
+                ["/settings/tokens", Code2, "Tokens"],
+                ["/settings/billing", CreditCard, "Billing"],
+                ["/settings", Settings, "Settings"],
+              ] as const).map(([href, Icon, label]) => (
+                <Link
+                  key={String(href)}
+                  href={String(href)}
                   className="mx-focus grid size-11 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white"
+                  title={String(label)}
                 >
                   <Icon className="size-4" />
-                </button>
+                </Link>
               ))}
             </div>
           ) : (
@@ -843,12 +858,13 @@ function Sidebar({
                 />
               ))}
               <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
-              <SidebarLink href="/workspace" icon={FolderKanban} label="Projects" />
-              <SidebarLink href="/workspace" icon={FileText} label="Files" />
+              <SidebarLink href="/dashboard" icon={LayoutDashboard} label="Dashboard" />
+              <SidebarLink href="/workspace" icon={FolderKanban} label="Workspaces" />
               <div className="my-3 border-t border-slate-200 dark:border-[#262626]" />
+              <SidebarLink href="/settings/tokens" icon={Code2} label="Tokens" />
               <SidebarLink href="/settings/billing" icon={CreditCard} label="Billing" />
               <SidebarLink href="/settings/profile" icon={User} label="Profile" />
-              <SidebarLink href="/settings" icon={Settings} label="Help" />
+              <SidebarLink href="/settings" icon={Settings} label="Settings" />
             </>
           )}
         </div>

@@ -4,21 +4,28 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
-  Bot, MessageSquare, FolderKanban, Files,
-  LogOut, User, ChevronDown, CircleHelp, CreditCard, History, Sparkles, Brush, Search
+  Bot,
+  MessageSquare,
+  FolderKanban,
+  LogOut,
+  ChevronDown,
+  CreditCard,
+  Sparkles,
+  Search,
+  LayoutDashboard,
+  KeyRound,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navItems = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/workspace", label: "Workspaces", icon: FolderKanban },
   { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/workspace", label: "Projects", icon: FolderKanban },
-  { href: "/chat", label: "History", icon: History },
-  { href: "/workspace", label: "Files", icon: Files },
-  { href: "/settings/profile", label: "Profile", icon: User },
+  { href: "/settings/tokens", label: "Tokens", icon: KeyRound },
   { href: "/settings/billing", label: "Billing", icon: CreditCard },
-  { href: "/settings", label: "Help", icon: CircleHelp },
-  { href: "/settings", label: "Appearance", icon: Brush },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Header() {
@@ -30,7 +37,13 @@ export function Header() {
     ? "/master/login"
     : "/login";
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat") || pathname.startsWith("/workspace")) return null;
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/master/login") ||
+    pathname.startsWith("/chat") ||
+    pathname.startsWith("/workspace") ||
+    pathname.startsWith("/dashboard")
+  ) return null;
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">

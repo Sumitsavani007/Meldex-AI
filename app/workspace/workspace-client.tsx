@@ -17,6 +17,7 @@ import {
   Folder,
   LayoutDashboard,
   Loader2,
+  MessageSquare,
   Play,
   RefreshCw,
   RotateCcw,
@@ -86,8 +87,9 @@ type WorkspaceState = {
 };
 
 const navItems = [
-  ["Chat", "/chat", Bot],
-  ["Workspace", "/workspace", LayoutDashboard],
+  ["Dashboard", "/dashboard", LayoutDashboard],
+  ["Workspaces", "/workspace", Bot],
+  ["Chat", "/chat", MessageSquare],
   ["Tokens", "/settings/tokens", Code2],
   ["Billing", "/settings/billing", WalletCards],
   ["Settings", "/settings", Settings],
@@ -381,23 +383,23 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-white">
-      <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
-        <div className="flex h-14 items-center gap-3 px-4 lg:px-5">
-          <Link href="/" className="flex items-center gap-2 rounded-md font-semibold">
-            <span className="grid size-8 place-items-center rounded-md bg-zinc-950 text-xs text-white dark:bg-white dark:text-zinc-950">M</span>
+    <div className="min-h-screen bg-[#f8f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
+      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90">
+        <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
+          <Link href="/dashboard" className="flex items-center gap-2 rounded-md font-semibold">
+            <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-xs text-white shadow-sm shadow-violet-600/20">M</span>
             <span>Meldex AI</span>
           </Link>
           <nav className="hidden items-center gap-1 md:flex" aria-label="Workspace navigation">
             {navItems.map(([label, href, Icon]) => (
-              <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${label === "Workspace" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
+              <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${label === "Workspaces" ? "bg-violet-600 text-white shadow-sm shadow-violet-600/20" : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
                 <Icon className="size-3.5" /> {label}
               </Link>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2 text-xs text-zinc-500">
             <span>{message}</span>
-            <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Refresh">
+            <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="rounded-lg border border-slate-200 bg-white p-2 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:hover:bg-white/8" title="Refresh">
               <RefreshCw className="size-3.5" />
             </button>
           </div>
@@ -448,7 +450,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         </section>
       )}
 
-      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} h-[calc(100vh-104px)] grid-cols-1 overflow-hidden lg:grid lg:h-[calc(100vh-56px)] lg:grid-cols-[260px_minmax(420px,1fr)_420px]`}>
+      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} h-[calc(100vh-112px)] grid-cols-1 overflow-hidden lg:grid lg:h-[calc(100vh-64px)] lg:grid-cols-[260px_minmax(420px,1fr)_420px]`}>
         <aside className="hidden min-h-0 border-r border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-950 lg:flex lg:flex-col">
           <div className="border-b border-zinc-200 p-3 dark:border-white/10">
             <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Project files</div>

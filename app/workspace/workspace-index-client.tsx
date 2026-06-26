@@ -12,6 +12,7 @@ import {
   ExternalLink,
   LayoutDashboard,
   Loader2,
+  MessageSquare,
   Plus,
   Settings,
   Sparkles,
@@ -41,8 +42,9 @@ const quickPrompts = [
 ];
 
 const navItems = [
-  ["Chat", "/chat", Bot],
-  ["Workspace", "/workspace", LayoutDashboard],
+  ["Dashboard", "/dashboard", LayoutDashboard],
+  ["Workspaces", "/workspace", Bot],
+  ["Chat", "/chat", MessageSquare],
   ["Tokens", "/settings/tokens", Code2],
   ["Billing", "/settings/billing", WalletCards],
   ["Settings", "/settings", Settings],
@@ -50,20 +52,20 @@ const navItems = [
 
 function WorkspaceTopbar({ status }: { status: string }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-zinc-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
-      <div className="flex h-14 items-center gap-3 px-4 lg:px-5">
-        <Link href="/" className="flex items-center gap-2 rounded-md font-semibold">
-          <span className="grid size-8 place-items-center rounded-md bg-zinc-950 text-xs text-white dark:bg-white dark:text-zinc-950">M</span>
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90">
+      <div className="flex h-16 items-center gap-3 px-4 lg:px-6">
+        <Link href="/dashboard" className="flex items-center gap-2 rounded-md font-semibold">
+          <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-xs text-white shadow-sm shadow-violet-600/20">M</span>
           <span>Meldex AI</span>
         </Link>
         <nav className="hidden items-center gap-1 md:flex" aria-label="User navigation">
           {navItems.map(([label, href, Icon]) => (
-            <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium ${label === "Workspace" ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
+            <Link key={label} href={href} className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition ${label === "Workspaces" ? "bg-violet-600 text-white shadow-sm shadow-violet-600/20" : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"}`}>
               <Icon className="size-3.5" aria-hidden="true" /> {label}
             </Link>
           ))}
         </nav>
-        <div className="ml-auto rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-600 dark:bg-white/8 dark:text-zinc-300">{status}</div>
+        <div className="ml-auto rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-600 dark:border-white/10 dark:bg-white/8 dark:text-slate-300">{status}</div>
       </div>
     </header>
   );
