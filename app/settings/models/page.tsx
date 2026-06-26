@@ -19,6 +19,15 @@ export default function ModelConfigPage() {
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    provider: "OPENROUTER",
+    model: "",
+    name: "",
+    baseUrl: "",
+    apiKey: "",
+  });
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -70,15 +79,38 @@ export default function ModelConfigPage() {
         {showForm && (
           <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 mb-8">
             <h2 className="text-lg font-semibold text-white mb-6">Add New Model</h2>
-            <form className="space-y-4" onSubmit={(e) => {
+            {error && <div className="mb-4 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</div>}
+            <form className="space-y-4" onSubmit={async (e) => {
               e.preventDefault();
-              // Handle form submission
-              setShowForm(false);
+              setSaving(true);
+              setError("");
+              try {
+                const response = await fetch("/api/models", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    provider: form.provider,
+                    model: form.model,
+                    name: form.name,
+                    baseUrl: form.baseUrl || undefined,
+                    apiKey: form.apiKey || undefined,
+                  }),
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.error || "Failed to save model");
+                setShowForm(false);
+                setForm({ provider: "OPENROUTER", model: "", name: "", baseUrl: "", apiKey: "" });
+                await fetchModels();
+              } catch (err) {
+                setError(err instanceof Error ? err.message : "Failed to save model");
+              } finally {
+                setSaving(false);
+              }
             }}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Provider</label>
-                  <select className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint/50">
+                  <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value }))} className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-mint/50">
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
@@ -88,6 +120,8 @@ export default function ModelConfigPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Model Name</label>
                   <input
                     type="text"
+                    value={form.model}
+                    onChange={(event) => setForm((current) => ({ ...current, model: event.target.value }))}
                     placeholder="e.g., gpt-4"
                     className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
                   />
@@ -96,6 +130,8 @@ export default function ModelConfigPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Display Name</label>
                   <input
                     type="text"
+                    value={form.name}
+                    onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                     placeholder="e.g., GPT-4 Turbo"
                     className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
                   />
@@ -104,6 +140,8 @@ export default function ModelConfigPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-2">Base URL (optional)</label>
                   <input
                     type="text"
+                    value={form.baseUrl}
+                    onChange={(event) => setForm((current) => ({ ...current, baseUrl: event.target.value }))}
                     placeholder="e.g., http://localhost:11434"
                     className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
                   />
@@ -112,6 +150,8 @@ export default function ModelConfigPage() {
                   <label className="block text-sm font-medium text-slate-300 mb-2">API Key (stored securely)</label>
                   <input
                     type="password"
+                    value={form.apiKey}
+                    onChange={(event) => setForm((current) => ({ ...current, apiKey: event.target.value }))}
                     placeholder="Your API key"
                     className="w-full px-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
                   />
@@ -120,9 +160,10 @@ export default function ModelConfigPage() {
               <div className="flex gap-3 pt-4">
                 <button
                   type="submit"
-                  className="flex-1 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 py-2 rounded-lg transition font-medium"
+                  disabled={saving || !form.name.trim() || !form.model.trim()}
+                  className="flex-1 bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 py-2 rounded-lg transition font-medium disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  Save Model
+                  {saving ? "Saving..." : "Save Model"}
                 </button>
                 <button
                   type="button"
@@ -175,10 +216,10 @@ export default function ModelConfigPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button className="p-2 hover:bg-slate-700 rounded transition text-slate-400 hover:text-white">
+                    <button disabled title="Edit model is not available in V1" className="cursor-not-allowed p-2 rounded text-slate-600">
                       <Edit className="w-4 h-4" />
                     </button>
-                    <button className="p-2 hover:bg-slate-700 rounded transition text-slate-400 hover:text-white">
+                    <button disabled title="Delete model is not available in V1" className="cursor-not-allowed p-2 rounded text-slate-600">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>

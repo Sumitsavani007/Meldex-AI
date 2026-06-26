@@ -104,7 +104,7 @@ export function MasterShell({ children }: { children: React.ReactNode }) {
             <Command className="size-3.5" />
           </label>
         ) : (
-          <button className="grid size-10 place-items-center rounded-md border border-slate-200 text-slate-500 dark:border-white/[0.08] dark:text-slate-400">
+          <button disabled title="Expand sidebar to search" className="grid size-10 cursor-not-allowed place-items-center rounded-md border border-slate-200 text-slate-300 dark:border-white/[0.08] dark:text-slate-600">
             <Search className="size-4" />
           </button>
         )}
@@ -211,7 +211,7 @@ export function MasterShell({ children }: { children: React.ReactNode }) {
               <Search className="size-4" />
               <input placeholder="Global search" className="min-w-0 flex-1 bg-transparent outline-none" />
             </label>
-            <button className="grid size-9 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.04]" title="Notifications">
+            <button disabled className="grid size-9 cursor-not-allowed place-items-center rounded-md border border-slate-200 text-slate-300 dark:border-white/[0.08] dark:text-slate-600" title="Notifications are not available in this release">
               <Bell className="size-4" />
             </button>
             <a href="/admin/master?section=runtime" className="hidden h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.04] sm:inline-flex">

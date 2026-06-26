@@ -1,32 +1,60 @@
 # Button QA Report
 
-Date: 2026-06-26
+## Working
 
-## `/admin/master`
+- Login email/password submit.
+- Login access token submit.
+- Google/GitHub auth buttons.
+- Register submit.
+- Logout buttons.
+- Workspace create.
+- Workspace run agent.
+- Workspace stop task.
+- Workspace refresh.
+- Workspace preview refresh.
+- Workspace preview stop.
+- Workspace open preview when preview URL exists.
+- Workspace copy preview URL.
+- Workspace changed file row open.
+- Workspace review changed file.
+- Workspace reject/rollback.
+- Workspace archive.
+- Workspace delete.
+- Tokens create.
+- Tokens copy raw token.
+- Tokens revoke.
+- Master save setting.
+- Master copy masked value.
+- Master test provider.
+- Master reload config.
+- Master sync env.
+- Master restart app.
+- Master refresh buttons.
+- Chat send.
+- Chat stop generation.
+- Chat copy message.
+- Chat retry/edit.
+- Chat sidebar conversation actions.
 
-Verified by code path and build:
-- Save setting: wired to `POST /api/admin/master/settings`
-- Replace secret: same save path, owner-only for secrets
-- Test connection: wired to `POST /api/admin/master/test`
-- Test all: runs all integration tests with per-provider loading state
-- Reload config: wired to `POST /api/admin/master/reload-config`
-- Sync ENV to Vault: wired to `POST /api/admin/master/sync-env`, owner-only
-- Restart app: wired to `POST /api/admin/master/restart`, owner-only, modal confirmation
-- Copy masked value: clipboard action with toast feedback
-- Refresh health: reloads overview
-- Refresh users: reloads users
-- Refresh audit: reloads merged audit logs
-- User role update: wired to `PATCH /api/admin/users`, owner-only
-- Logout: `signOut({ callbackUrl: "/master/login" })`
+## Disabled With Reason
 
-## Removed/Disabled Behavior
+- Workspace duplicate: not available in V1.
+- Workspace apply: changes are already auto-applied after verification.
+- Workspace open preview: disabled until preview exists.
+- Chat file attachment: not available in this release.
+- Chat image attachment: not available in this release.
+- Chat voice input: not available in this release.
+- Master notifications: not available in this release.
+- Master collapsed search: expand sidebar to search.
+- Security password change: not available for current login methods.
+- Security 2FA: not enabled in this release.
+- Security session management: not available in this release.
+- Security recovery options: handled by auth provider.
+- Profile editing: not available in this release.
+- Models edit/delete: no V1 endpoints exist.
 
-- Raw saved-secret reveal is not exposed.
-- Secret updates are disabled for non-owner admins.
-- Runtime restart and ENV sync are disabled for non-owner admins.
-- Dead `Configure` buttons in `/admin/settings` were replaced with real navigation links.
+## Removed Fake Behavior
 
-## Manual QA Limitation
-
-Authenticated click testing inside a browser was not possible in this environment because the in-app browser target was unavailable and no admin session was available. HTTP smoke tests and production build/deploy verification passed.
-
+- Profile save no longer pretends to save.
+- Models save no longer closes without persisting.
+- Workspace preview open no longer points to `#`.

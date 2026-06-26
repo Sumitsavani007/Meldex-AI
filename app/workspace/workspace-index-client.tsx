@@ -70,7 +70,15 @@ function WorkspaceTopbar({ status }: { status: string }) {
   );
 }
 
-function WorkspaceProjectCard({ project }: { project: ProjectCardData }) {
+function WorkspaceProjectCard({
+  project,
+  onArchive,
+  onDelete,
+}: {
+  project: ProjectCardData;
+  onArchive: (project: ProjectCardData) => void;
+  onDelete: (project: ProjectCardData) => void;
+}) {
   const files = project._count?.files ?? 0;
   const tasks = project._count?.tasks ?? 0;
   const previewReady = Boolean(project.lastPreviewUrl || project.previews?.[0]?.verified);
@@ -92,13 +100,13 @@ function WorkspaceProjectCard({ project }: { project: ProjectCardData }) {
         <Link href={`/workspace/${project.id}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-zinc-950 px-3 py-2 text-xs font-semibold text-white dark:bg-white dark:text-zinc-950">
           Open <ExternalLink className="size-3.5" />
         </Link>
-        <button className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Duplicate workspace" aria-label="Duplicate workspace">
+        <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-2 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Duplicate workspace is not available in V1" aria-label="Duplicate workspace disabled">
           <Copy className="size-3.5" />
         </button>
-        <button className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Archive workspace" aria-label="Archive workspace">
+        <button onClick={() => onArchive(project)} className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Archive workspace" aria-label="Archive workspace">
           <Archive className="size-3.5" />
         </button>
-        <button className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Delete workspace" aria-label="Delete workspace">
+        <button onClick={() => onDelete(project)} className="rounded-md border border-zinc-200 p-2 text-red-500 hover:bg-red-50 dark:border-white/10 dark:hover:bg-red-500/10" title="Delete workspace" aria-label="Delete workspace">
           <Trash2 className="size-3.5" />
         </button>
       </div>
@@ -183,6 +191,27 @@ export function WorkspaceIndexClient() {
     }
   }
 
+  async function archiveWorkspace(project: ProjectCardData) {
+    setStatusText("Archiving");
+    const response = await fetch(`/api/workspaces/${project.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ARCHIVED" }),
+    });
+    const data = await response.json().catch(() => ({}));
+    setStatusText(response.ok ? "Workspace archived" : data.error || "Archive failed");
+    await loadProjects().catch((error) => setStatusText(error.message));
+  }
+
+  async function deleteWorkspace(project: ProjectCardData) {
+    if (!window.confirm(`Delete "${project.name}"? This archives the project and hides it from your workspace list.`)) return;
+    setStatusText("Deleting");
+    const response = await fetch(`/api/workspaces/${project.id}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    setStatusText(response.ok ? "Workspace deleted" : data.error || "Delete failed");
+    await loadProjects().catch((error) => setStatusText(error.message));
+  }
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-black dark:text-white">
       <WorkspaceTopbar status={statusText} />
@@ -208,7 +237,7 @@ export function WorkspaceIndexClient() {
             </div>
           </div>
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {projects.map((project) => <WorkspaceProjectCard key={project.id} project={project} />)}
+            {projects.map((project) => <WorkspaceProjectCard key={project.id} project={project} onArchive={archiveWorkspace} onDelete={deleteWorkspace} />)}
           </div>
         </main>
       )}

@@ -1466,13 +1466,13 @@ export default function ChatPage() {
               />
               <div className="flex items-center justify-between gap-2 px-1 pb-1">
                 <div className="flex items-center gap-1">
-                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Attach files">
+                  <button type="button" disabled title="File attachments are not available in this release" className="mx-focus grid size-9 cursor-not-allowed place-items-center rounded-full text-slate-300 dark:text-[#4b4b4b]" aria-label="Attach files unavailable">
                     <Paperclip className="size-4" />
                   </button>
-                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Attach image">
+                  <button type="button" disabled title="Image attachments are not available in this release" className="mx-focus grid size-9 cursor-not-allowed place-items-center rounded-full text-slate-300 dark:text-[#4b4b4b]" aria-label="Attach image unavailable">
                     <ImageIcon className="size-4" />
                   </button>
-                  <button type="button" className="mx-focus grid size-9 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white" aria-label="Voice input">
+                  <button type="button" disabled title="Voice input is not available in this release" className="mx-focus grid size-9 cursor-not-allowed place-items-center rounded-full text-slate-300 dark:text-[#4b4b4b]" aria-label="Voice input unavailable">
                     <Mic className="size-4" />
                   </button>
                 </div>

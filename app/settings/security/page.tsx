@@ -28,8 +28,8 @@ export default function SecuritySettingsPage() {
                 <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
                   Update your password to keep your account secure
                 </p>
-                <button className="mx-focus rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200">
-                  Change Password
+                <button disabled title="Password change is not available for this login method yet" className="mx-focus cursor-not-allowed rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400 dark:bg-white/5 dark:text-slate-500">
+                  Change Password unavailable
                 </button>
               </div>
             </div>
@@ -43,8 +43,8 @@ export default function SecuritySettingsPage() {
                 <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
                   Add an extra layer of security to your account with 2FA
                 </p>
-                <button className="mx-focus rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]">
-                  Enable 2FA
+                <button disabled title="Two-factor authentication is not enabled in this release" className="mx-focus cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-400 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-500">
+                  2FA unavailable
                 </button>
               </div>
             </div>
@@ -58,8 +58,8 @@ export default function SecuritySettingsPage() {
                 <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
                   View and manage your active login sessions
                 </p>
-                <button className="mx-focus rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]">
-                  Manage Sessions
+                <button disabled title="Session management UI is not available yet" className="mx-focus cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-400 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-500">
+                  Sessions unavailable
                 </button>
               </div>
             </div>
@@ -73,8 +73,8 @@ export default function SecuritySettingsPage() {
                 <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">
                   Keep your recovery email and account backup options current
                 </p>
-                <button className="mx-focus rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]">
-                  Review Recovery
+                <button disabled title="Recovery options are managed through your auth provider" className="mx-focus cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-400 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-500">
+                  Recovery managed by provider
                 </button>
               </div>
             </div>

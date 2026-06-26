@@ -533,7 +533,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             <h2 className="text-sm font-semibold">Live preview</h2>
             <div className="flex items-center gap-1">
               <button onClick={refreshPreview} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Refresh preview"><RefreshCw className="size-3.5" /></button>
-              <a href={previewUrl || "#"} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Open preview"><ArrowUpRight className="size-3.5" /></a>
+              {previewUrl ? (
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Open preview"><ArrowUpRight className="size-3.5" /></a>
+              ) : (
+                <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-1.5 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Preview is not ready"><ArrowUpRight className="size-3.5" /></button>
+              )}
               <button onClick={() => navigator.clipboard?.writeText(window.location.origin + previewUrl)} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Copy URL"><Copy className="size-3.5" /></button>
               <button onClick={stopPreview} className="rounded-md border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8" title="Stop preview"><Square className="size-3.5" /></button>
             </div>
@@ -576,8 +580,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </button>
               )) : <p className="text-xs text-zinc-500">No changes yet.</p>}
               <div className="mt-3 grid grid-cols-4 gap-1">
-                {["Review", "Apply", "Reject"].map((action) => <button key={action} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 dark:border-white/10 dark:text-zinc-400">{action}</button>)}
-                <button onClick={rollback} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 dark:border-white/10 dark:text-zinc-400"><RotateCcw className="mx-auto size-3.5" /></button>
+                <button onClick={() => changed[0] && openFile(changed[0].path)} disabled={!changed.length} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400">Review</button>
+                <button disabled title="Workspace changes are applied automatically after verification" className="cursor-not-allowed rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-400 dark:border-white/10 dark:text-zinc-600">Apply</button>
+                <button onClick={rollback} disabled={!activeTask} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400">Reject</button>
+                <button onClick={rollback} disabled={!activeTask} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400" title="Rollback latest task"><RotateCcw className="mx-auto size-3.5" /></button>
               </div>
             </div>
 

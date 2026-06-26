@@ -55,10 +55,11 @@ export default function ProfileSettingsPage() {
               </div>
 
               <button
-                onClick={() => setIsEditing(true)}
-                className="mx-focus w-full rounded-lg bg-slate-950 py-2 font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                disabled
+                title="Profile editing is not available in this release"
+                className="mx-focus w-full cursor-not-allowed rounded-lg bg-slate-100 py-2 font-medium text-slate-400 dark:bg-white/5 dark:text-slate-500"
               >
-                Edit Profile
+                Profile editing unavailable
               </button>
             </div>
           ) : (
