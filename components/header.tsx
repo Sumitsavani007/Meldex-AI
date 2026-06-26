@@ -23,6 +23,13 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "OWNER";
+  const logoutCallbackUrl = session?.user?.role === "OWNER" || pathname.startsWith("/admin")
+    ? "/master/login"
+    : "/login";
+
+  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat")) {
+    return null;
+  }
 
   return (
     <header className="sticky top-0 z-30 border-b border-white/8 bg-ink/90 backdrop-blur-xl">
@@ -91,7 +98,7 @@ export function Header() {
                 </span>
               </div>
               <button
-                onClick={() => signOut()}
+                onClick={() => signOut({ callbackUrl: logoutCallbackUrl })}
                 className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/6"
               >
                 <LogOut className="size-3.5" />

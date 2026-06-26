@@ -1,0 +1,13 @@
+{
+  "scripts": {
+    "build": "node scripts/build-check.js",
+    "test": "node scripts/test-check.js",
+    "dev": "node scripts/serve.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  }
+}

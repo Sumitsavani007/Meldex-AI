@@ -1,102 +1,51 @@
 import * as vscode from "vscode";
-import * as path from "path";
-
-interface FileChange {
-  operation: "create" | "edit" | "delete";
-  path: string;
-  content: string;
-  description?: string;
-}
+import { AgentFileChange, PatchEngine, PatchSummary } from "../agent/patchEngine";
 
 export class DiffManager {
-  private pendingChanges: FileChange[] = [];
+  private readonly patchEngine: PatchEngine;
 
-  constructor(private readonly workspaceRoot: string) {}
-
-  async showChanges(
-    files: FileChange[],
-    onDecision: (accepted: boolean) => Promise<void>
-  ): Promise<void> {
-    if (!files.length) return;
-
-    this.pendingChanges = files;
-    const creates = files.filter(f => f.operation === "create");
-    const edits = files.filter(f => f.operation === "edit");
-    const deletes = files.filter(f => f.operation === "delete");
-
-    const summary = [
-      creates.length && `${creates.length} new file(s)`,
-      edits.length && `${edits.length} edit(s)`,
-      deletes.length && `${deletes.length} deletion(s)`,
-    ].filter(Boolean).join(", ");
-
-    const choice = await vscode.window.showInformationMessage(
-      `Meldex Agent: ${summary}`,
-      { modal: false },
-      "Review Changes",
-      "Apply All",
-      "Reject"
-    );
-
-    if (choice === "Apply All") {
-      await onDecision(true);
-      return;
-    }
-
-    if (choice === "Reject") {
-      await onDecision(false);
-      return;
-    }
-
-    if (choice === "Review Changes") {
-      await this.openDiffEditors(files, onDecision);
-    }
+  constructor(workspaceRoot: string, storageRoot?: string) {
+    this.patchEngine = new PatchEngine(workspaceRoot, storageRoot);
   }
 
-  private async openDiffEditors(
-    files: FileChange[],
-    onDecision: (accepted: boolean) => Promise<void>
-  ): Promise<void> {
-    for (const file of files) {
-      if (file.operation === "delete") {
-        await vscode.window.showInformationMessage(`Will delete: ${file.path}`, "OK");
-        continue;
-      }
+  async calculate(files: AgentFileChange[]): Promise<PatchSummary> {
+    return this.patchEngine.createPatches(files);
+  }
 
-      const fullPath = path.join(this.workspaceRoot, file.path);
-      const existingUri = vscode.Uri.file(fullPath);
-      const proposedUri = vscode.Uri.parse(
-        `untitled:${path.join(this.workspaceRoot, "MELDEX_PROPOSED_" + path.basename(file.path))}`
-      );
-
-      // Create proposed content in an untitled document
-      const edit = new vscode.WorkspaceEdit();
-      edit.createFile(proposedUri, { overwrite: true, ignoreIfExists: false });
-      edit.insert(proposedUri, new vscode.Position(0, 0), file.content);
-      await vscode.workspace.applyEdit(edit);
-
-      let left = existingUri;
-      let leftTitle = `Current: ${file.path}`;
-      let rightTitle = `Proposed: ${file.path}`;
-
-      if (file.operation === "create") {
-        leftTitle = `(new file)`;
-      }
-
-      await vscode.commands.executeCommand(
-        "vscode.diff",
-        left,
-        proposedUri,
-        `${leftTitle} ↔ ${rightTitle}`
-      );
-    }
-
-    const finalChoice = await vscode.window.showInformationMessage(
-      "Apply these changes to your workspace?",
-      { modal: true },
-      "Apply All",
-      "Reject"
+  async showChanges(summary?: PatchSummary): Promise<void> {
+    const current = summary ?? this.patchEngine.getSummary();
+    if (!current.files.length) return;
+    await this.patchEngine.previewPatch();
+    void vscode.window.showInformationMessage(
+      `Meldex prepared ${current.files.length} file change(s): +${current.totalAdded} -${current.totalRemoved}. Review diffs, then Accept or Reject in the Meldex panel.`
     );
-    await onDecision(finalChoice === "Apply All");
+  }
+
+  async openFileDiff(patchId: string): Promise<void> {
+    await this.patchEngine.previewPatch(patchId);
+  }
+
+  async applyAll() {
+    return this.patchEngine.applyPatch();
+  }
+
+  async applyOne(patchId: string) {
+    return this.patchEngine.applyPatch([patchId]);
+  }
+
+  rejectAll() {
+    return this.patchEngine.rejectPatch();
+  }
+
+  rejectOne(patchId: string) {
+    return this.patchEngine.rejectPatch([patchId]);
+  }
+
+  async undoLastPatch() {
+    return this.patchEngine.undoLastPatch();
+  }
+
+  summary() {
+    return this.patchEngine.getSummary();
   }
 }

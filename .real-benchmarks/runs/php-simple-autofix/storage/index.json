@@ -1,0 +1,146 @@
+{
+  "lastScanTime": "2026-06-26T07:43:40.453Z",
+  "fileTree": [
+    "api.php",
+    "index.php",
+    "package.json",
+    "scripts/build-check.js",
+    "scripts/serve.js",
+    "scripts/test-check.js"
+  ],
+  "fileHashes": {
+    "api.php": "cec3c7ad60d3bf8b",
+    "index.php": "3717484318563bcd",
+    "package.json": "4b5c1866b52777e3",
+    "scripts/build-check.js": "4ad2e5c929bd73fb",
+    "scripts/serve.js": "3bf49a058f8788c4",
+    "scripts/test-check.js": "278e4aea5ebe2062"
+  },
+  "languageMap": {
+    "php": [
+      "api.php",
+      "index.php"
+    ],
+    "json": [
+      "package.json"
+    ],
+    "js": [
+      "scripts/build-check.js",
+      "scripts/serve.js",
+      "scripts/test-check.js"
+    ]
+  },
+  "routes": [
+    "api.php"
+  ],
+  "components": [],
+  "scripts": {
+    "build": "node scripts/build-check.js",
+    "test": "node scripts/test-check.js",
+    "dev": "php -S localhost:${PORT:-5173}"
+  },
+  "dependencies": [],
+  "project": {
+    "framework": "Node.js",
+    "packageManager": "npm",
+    "scripts": {
+      "build": "node scripts/build-check.js",
+      "test": "node scripts/test-check.js",
+      "dev": "php -S localhost:${PORT:-5173}"
+    },
+    "dependencies": {}
+  },
+  "git": {
+    "branch": "main",
+    "status": [
+      "M ../../../../app/admin/page.tsx",
+      " M ../../../../app/api/admin/master/settings/route.ts",
+      " M ../../../../app/api/extensions/agent/route.ts",
+      " M ../../../../app/settings/tokens/page.tsx",
+      " M ../../../../lib/extension-auth.ts",
+      " M ../../../../lib/runtime-config.ts",
+      " M ../../../../lib/secret-vault.ts",
+      " M ../../../../meldex-vscode-extension/package.json",
+      " M ../../../../meldex-vscode-extension/src/agent/agentRunner.ts",
+      " M ../../../../meldex-vscode-extension/src/api/client.ts",
+      " M ../../../../meldex-vscode-extension/src/context/workspace.ts",
+      " M ../../../../meldex-vscode-extension/src/diff/diffManager.ts",
+      " M ../../../../meldex-vscode-extension/src/extension.ts",
+      " M ../../../../meldex-vscode-extension/src/terminal/processRunner.ts",
+      " M ../../../../meldex-vscode-extension/src/webview/chatPanel.ts",
+      " M ../../../../middleware.ts",
+      " M ../../../../tsconfig.tsbuildinfo",
+      "?? ../../../../.DS_Store",
+      "?? ../../../../.meldex-benchmarks/",
+      "?? ../../../../.meldex-tie/",
+      "?? ../../../../.real-benchmark-check/",
+      "?? ../../../",
+      "?? ../../../../AOE_PHASE_X_REPORT.md",
+      "?? ../../../../AST_ENGINE.md",
+      "?? ../../../../BENCHMARK_RUN_REPORT.md",
+      "?? ../../../../FAILURE_ANALYSIS.md",
+      "?? ../../../../FOUNDATION_ARCHITECTURE_REPORT.md",
+      "?? ../../../../FRAMEWORK_SCORES.md",
+      "?? ../../../../GOOGLE_AUTH_FIX_REPORT.md",
+      "?? ../../../../GOOGLE_OAUTH_PRODUCTION_FIX_REPORT.md",
+      "?? ../../../../LSP_INTEGRATION.md",
+      "?? ../../../../MIL_ARCHITECTURE.md",
+      "?? ../../../../MIL_FINAL_REPORT.md",
+      "?? ../../../../MIL_MEMORY.md",
+      "?? ../../../../MIL_PERFORMANCE.md",
+      "?? ../../../../MIL_QUALITY_ENGINE.md",
+      "?? ../../../../MIL_SECURITY.md",
+      "?? ../../../../QWEN3_CODER_MAX_ENGINE_REPORT.md",
+      "?? ../../../../REGRESSION_REPORT.md",
+      "?? ../../../../SELF_IMPROVEMENT_REPORT.md",
+      "?? ../../../../TOOL_BENCHMARKS.md",
+      "?? ../../../../TOOL_ENGINE_ARCHITECTURE.md",
+      "?? ../../../../TOOL_ENGINE_FINAL_REPORT.md",
+      "?? ../../../../TOOL_SELECTION.md",
+      "?? ../../../../app/admin/benchmarks/",
+      "?? ../../../../app/api/admin/benchmarks/",
+      "?? ../../../../app/api/extensions/health/",
+      "?? ../../../../lib/benchmark-store.ts",
+      "?? ../../../../meldex-vscode-extension/.eslintrc.json",
+      "?? ../../../../meldex-vscode-extension/AUTONOMOUS_EXTENSION_FIX_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/CHANGELOG.md",
+      "?? ../../../../meldex-vscode-extension/CODEX_LEVEL_EXTENSION_POLISH_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/CODEX_STYLE_EXTENSION_UI_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/CODEX_UX_QUEUE_CLEANUP_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/EXTENSION_FINAL_BLOCKER_FIX_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/EXTENSION_PRODUCTION_QA_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/FINAL_CODEX_UX_CLEAN_WORKSPACE_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/LICENSE",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_ARCHITECTURE.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_EXTENSION_INTEGRATION.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_FINAL_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_PERFORMANCE.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_PROTOCOL.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_AGENT_CLI_SECURITY.md",
+      "?? ../../../../meldex-vscode-extension/MELDEX_EXTENSION_SIMPLE_CODEX_UI_REPORT.md",
+      "?? ../../../../meldex-vscode-extension/README.md",
+      "?? ../../../../meldex-vscode-extension/benchmarks/",
+      "?? ../../../../meldex-vscode-extension/meldex-agent-cli/",
+      "?? ../../../../meldex-vscode-extension/package-lock.json",
+      "?? ../../../../meldex-vscode-extension/src/agent/autonomousOrchestrator.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/benchmarkLab.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/contextBuilder.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/errorParser.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/eventNormalizer.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/fixGenerator.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/milEngine.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/patchEngine.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/processManager.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/qwenOptimizer.ts",
+      "?? ../../../../meldex-vscode-extension/src/agent/taskQueue.ts"
+    ]
+  },
+  "changedFiles": [
+    "api.php",
+    "index.php",
+    "package.json",
+    "scripts/build-check.js",
+    "scripts/serve.js",
+    "scripts/test-check.js"
+  ]
+}

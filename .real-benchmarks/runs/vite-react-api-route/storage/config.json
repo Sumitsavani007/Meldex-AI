@@ -1,0 +1,18 @@
+{
+  "backendUrl": "https://meldex.newsyfly.com",
+  "maxRetries": 5,
+  "safeMode": true,
+  "autoApply": false,
+  "projectLocalMemory": false,
+  "ignoredPaths": [
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    ".next",
+    "vendor",
+    ".turbo",
+    "coverage"
+  ],
+  "modelProfile": "coding"
+}

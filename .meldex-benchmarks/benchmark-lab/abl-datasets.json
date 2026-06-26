@@ -1,0 +1,72 @@
+{
+  "successfulFixes": [
+    {
+      "framework": "React",
+      "task": "UI",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "framework": "React",
+      "task": "Documentation",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "framework": "React",
+      "task": "Bug fixing",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "framework": "React",
+      "task": "Testing",
+      "retries": 0,
+      "score": 91
+    }
+  ],
+  "failedFixes": [],
+  "summaries": [
+    {
+      "runId": "abl-1782458680755-1a3249",
+      "framework": "React",
+      "successRate": 100,
+      "score": 91
+    }
+  ],
+  "promptEffectiveness": [
+    {
+      "category": "UI",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "category": "Documentation",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "category": "Bug fixing",
+      "retries": 0,
+      "score": 91
+    },
+    {
+      "category": "Testing",
+      "retries": 0,
+      "score": 91
+    }
+  ],
+  "frameworkHeuristics": [
+    {
+      "framework": "React",
+      "packageManager": "npm",
+      "scripts": {
+        "build": "node scripts/build-check.js",
+        "test": "node scripts/test-check.js"
+      },
+      "architecture": [
+        "src"
+      ]
+    }
+  ]
+}

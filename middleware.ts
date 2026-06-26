@@ -24,8 +24,8 @@ export default auth((req) => {
     ];
     const isProtected = protectedPaths.some((p) => pathname.startsWith(p));
     if (isProtected) {
-      const loginUrl = new URL("/login", req.url);
-      loginUrl.searchParams.set("callbackUrl", pathname);
+      const loginUrl = new URL(pathname.startsWith("/admin") ? "/master/login" : "/login", req.url);
+      loginUrl.searchParams.set("callbackUrl", `${pathname}${req.nextUrl.search}`);
       return Response.redirect(loginUrl);
     }
   }

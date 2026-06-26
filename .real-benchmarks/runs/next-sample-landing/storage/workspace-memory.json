@@ -1,0 +1,44 @@
+{
+  "projectSummary": "Next.js",
+  "architectureSummary": "Preserve Next.js conventions; keep UI components responsive and accessible",
+  "recentEdits": [
+    "index.html",
+    "style.css",
+    "script.js",
+    "README.md"
+  ],
+  "knownIssues": [],
+  "successfulFixes": [
+    "Completed: Created a polished static landing page with HTML, CSS, JavaScript, and README documentation."
+  ],
+  "codingStyle": [
+    "Use existing project conventions",
+    "Prefer minimal patches",
+    "Verify before delivery",
+    "2 spaces",
+    "relative imports",
+    "default function components",
+    "kebab-case files"
+  ],
+  "frequentCommands": [],
+  "commonErrors": [],
+  "predictions": [
+    "Polish responsive UI and verify preview",
+    "Run build and store successful fix pattern",
+    "Commit-ready summary"
+  ],
+  "styleProfile": [
+    "Use existing project conventions",
+    "Prefer minimal patches",
+    "Verify before delivery",
+    "2 spaces",
+    "relative imports",
+    "default function components",
+    "kebab-case files"
+  ],
+  "selfImprovement": [
+    "Context size was reasonable.",
+    "Consider using predicted build command: npm run build."
+  ],
+  "updatedAt": "2026-06-26T07:42:27.195Z"
+}

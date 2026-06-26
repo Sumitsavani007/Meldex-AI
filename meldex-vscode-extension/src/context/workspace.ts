@@ -91,7 +91,9 @@ export class WorkspaceContext {
     try {
       const pkgPath = path.join(root, "package.json");
       if (fs.existsSync(pkgPath)) return fs.readFileSync(pkgPath, "utf-8").slice(0, 1500);
-    } catch { }
+    } catch {
+      return undefined;
+    }
     return undefined;
   }
 
@@ -111,10 +113,25 @@ export class WorkspaceContext {
 
   static async listFiles(root: string, max: number): Promise<string[]> {
     const include = "**/*.{ts,tsx,js,jsx,py,php,go,rs,vue,astro,css,scss,json,md,html}";
+    const includeGitIgnored = vscode.workspace.getConfiguration("meldex").get<boolean>("includeGitIgnoredFiles") ?? false;
+    const gitignorePatterns = includeGitIgnored
+      ? []
+      : WorkspaceContext.readGitignorePatterns(root)
+          .filter((pattern) => !pattern.startsWith("!"))
+          .map((pattern) => pattern.endsWith("/") ? `**/${pattern}**` : `**/${pattern}`);
     // Always exclude .env files, node_modules, build dirs
-    const exclude =
-      "**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**," +
-      "**/vendor/**,**/.env,**/.env.*,**/*.env";
+    const exclude = [
+      "**/node_modules/**",
+      "**/.git/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/vendor/**",
+      "**/.env",
+      "**/.env.*",
+      "**/*.env",
+      ...gitignorePatterns,
+    ].join(",");
     const uris = await vscode.workspace.findFiles(include, exclude, max);
     return uris.map((u) => path.relative(root, u.fsPath));
   }

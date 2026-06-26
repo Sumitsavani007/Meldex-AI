@@ -1,0 +1,47 @@
+{
+  "id": "abl-1782458680755-1a3249",
+  "createdAt": "2026-06-26T07:24:41.857Z",
+  "engine": "offline-sandbox",
+  "projectsTested": 1,
+  "tasksCompleted": 4,
+  "successRate": 100,
+  "averageRetries": 0,
+  "averageTimeMs": 275,
+  "failures": 0,
+  "frameworkRankings": {
+    "React": 91
+  },
+  "qualityTrend": "new",
+  "regressionHistory": [],
+  "recommendations": [
+    "Maintain React benchmark profile with npm command heuristics."
+  ],
+  "reports": [
+    "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/BENCHMARK_RUN_REPORT.md",
+    "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/FAILURE_ANALYSIS.md",
+    "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/FRAMEWORK_SCORES.md",
+    "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/REGRESSION_REPORT.md",
+    "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/SELF_IMPROVEMENT_REPORT.md"
+  ],
+  "frameworkProfiles": [
+    "Next.js",
+    "React",
+    "Vue",
+    "Angular",
+    "Node",
+    "Express",
+    "NestJS",
+    "Laravel",
+    "PHP",
+    "FastAPI",
+    "Django",
+    "Flask",
+    "Go",
+    "Rust",
+    "Java",
+    "Electron",
+    "React Native",
+    "Expo",
+    "Static HTML"
+  ]
+}

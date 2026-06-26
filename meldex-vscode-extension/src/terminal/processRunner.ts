@@ -1,11 +1,12 @@
 import * as cp from "child_process";
-import * as path from "path";
 
 export interface RunResult {
   stdout: string;
   stderr: string;
   exitCode: number;
   timedOut: boolean;
+  durationMs?: number;
+  cwd?: string;
 }
 
 export type LogCallback = (line: string, stream: "stdout" | "stderr") => void;
@@ -16,7 +17,7 @@ const BLOCKED_PATTERNS = [
   /\bshutdown\b/i,
   /\breboot\b/i,
   /\bmkfs\b/i,
-  /\b\bdd\b.*\bof=/i,
+  /\bdd\b.*\bof=/i,
   /\bchmod\s+-R\s+777\b/i,
   /\bformat\b/i,
   /\bdrop\s+database\b/i,
@@ -27,9 +28,9 @@ const BLOCKED_PATTERNS = [
 ];
 
 const ALLOWED_PREFIXES = [
-  "npm ",   "npx ",   "pnpm ",  "yarn ",  "node ",
+  "npm ",   "npx ",   "pnpm ",  "yarn ",  "bun ", "node ",
   "tsc ",   "next ",  "vite ",  "vitest ",
-  "php artisan ", "composer ",
+  "php ", "php artisan ", "composer ",
   "python ", "python3 ", "pip ", "pip3 ", "poetry ",
   "cargo ",  "go ",
   "git ",    "cat ",   "ls ",   "echo ",
@@ -61,6 +62,7 @@ export function runProcess(
       resolve({ stdout: "", stderr: "Empty command", exitCode: 1, timedOut: false });
       return;
     }
+    const startedAt = Date.now();
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -69,7 +71,7 @@ export function runProcess(
     try {
       child = cp.spawn(bin, args, {
         cwd,
-        shell: true,
+        shell: process.platform === "win32",
         env: { ...process.env },
       });
     } catch (err) {
@@ -78,6 +80,8 @@ export function runProcess(
         stderr: `spawn failed: ${err instanceof Error ? err.message : String(err)}`,
         exitCode: 1,
         timedOut: false,
+        durationMs: Date.now() - startedAt,
+        cwd,
       });
       return;
     }
@@ -101,12 +105,12 @@ export function runProcess(
 
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr, exitCode: code ?? 1, timedOut });
+      resolve({ stdout, stderr, exitCode: code ?? 1, timedOut, durationMs: Date.now() - startedAt, cwd });
     });
 
     child.on("error", (err) => {
       clearTimeout(timer);
-      resolve({ stdout, stderr: err.message, exitCode: 1, timedOut });
+      resolve({ stdout, stderr: err.message, exitCode: 1, timedOut, durationMs: Date.now() - startedAt, cwd });
     });
   });
 }

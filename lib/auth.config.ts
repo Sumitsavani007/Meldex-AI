@@ -9,6 +9,7 @@
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig: NextAuthConfig = {
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   // Required when running behind a reverse proxy (Nginx on AWS)
   trustHost: true,

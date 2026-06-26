@@ -1,0 +1,68 @@
+{
+  "successfulSequences": [
+    [
+      "workspace",
+      "file_search",
+      "symbol",
+      "git",
+      "environment",
+      "preview",
+      "patch",
+      "build",
+      "test",
+      "browser",
+      "ast",
+      "documentation",
+      "terminal",
+      "lint",
+      "package",
+      "database"
+    ]
+  ],
+  "fastestPaths": [
+    {
+      "framework": "Next.js",
+      "tools": [
+        "workspace",
+        "file_search",
+        "symbol",
+        "git",
+        "environment",
+        "preview",
+        "patch",
+        "build",
+        "test",
+        "browser",
+        "ast",
+        "documentation",
+        "terminal",
+        "lint",
+        "package",
+        "database"
+      ],
+      "durationMs": 530
+    }
+  ],
+  "frameworkOptimizations": {
+    "Next.js": [
+      "workspace",
+      "file_search",
+      "symbol",
+      "git",
+      "environment",
+      "preview",
+      "patch",
+      "build",
+      "test",
+      "browser",
+      "ast",
+      "documentation",
+      "terminal",
+      "lint",
+      "package",
+      "database"
+    ]
+  },
+  "previousFailures": [],
+  "updatedAt": "2026-06-26T07:42:27.195Z"
+}

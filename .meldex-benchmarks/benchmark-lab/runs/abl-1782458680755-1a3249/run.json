@@ -1,0 +1,259 @@
+{
+  "id": "abl-1782458680755-1a3249",
+  "createdAt": "2026-06-26T07:24:41.857Z",
+  "schedule": "manual",
+  "engine": "offline-sandbox",
+  "sandboxRoot": "/var/folders/mp/hqqkmrb170319pdf6hy__l8c0000gn/T/meldex-benchmark-lab/abl-1782458680755-1a3249",
+  "profile": {
+    "sourceType": "sample",
+    "source": "sample",
+    "framework": "React",
+    "language": "js",
+    "packageManager": "npm",
+    "architecture": [
+      "src"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "projectSize": "small",
+    "fileCount": 5,
+    "scripts": {
+      "build": "node scripts/build-check.js",
+      "test": "node scripts/test-check.js"
+    }
+  },
+  "tasks": [
+    {
+      "id": "ui",
+      "category": "UI",
+      "title": "UI",
+      "prompt": "Improve one small UI state for responsiveness and accessibility.",
+      "complexity": "standard",
+      "expectedFiles": [],
+      "verifyCommands": [
+        "build"
+      ],
+      "risk": "medium"
+    },
+    {
+      "id": "docs",
+      "category": "Documentation",
+      "title": "Documentation",
+      "prompt": "Add a concise architecture note and verification checklist for this project.",
+      "complexity": "simple",
+      "expectedFiles": [
+        "README.md"
+      ],
+      "verifyCommands": [
+        "build"
+      ],
+      "risk": "low"
+    },
+    {
+      "id": "bugfix",
+      "category": "Bug fixing",
+      "title": "Bug fixing",
+      "prompt": "Find one small robustness issue and apply the safest minimal fix.",
+      "complexity": "standard",
+      "expectedFiles": [],
+      "verifyCommands": [
+        "test",
+        "build"
+      ],
+      "risk": "medium"
+    },
+    {
+      "id": "testing",
+      "category": "Testing",
+      "title": "Testing",
+      "prompt": "Add or improve a lightweight test for an existing utility or component.",
+      "complexity": "standard",
+      "expectedFiles": [],
+      "verifyCommands": [
+        "test"
+      ],
+      "risk": "medium"
+    }
+  ],
+  "results": [
+    {
+      "task": {
+        "id": "ui",
+        "category": "UI",
+        "title": "UI",
+        "prompt": "Improve one small UI state for responsiveness and accessibility.",
+        "complexity": "standard",
+        "expectedFiles": [],
+        "verifyCommands": [
+          "build"
+        ],
+        "risk": "medium"
+      },
+      "success": true,
+      "retries": 0,
+      "durationMs": 257,
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": true,
+          "durationMs": 257,
+          "summary": "Captured UI benchmark note. Verified: npm run build.",
+          "filesChanged": [
+            "BENCHMARK_NOTES.md"
+          ],
+          "logFile": "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/runs/abl-1782458680755-1a3249/ui-attempt-1.jsonl"
+        }
+      ],
+      "score": {
+        "correctness": 92,
+        "architecture": 91,
+        "performance": 90,
+        "security": 93,
+        "maintainability": 90,
+        "readability": 91,
+        "testing": 90,
+        "executionSpeed": 94,
+        "overall": 91
+      }
+    },
+    {
+      "task": {
+        "id": "docs",
+        "category": "Documentation",
+        "title": "Documentation",
+        "prompt": "Add a concise architecture note and verification checklist for this project.",
+        "complexity": "simple",
+        "expectedFiles": [
+          "README.md"
+        ],
+        "verifyCommands": [
+          "build"
+        ],
+        "risk": "low"
+      },
+      "success": true,
+      "retries": 0,
+      "durationMs": 203,
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": true,
+          "durationMs": 202,
+          "summary": "Added benchmark verification note. Verified: npm run build.",
+          "filesChanged": [
+            "README.md"
+          ],
+          "logFile": "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/runs/abl-1782458680755-1a3249/docs-attempt-1.jsonl"
+        }
+      ],
+      "score": {
+        "correctness": 92,
+        "architecture": 91,
+        "performance": 90,
+        "security": 93,
+        "maintainability": 90,
+        "readability": 91,
+        "testing": 90,
+        "executionSpeed": 94,
+        "overall": 91
+      }
+    },
+    {
+      "task": {
+        "id": "bugfix",
+        "category": "Bug fixing",
+        "title": "Bug fixing",
+        "prompt": "Find one small robustness issue and apply the safest minimal fix.",
+        "complexity": "standard",
+        "expectedFiles": [],
+        "verifyCommands": [
+          "test",
+          "build"
+        ],
+        "risk": "medium"
+      },
+      "success": true,
+      "retries": 0,
+      "durationMs": 419,
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": true,
+          "durationMs": 419,
+          "summary": "Captured Bug fixing benchmark note. Verified: npm run test, npm run build.",
+          "filesChanged": [
+            "BENCHMARK_NOTES.md"
+          ],
+          "logFile": "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/runs/abl-1782458680755-1a3249/bugfix-attempt-1.jsonl"
+        }
+      ],
+      "score": {
+        "correctness": 92,
+        "architecture": 91,
+        "performance": 90,
+        "security": 93,
+        "maintainability": 90,
+        "readability": 91,
+        "testing": 90,
+        "executionSpeed": 94,
+        "overall": 91
+      }
+    },
+    {
+      "task": {
+        "id": "testing",
+        "category": "Testing",
+        "title": "Testing",
+        "prompt": "Add or improve a lightweight test for an existing utility or component.",
+        "complexity": "standard",
+        "expectedFiles": [],
+        "verifyCommands": [
+          "test"
+        ],
+        "risk": "medium"
+      },
+      "success": true,
+      "retries": 0,
+      "durationMs": 219,
+      "attempts": [
+        {
+          "attempt": 1,
+          "success": true,
+          "durationMs": 219,
+          "summary": "Captured Testing benchmark note. Verified: npm run test.",
+          "filesChanged": [
+            "BENCHMARK_NOTES.md"
+          ],
+          "logFile": "/Users/sumitsavani/Downloads/Meldex AI/.meldex-benchmarks/benchmark-lab/runs/abl-1782458680755-1a3249/testing-attempt-1.jsonl"
+        }
+      ],
+      "score": {
+        "correctness": 92,
+        "architecture": 91,
+        "performance": 90,
+        "security": 93,
+        "maintainability": 90,
+        "readability": 91,
+        "testing": 90,
+        "executionSpeed": 94,
+        "overall": 91
+      }
+    }
+  ],
+  "leaderboard": {
+    "successRate": 100,
+    "averageRetries": 0,
+    "averageExecutionTimeMs": 275,
+    "frameworkScore": {
+      "React": 91
+    },
+    "bugCategories": {},
+    "improvementTrend": "new"
+  },
+  "regressions": [],
+  "recommendations": [
+    "Maintain React benchmark profile with npm command heuristics."
+  ],
+  "reports": []
+}

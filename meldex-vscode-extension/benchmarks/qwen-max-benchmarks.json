@@ -1,0 +1,57 @@
+{
+  "suite": "Meldex Qwen3-Coder MAX Engine",
+  "version": 1,
+  "tasks": [
+    {
+      "id": "empty-static-landing",
+      "prompt": "Create a simple landing page and run on local server.",
+      "expected": ["files created", "server started", "HTTP 200 preview verified"]
+    },
+    {
+      "id": "next-homepage-update",
+      "prompt": "Update the Next.js homepage hero and run build.",
+      "expected": ["relevant files selected", "npm run build passed"]
+    },
+    {
+      "id": "fix-typescript-error",
+      "prompt": "Fix the current TypeScript error and verify build.",
+      "expected": ["error parsed", "minimal patch applied", "build rerun"]
+    },
+    {
+      "id": "add-api-route",
+      "prompt": "Add an API route for health status and test it.",
+      "expected": ["framework-correct route", "validation command selected"]
+    },
+    {
+      "id": "refactor-component",
+      "prompt": "Refactor the selected component without changing behavior.",
+      "expected": ["qwen_refactor profile", "minimal changed files"]
+    },
+    {
+      "id": "generate-tests",
+      "prompt": "Generate tests for the selected file.",
+      "expected": ["qwen_tests profile", "test command selected when available"]
+    },
+    {
+      "id": "build-failure-autofix",
+      "prompt": "Run build and fix any failure automatically.",
+      "expected": ["parsed error", "fix retry", "same-error guard"]
+    },
+    {
+      "id": "missing-dependency",
+      "prompt": "Fix missing dependency error.",
+      "expected": ["dependency detected", "install requires confirmation"]
+    },
+    {
+      "id": "ui-polish",
+      "prompt": "Polish the page UI and make it responsive.",
+      "expected": ["qwen_ui_polish profile", "accessible responsive changes"]
+    },
+    {
+      "id": "readme-docs",
+      "prompt": "Update README with setup and usage.",
+      "expected": ["docs-only relevant context", "no build required unless requested"]
+    }
+  ],
+  "metrics": ["success", "retries", "durationMs", "filesChanged", "buildResult", "qualityNotes"]
+}

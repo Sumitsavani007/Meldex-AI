@@ -1,0 +1,11 @@
+{
+  "scripts": {
+    "build": "node scripts/build-check.js",
+    "test": "node scripts/test-check.js",
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "latest"
+  }
+}

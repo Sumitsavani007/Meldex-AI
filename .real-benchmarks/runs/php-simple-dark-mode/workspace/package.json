@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "build": "node scripts/build-check.js",
+    "test": "node scripts/test-check.js",
+    "dev": "php -S localhost:${PORT:-5173}"
+  }
+}

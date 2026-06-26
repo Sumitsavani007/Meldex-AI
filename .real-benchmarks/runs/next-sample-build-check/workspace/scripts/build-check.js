@@ -1,0 +1,1 @@
+const fs=require('fs'); const file="app/page.tsx"; const text=fs.readFileSync(file,'utf8'); if(/SYNTAX_ERROR_BENCHMARK|<<<<<<<|undefinedFunction\(/.test(text)){ console.error('intentional syntax marker found'); process.exit(1); } console.log('build ok');
