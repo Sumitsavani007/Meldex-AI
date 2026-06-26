@@ -26,10 +26,10 @@ interface SettingRow {
 interface Overview {
   appUrl: string; environment: string; nodeVersion: string; buildVersion: string;
   hostname: string; vaultConfigured: boolean;
-  checks: Record<string, { status: string; latencyMs?: number }>;
-  system: { totalMemMb: number; usedMemMb: number; memPercent: number; cpuLoad1: string; cpus: number; uptimeSeconds: number };
-  stats: { users: number; projects: number; conversations: number; messages: number; vaultKeys: number };
-  awsMeta: Record<string, string | undefined>;
+  checks?: Record<string, { status: string; latencyMs?: number }>;
+  system?: { totalMemMb: number; usedMemMb: number; memPercent: number; cpuLoad1: string; cpus: number; uptimeSeconds: number };
+  stats?: { users: number; projects: number; conversations: number; messages: number; vaultKeys: number };
+  awsMeta?: Record<string, string | undefined>;
   diagnosticsMs: number;
 }
 
@@ -254,6 +254,10 @@ export default function MasterAdminPage() {
     { id: "diagnostics", label: "Diagnostics", icon: Monitor },
     { id: "audit", label: "Audit Logs", icon: Shield },
   ];
+  const overviewStats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
+  const overviewSystem = overview?.system ?? { totalMemMb: 0, usedMemMb: 0, memPercent: 0, cpuLoad1: "0.00", cpus: 0, uptimeSeconds: 0 };
+  const overviewChecks = overview?.checks ?? {};
+  const overviewAwsMeta = overview?.awsMeta ?? {};
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -352,11 +356,11 @@ export default function MasterAdminPage() {
                   {/* Stats row */}
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     {[
-                      { label: "Users", value: overview.stats.users, icon: Users, color: "text-emerald-400", dot: "bg-emerald-400" },
-                      { label: "Projects", value: overview.stats.projects, icon: Package, color: "text-violet-400", dot: "bg-violet-400" },
-                      { label: "Conversations", value: overview.stats.conversations, icon: MessageSquare, color: "text-blue-400", dot: "bg-blue-400" },
-                      { label: "Messages", value: overview.stats.messages, icon: CircleDot, color: "text-amber-400", dot: "bg-amber-400" },
-                      { label: "Vault Keys", value: overview.stats.vaultKeys, icon: Key, color: "text-rose-400", dot: "bg-rose-400" },
+                      { label: "Users", value: overviewStats.users, icon: Users, color: "text-emerald-400", dot: "bg-emerald-400" },
+                      { label: "Projects", value: overviewStats.projects, icon: Package, color: "text-violet-400", dot: "bg-violet-400" },
+                      { label: "Conversations", value: overviewStats.conversations, icon: MessageSquare, color: "text-blue-400", dot: "bg-blue-400" },
+                      { label: "Messages", value: overviewStats.messages, icon: CircleDot, color: "text-amber-400", dot: "bg-amber-400" },
+                      { label: "Vault Keys", value: overviewStats.vaultKeys, icon: Key, color: "text-rose-400", dot: "bg-rose-400" },
                     ].map((s) => (
                       <div key={s.label} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 hover:bg-white/[0.04] transition-colors">
                         <div className="flex items-center justify-between mb-3">
@@ -377,21 +381,21 @@ export default function MasterAdminPage() {
                         <div>
                           <div className="flex justify-between text-xs mb-1">
                             <span className="text-slate-400">Memory</span>
-                            <span className="text-slate-300">{overview.system.usedMemMb} / {overview.system.totalMemMb} MB</span>
+                            <span className="text-slate-300">{overviewSystem.usedMemMb} / {overviewSystem.totalMemMb} MB</span>
                           </div>
                           <div className="h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
-                            <div className={`h-full rounded-full transition-all ${overview.system.memPercent > 85 ? "bg-red-400" : overview.system.memPercent > 70 ? "bg-amber-400" : "bg-emerald-400"}`}
-                              style={{ width: `${overview.system.memPercent}%` }} />
+                            <div className={`h-full rounded-full transition-all ${overviewSystem.memPercent > 85 ? "bg-red-400" : overviewSystem.memPercent > 70 ? "bg-amber-400" : "bg-emerald-400"}`}
+                              style={{ width: `${overviewSystem.memPercent}%` }} />
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 text-xs">
                           <div className="bg-white/[0.03] rounded-lg px-3 py-2">
                             <p className="text-slate-500 mb-0.5">CPU Load</p>
-                            <p className="text-slate-200 font-mono">{overview.system.cpuLoad1} ({overview.system.cpus} cores)</p>
+                            <p className="text-slate-200 font-mono">{overviewSystem.cpuLoad1} ({overviewSystem.cpus} cores)</p>
                           </div>
                           <div className="bg-white/[0.03] rounded-lg px-3 py-2">
                             <p className="text-slate-500 mb-0.5">Uptime</p>
-                            <p className="text-slate-200 font-mono">{fmtUptime(overview.system.uptimeSeconds)}</p>
+                            <p className="text-slate-200 font-mono">{fmtUptime(overviewSystem.uptimeSeconds)}</p>
                           </div>
                           <div className="bg-white/[0.03] rounded-lg px-3 py-2">
                             <p className="text-slate-500 mb-0.5">Hostname</p>
@@ -409,7 +413,7 @@ export default function MasterAdminPage() {
                     <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
                       <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">Service Health</h3>
                       <div className="space-y-2">
-                        {Object.entries(overview.checks ?? {}).map(([svc, check]) => (
+                        {Object.entries(overviewChecks).map(([svc, check]) => (
                           <div key={svc} className="flex items-center justify-between py-1.5 border-b border-white/[0.04] last:border-0">
                             <div className="flex items-center gap-2.5">
                               <StatusPulse status={check.status} />
@@ -426,11 +430,11 @@ export default function MasterAdminPage() {
                   </div>
 
                   {/* AWS metadata */}
-                  {Object.values(overview.awsMeta ?? {}).some(Boolean) && (
+                  {Object.values(overviewAwsMeta).some(Boolean) && (
                     <div className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-5">
                       <h3 className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-4">AWS Deployment</h3>
                       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-                        {Object.entries(overview.awsMeta ?? {}).filter(([, v]) => v).map(([k, v]) => (
+                        {Object.entries(overviewAwsMeta).filter(([, v]) => v).map(([k, v]) => (
                           <div key={k} className="bg-white/[0.03] rounded-lg px-3 py-2">
                             <p className="text-[10px] text-slate-500 mb-0.5">{k.replace("AWS_", "")}</p>
                             <p className="text-[11px] font-mono text-slate-200 truncate">{v}</p>
@@ -691,7 +695,7 @@ export default function MasterAdminPage() {
                 </button>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {overview?.checks && Object.entries(overview.checks).map(([svc, check]) => (
+                {Object.entries(overviewChecks).map(([svc, check]) => (
                   <div key={svc} className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${check.status === "ok" || check.status === "configured" ? "bg-emerald-500/10" : check.status === "error" ? "bg-red-500/10" : "bg-amber-500/10"}`}>
