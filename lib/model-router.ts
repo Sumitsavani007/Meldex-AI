@@ -114,25 +114,36 @@ async function callOpenAICompatible(
     signal: AbortSignal.timeout(timeout),
   });
 
+  const requestId = response.headers.get("x-request-id") ?? response.headers.get("cf-ray");
+  const retryAfter = response.headers.get("retry-after");
   if (response.status === 401) {
-    throw new ModelRouterError("Invalid or missing API key.", "missing_api_key", 401);
+    throw new ModelRouterError("Invalid or missing API key.", "missing_api_key", 401, model, requestId, retryAfter);
   }
-  if (response.status === 429 || response.status === 402) {
-    throw new ModelRouterError("Rate limit exceeded.", "rate_limit", response.status);
+  if (response.status === 403) {
+    throw new ModelRouterError(`No access to model "${model}".`, "forbidden", 403, model, requestId, retryAfter);
+  }
+  if (response.status === 429) {
+    throw new ModelRouterError("Rate limit exceeded.", "rate_limit", 429, model, requestId, retryAfter);
+  }
+  if (response.status === 402) {
+    throw new ModelRouterError("Insufficient OpenRouter credits or balance.", "insufficient_credits", 402, model, requestId, retryAfter);
   }
   if (response.status === 404) {
-    throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404);
+    throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404, model, requestId, retryAfter);
   }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     // Check for rate-limit in response body (OpenRouter sometimes returns 200 with error)
     if (detail.includes("rate_limit") || detail.includes("free-models-per-day") || detail.includes("provider rate limit")) {
-      throw new ModelRouterError("Rate limit exceeded.", "rate_limit", response.status);
+      throw new ModelRouterError("Rate limit exceeded.", "rate_limit", response.status, model, requestId, retryAfter);
     }
     throw new ModelRouterError(
       `Provider returned ${response.status}.`,
       "provider_error",
-      response.status
+      response.status,
+      model,
+      requestId,
+      retryAfter
     );
   }
 
@@ -147,13 +158,13 @@ async function callOpenAICompatible(
     const isRateLimit = errMsg.includes("rate_limit") || errMsg.includes("free-models-per-day") ||
       errMsg.includes("provider rate limit") || data.error.code === "429";
     if (isRateLimit) {
-      throw new ModelRouterError("Rate limit exceeded.", "rate_limit");
+      throw new ModelRouterError("Rate limit exceeded.", "rate_limit", undefined, model, requestId, retryAfter);
     }
-    throw new ModelRouterError(errMsg, "provider_error");
+    throw new ModelRouterError(errMsg, "provider_error", undefined, model, requestId, retryAfter);
   }
 
   const content = data.choices?.[0]?.message?.content ?? "";
-  if (!content.trim()) throw new ModelRouterError("Provider returned an empty response.", "empty_response");
+  if (!content.trim()) throw new ModelRouterError("Provider returned an empty response.", "empty_response", undefined, model, requestId, retryAfter);
   return content;
 }
 
@@ -231,11 +242,16 @@ export class ModelRouterError extends Error {
     public readonly code:
       | "missing_api_key"
       | "invalid_model"
+      | "forbidden"
+      | "insufficient_credits"
       | "provider_error"
       | "rate_limit"
       | "network_failure"
       | "empty_response",
-    public readonly httpStatus?: number
+    public readonly httpStatus?: number,
+    public readonly model?: string,
+    public readonly requestId?: string | null,
+    public readonly retryAfter?: string | null
   ) {
     super(message);
     this.name = "ModelRouterError";

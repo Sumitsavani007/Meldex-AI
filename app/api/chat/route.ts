@@ -7,6 +7,7 @@ import {
   getProviderLabel,
   ModelRouterError,
 } from "@/lib/model-router";
+import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 import { selectBrain } from "@/lib/tool-selector";
 import { advancedSearch } from "@/lib/search-brain";
 import { generateAnswer } from "@/lib/answer-brain";
@@ -284,15 +285,13 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     if (err instanceof ModelRouterError) {
-      const status =
-        err.code === "missing_api_key" ? 401 :
-        err.code === "rate_limit" ? 429 :
-        err.code === "invalid_model" ? 400 :
-        err.code === "network_failure" ? 503 : 502;
-      return NextResponse.json({ error: err.message, code: err.code }, { status });
+      const safe = toSafeProviderError(err);
+      return NextResponse.json(
+        { error: safe.userMessage, code: safe.code, providerError: safe },
+        { status: modelErrorStatus(safe.code, safe.statusCode), headers: { "Cache-Control": "no-store" } }
+      );
     }
     const message = err instanceof Error ? err.message : "Chat request failed";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-

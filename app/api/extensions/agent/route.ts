@@ -7,10 +7,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
-import { getConfig } from "@/lib/runtime-config";
+import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
+import { getNumberSetting } from "@/lib/runtime-config";
+import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 
 const schema = z.object({
-  task: z.string().min(1).max(4000),
+  task: z.string().min(1).max(12000),
   model: z.string().optional(),
   context: z.object({
     projectType: z.string().optional(),
@@ -24,7 +26,7 @@ const schema = z.object({
   }).optional(),
 });
 
-const AGENT_SYSTEM = `You are Meldex AI Agent — an expert coding assistant running inside VS Code.
+const AGENT_SYSTEM = `You are Meldex AI Agent powered by Qwen3-Coder — an expert coding assistant running inside VS Code.
 You receive a task and workspace context, then return a structured JSON plan with file operations.
 
 IMPORTANT: Always respond with valid JSON in this exact format:
@@ -39,6 +41,8 @@ IMPORTANT: Always respond with valid JSON in this exact format:
     }
   ],
   "commands": ["npm install react", "npm run build"],
+  "thoughtSummary": "short safe reasoning summary only",
+  "validation": ["checks to run"],
   "summary": "What was accomplished",
   "warnings": ["any important warnings"]
 }
@@ -49,7 +53,10 @@ Rules:
 - Only suggest safe commands (no rm -rf, sudo, etc.)
 - Be concise in plan steps (max 6 steps)
 - For large files, provide complete working code
-- Follow the project type conventions`;
+- Follow the project type conventions
+- Prefer minimal patches over unrelated rewrites
+- Do not expose hidden chain-of-thought
+- Do not invent fake imports or unnecessary dependencies`;
 
 export async function POST(req: NextRequest) {
   // Auth
@@ -80,39 +87,20 @@ export async function POST(req: NextRequest) {
   if (context?.terminalError) ctxParts.push(`Terminal error:\n\`\`\`\n${context.terminalError}\n\`\`\``);
 
   try {
-    const apiKey = await getConfig("OPENROUTER_API_KEY");
-    const baseUrl = await getConfig("OPENROUTER_BASE_URL") ?? "https://openrouter.ai/api/v1";
-    const agentModel = model ?? await getConfig("OPENROUTER_MODEL") ?? "qwen/qwen3-coder:free";
+    const temperature = await getNumberSetting("QWEN_TEMPERATURE", 0.2);
+    const maxTokens = await getNumberSetting("QWEN_MAX_TOKENS", 8192);
+    const timeoutMs = await getNumberSetting("QWEN_TIMEOUT_MS", 90000);
 
-    if (!apiKey) return NextResponse.json({ error: "AI backend not configured" }, { status: 503 });
-
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://meldex.newsyfly.com",
-        "X-Title": "Meldex AI Agent",
-      },
-      body: JSON.stringify({
-        model: agentModel,
-        messages: [
-          { role: "system", content: AGENT_SYSTEM },
-          { role: "user", content: ctxParts.join("\n\n") },
-        ],
-        max_tokens: 8192,
-        response_format: { type: "json_object" },
-      }),
-      signal: AbortSignal.timeout(90000),
+    const rawContent = await generateChatCompletion({
+      model,
+      temperature,
+      maxTokens,
+      timeoutMs,
+      messages: [
+        { role: "system", content: `${AGENT_SYSTEM}\nReturn JSON only. No markdown fences.` },
+        { role: "user", content: ctxParts.join("\n\n") },
+      ],
     });
-
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: `AI error: ${err}` }, { status: 502 });
-    }
-
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-    const rawContent = data?.choices?.[0]?.message?.content ?? "{}";
 
     let plan: unknown;
     try {
@@ -123,13 +111,19 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ...(plan as object),
-      model: agentModel,
       user: { id: user.userId, email: user.email },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
+    if (err instanceof ModelRouterError) {
+      const safe = toSafeProviderError(err);
+      return NextResponse.json(
+        { error: safe.userMessage, providerError: safe },
+        { status: modelErrorStatus(safe.code, safe.statusCode), headers: { "Cache-Control": "no-store" } }
+      );
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Agent failed" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

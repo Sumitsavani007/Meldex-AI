@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
 import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
+import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 
 const schema = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant", "system"]), content: z.string() })).min(1),
@@ -75,16 +76,11 @@ export async function POST(req: NextRequest) {
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (err instanceof ModelRouterError) {
-      if (err.code === "rate_limit") {
-        return NextResponse.json(
-          { error: "Free model is temporarily rate limited. A fallback model was tried. Please retry in a moment." },
-          { status: 429 }
-        );
-      }
-      if (err.code === "missing_api_key") {
-        return NextResponse.json({ error: "AI backend not configured on server." }, { status: 503 });
-      }
-      return NextResponse.json({ error: err.message }, { status: 502 });
+      const safe = toSafeProviderError(err);
+      return NextResponse.json(
+        { error: safe.userMessage, providerError: safe },
+        { status: modelErrorStatus(safe.code, safe.statusCode), headers: { "Cache-Control": "no-store" } }
+      );
     }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Chat failed" },

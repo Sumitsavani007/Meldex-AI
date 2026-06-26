@@ -29,11 +29,20 @@ const KNOWN_KEYS: Array<{
   { key: "NEXTAUTH_SECRET", label: "NextAuth Secret (legacy)", category: "auth", isSecret: true },
   { key: "NEXTAUTH_URL", label: "App URL", category: "auth", isSecret: false },
   { key: "AUTH_URL", label: "Auth URL", category: "auth", isSecret: false },
+  { key: "APP_PUBLIC_URL", label: "Public App URL", category: "runtime", isSecret: false },
   { key: "OPENROUTER_API_KEY", label: "API Key", category: "openrouter", isSecret: true },
   { key: "OPENROUTER_BASE_URL", label: "Base URL", category: "openrouter", isSecret: false },
   { key: "OPENROUTER_MODEL", label: "Default Model", category: "openrouter", isSecret: false, description: "Active model — vault value overrides ENV" },
   { key: "OPENROUTER_FALLBACK_MODEL", label: "Fallback Model", category: "openrouter", isSecret: false, description: "Used when primary model hits rate limit" },
   { key: "MELDEX_BRAIN_PROVIDER", label: "Brain Provider", category: "openrouter", isSecret: false },
+  { key: "QWEN_TEMPERATURE", label: "Qwen Temperature", category: "qwen", isSecret: false, description: "Default 0.2 for coding precision" },
+  { key: "QWEN_MAX_TOKENS", label: "Qwen Max Tokens", category: "qwen", isSecret: false, description: "Output token cap for multi-file edits" },
+  { key: "QWEN_TIMEOUT_MS", label: "Qwen Timeout", category: "qwen", isSecret: false, description: "Agent request timeout in milliseconds" },
+  { key: "QWEN_RETRY_COUNT", label: "Qwen JSON Retries", category: "qwen", isSecret: false, description: "Retries for malformed/weak action JSON" },
+  { key: "QWEN_CONTEXT_SIZE", label: "Qwen Context Size", category: "qwen", isSecret: false },
+  { key: "QWEN_ACTION_MODE", label: "Qwen Action Mode", category: "qwen", isSecret: false },
+  { key: "SERPER_API_KEY", label: "Serper API Key", category: "search", isSecret: true },
+  { key: "BRAVE_API_KEY", label: "Brave Search API Key", category: "search", isSecret: true },
   { key: "R2_ACCOUNT_ID", label: "Account ID", category: "r2", isSecret: true },
   { key: "R2_ACCESS_KEY_ID", label: "Access Key ID", category: "r2", isSecret: true },
   { key: "R2_SECRET_ACCESS_KEY", label: "Secret Access Key", category: "r2", isSecret: true },
@@ -51,6 +60,10 @@ const KNOWN_KEYS: Array<{
   { key: "AWS_SERVER_NAME", label: "Server Name", category: "aws", isSecret: false },
   { key: "SETTINGS_ENCRYPTION_KEY", label: "Encryption Key", category: "security", isSecret: true },
 ];
+
+function settingStatus(source: "ENV" | "VAULT" | "MISSING") {
+  return source === "MISSING" ? "missing" : "active";
+}
 
 export async function GET(_req: NextRequest) {
   const { error } = await requireAdmin();
@@ -103,6 +116,7 @@ export async function GET(_req: NextRequest) {
       requireRestart: REQUIRES_RESTART.has(meta.key),
       hotReload: isHotReload,
       source, maskedValue, configured: source !== "MISSING",
+      status: settingStatus(source),
       updatedBy, updatedAt,
     };
   });

@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { getSetting, isVaultConfigured } from "@/lib/secret-vault";
+import { getProviderConfig, getRuntimeSetting } from "@/lib/runtime-config";
+import { testOpenRouterHealth } from "@/lib/provider-health";
 
 const testSchema = z.object({
   provider: z.enum(["postgres", "r2", "openrouter", "google", "github", "aws"]),
@@ -40,11 +41,10 @@ export async function POST(req: NextRequest) {
       }
 
       case "r2": {
-        const accountId = process.env.R2_ACCOUNT_ID;
-        const accessKey = process.env.R2_ACCESS_KEY_ID;
-        const secretKey = process.env.R2_SECRET_ACCESS_KEY;
-        const bucket = process.env.R2_BUCKET;
-        const publicUrl = process.env.R2_PUBLIC_URL;
+        const cfg = await getProviderConfig("r2") as {
+          accountId?: string; accessKeyId?: string; secretAccessKey?: string; bucket?: string; publicUrl?: string;
+        };
+        const { accountId, accessKeyId: accessKey, secretAccessKey: secretKey, bucket, publicUrl } = cfg;
 
         if (!accountId || !accessKey || !secretKey || !bucket) {
           return NextResponse.json({
@@ -83,42 +83,28 @@ export async function POST(req: NextRequest) {
       }
 
       case "openrouter": {
-        const apiKey = process.env.OPENROUTER_API_KEY;
-        if (!apiKey) {
-          return NextResponse.json({
-            provider,
-            status: "misconfigured",
-            latencyMs: Date.now() - start,
-            message: "OPENROUTER_API_KEY not set",
-            lastCheckedAt: new Date().toISOString(),
-          });
-        }
-
-        const res = await fetch("https://openrouter.ai/api/v1/models", {
-          headers: { Authorization: `Bearer ${apiKey}` },
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json() as { data?: unknown[] };
-        const modelCount = data?.data?.length ?? 0;
-
+        const health = await testOpenRouterHealth();
         return NextResponse.json({
           provider,
-          status: "ok",
-          latencyMs: Date.now() - start,
-          message: `OpenRouter connected — ${modelCount} models available`,
+          status: health.ok ? "ok" : "error",
+          latencyMs: health.latencyMs,
+          message: health.userMessage,
           lastCheckedAt: new Date().toISOString(),
+          extra: {
+            model: health.model,
+            code: health.code,
+            statusCode: String(health.statusCode ?? ""),
+            requestId: health.requestId ?? "",
+            retryAfter: health.retryAfter ?? "",
+            reason: health.reason,
+          },
         });
       }
 
       case "google": {
-        // Check process.env first, then vault (vault-loader may not have run if no restart yet)
-        const clientId = process.env.GOOGLE_CLIENT_ID
-          || (isVaultConfigured() ? await getSetting("GOOGLE_CLIENT_ID") : null);
-        const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-          || (isVaultConfigured() ? await getSetting("GOOGLE_CLIENT_SECRET") : null);
+        const { clientId, clientSecret } = await getProviderConfig("google") as { clientId?: string; clientSecret?: string };
 
-        const appUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+        const appUrl = await getRuntimeSetting("APP_PUBLIC_URL") ?? process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
         const callbackUrl = `${appUrl}/api/auth/callback/google`;
         const origin = appUrl;
 
@@ -127,7 +113,7 @@ export async function POST(req: NextRequest) {
             provider,
             status: "misconfigured",
             latencyMs: Date.now() - start,
-            message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set. Add via Credentials Vault and restart app.",
+            message: "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET not set. Add via Master Panel.",
             lastCheckedAt: new Date().toISOString(),
             extra: {
               reason: "missing_client_id_and_secret",
@@ -140,7 +126,7 @@ export async function POST(req: NextRequest) {
         if (!clientId) {
           return NextResponse.json({
             provider, status: "misconfigured", latencyMs: Date.now() - start,
-            message: "GOOGLE_CLIENT_ID missing. Add via Credentials Vault and restart app.",
+            message: "GOOGLE_CLIENT_ID missing. Add via Master Panel.",
             lastCheckedAt: new Date().toISOString(),
             extra: { reason: "missing_client_id", callbackUrl, origin },
           });
@@ -148,64 +134,48 @@ export async function POST(req: NextRequest) {
         if (!clientSecret) {
           return NextResponse.json({
             provider, status: "misconfigured", latencyMs: Date.now() - start,
-            message: "GOOGLE_CLIENT_SECRET missing. Add via Credentials Vault and restart app.",
+            message: "GOOGLE_CLIENT_SECRET missing. Add via Master Panel.",
             lastCheckedAt: new Date().toISOString(),
             extra: { reason: "missing_client_secret", callbackUrl, origin },
           });
         }
 
-        // Check if actually loaded into process.env (i.e., vault-loader ran after restart)
-        const loadedInEnv = !!process.env.GOOGLE_CLIENT_ID;
-        const source = loadedInEnv ? (process.env.GOOGLE_CLIENT_ID === clientId ? "ENV" : "ENV") : "VAULT_ONLY";
-        const needsRestart = !loadedInEnv;
-
         return NextResponse.json({
           provider,
-          status: needsRestart ? "configured_needs_restart" : "configured",
+          status: "configured",
           latencyMs: Date.now() - start,
-          message: needsRestart
-            ? "Google credentials found in vault but app restart required to activate provider"
-            : "Google OAuth configured and active",
+          message: "Google OAuth configured",
           lastCheckedAt: new Date().toISOString(),
           extra: {
-            source,
             callbackUrl,
             origin,
             clientIdPrefix: clientId.slice(0, 20) + "...",
-            note: needsRestart ? "Restart app via Master Admin to activate" : undefined,
           },
         });
       }
 
       case "github": {
-        const clientId = process.env.GITHUB_ID
-          || (isVaultConfigured() ? await getSetting("GITHUB_ID") : null);
-        const clientSecret = process.env.GITHUB_SECRET
-          || (isVaultConfigured() ? await getSetting("GITHUB_SECRET") : null);
+        const { clientId, clientSecret } = await getProviderConfig("github") as { clientId?: string; clientSecret?: string };
 
-        const appUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+        const appUrl = await getRuntimeSetting("APP_PUBLIC_URL") ?? process.env.AUTH_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
         const callbackUrl = `${appUrl}/api/auth/callback/github`;
 
         if (!clientId || !clientSecret) {
           return NextResponse.json({
             provider, status: "misconfigured", latencyMs: Date.now() - start,
-            message: `GitHub OAuth credentials missing: ${!clientId ? "GITHUB_ID " : ""}${!clientSecret ? "GITHUB_SECRET" : ""}. Add via Credentials Vault and restart.`,
+            message: `GitHub OAuth credentials missing: ${!clientId ? "GITHUB_ID " : ""}${!clientSecret ? "GITHUB_SECRET" : ""}. Add via Master Panel.`,
             lastCheckedAt: new Date().toISOString(),
             extra: { callbackUrl, reason: "missing_credentials" },
           });
         }
 
-        const loadedInEnv = !!process.env.GITHUB_ID;
-        const needsRestart = !loadedInEnv;
         return NextResponse.json({
           provider,
-          status: needsRestart ? "configured_needs_restart" : "configured",
+          status: "configured",
           latencyMs: Date.now() - start,
-          message: needsRestart
-            ? "GitHub credentials found in vault but app restart required to activate provider"
-            : "GitHub OAuth configured and active",
+          message: "GitHub OAuth configured",
           lastCheckedAt: new Date().toISOString(),
-          extra: { callbackUrl, clientIdPrefix: clientId.slice(0, 8) + "...", source: loadedInEnv ? "ENV" : "VAULT_ONLY" },
+          extra: { callbackUrl, clientIdPrefix: clientId.slice(0, 8) + "..." },
         });
       }
 
@@ -218,8 +188,8 @@ export async function POST(req: NextRequest) {
           lastCheckedAt: new Date().toISOString(),
           extra: {
             instanceId: process.env.AWS_INSTANCE_ID ?? "not set",
-            region: process.env.AWS_REGION ?? "not set",
-            publicIp: process.env.AWS_PUBLIC_IP ?? "not set",
+            region: await getRuntimeSetting("AWS_REGION", "not set"),
+            publicIp: await getRuntimeSetting("AWS_PUBLIC_IP", "not set"),
             deployPath: process.env.AWS_DEPLOY_PATH ?? "not set",
             sshUser: process.env.AWS_SSH_USER ?? "not set",
             serverName: process.env.AWS_SERVER_NAME ?? "not set",

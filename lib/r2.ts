@@ -26,7 +26,7 @@ import {
   type ObjectIdentifier,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { env } from "@/lib/env";
+import { getProviderConfig } from "@/lib/runtime-config";
 
 // ── R2 Folder prefixes ────────────────────────────────────────────────────────
 export const R2_FOLDERS = {
@@ -41,39 +41,51 @@ export type R2Folder = keyof typeof R2_FOLDERS;
 
 // ── Client singleton ──────────────────────────────────────────────────────────
 let _client: S3Client | null = null;
+let _clientSignature = "";
 
-function getClient(): S3Client {
-  if (_client) return _client;
+async function getR2Config() {
+  const cfg = await getProviderConfig("r2") as {
+    accountId?: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+    bucket?: string;
+    publicUrl?: string;
+  };
+  return cfg;
+}
 
-  if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+async function getClient(): Promise<{ client: S3Client; bucket: string; publicUrl?: string }> {
+  const cfg = await getR2Config();
+
+  if (!cfg.accountId || !cfg.accessKeyId || !cfg.secretAccessKey || !cfg.bucket) {
     throw new Error(
       "Cloudflare R2 is not configured. " +
-      "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY in .env.local"
+      "Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET in Master Panel"
     );
   }
 
-  _client = new S3Client({
-    region: "auto",
-    endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: env.R2_ACCESS_KEY_ID,
-      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-    },
-  });
+  const signature = `${cfg.accountId}:${cfg.accessKeyId}:${cfg.bucket}`;
+  if (!_client || _clientSignature !== signature) {
+    _client = new S3Client({
+      region: "auto",
+      endpoint: `https://${cfg.accountId}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId: cfg.accessKeyId,
+        secretAccessKey: cfg.secretAccessKey,
+      },
+    });
+    _clientSignature = signature;
+  }
 
-  return _client;
+  return { client: _client, bucket: cfg.bucket, publicUrl: cfg.publicUrl };
 }
 
 /**
  * Returns true if all required R2 environment variables are set.
  */
-export function isR2Configured(): boolean {
-  return Boolean(
-    env.R2_ACCOUNT_ID &&
-    env.R2_ACCESS_KEY_ID &&
-    env.R2_SECRET_ACCESS_KEY &&
-    env.R2_BUCKET
-  );
+export async function isR2Configured(): Promise<boolean> {
+  const cfg = await getR2Config();
+  return Boolean(cfg.accountId && cfg.accessKeyId && cfg.secretAccessKey && cfg.bucket);
 }
 
 // ── Path sanitization ─────────────────────────────────────────────────────────
@@ -105,12 +117,12 @@ export async function uploadToR2(params: {
   contentType?: string;
   metadata?: Record<string, string>;
 }): Promise<{ key: string; publicUrl: string | null }> {
-  const client = getClient();
+  const { client, bucket, publicUrl: publicBaseUrl } = await getClient();
   const key = sanitizeKey(params.key);
 
   await client.send(
     new PutObjectCommand({
-      Bucket: env.R2_BUCKET,
+      Bucket: bucket,
       Key: key,
       Body: params.body,
       ContentType: params.contentType ?? "application/octet-stream",
@@ -118,7 +130,7 @@ export async function uploadToR2(params: {
     })
   );
 
-  const publicUrl = env.R2_PUBLIC_URL ? `${env.R2_PUBLIC_URL}/${key}` : null;
+  const publicUrl = publicBaseUrl ? `${publicBaseUrl}/${key}` : null;
 
   return { key, publicUrl };
 }
@@ -127,10 +139,10 @@ export async function uploadToR2(params: {
  * Delete a single object from R2.
  */
 export async function deleteFromR2(key: string): Promise<void> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   await client.send(
     new DeleteObjectCommand({
-      Bucket: env.R2_BUCKET,
+      Bucket: bucket,
       Key: sanitizeKey(key),
     })
   );
@@ -141,13 +153,13 @@ export async function deleteFromR2(key: string): Promise<void> {
  */
 export async function deleteManyFromR2(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
-  const client = getClient();
+  const { client, bucket } = await getClient();
 
   const objects: ObjectIdentifier[] = keys.map((k) => ({ Key: sanitizeKey(k) }));
 
   await client.send(
     new DeleteObjectsCommand({
-      Bucket: env.R2_BUCKET,
+      Bucket: bucket,
       Delete: { Objects: objects, Quiet: true },
     })
   );
@@ -161,9 +173,9 @@ export async function getSignedDownloadUrl(
   key: string,
   expiresInSeconds = 3600
 ): Promise<string> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   const command = new GetObjectCommand({
-    Bucket: env.R2_BUCKET,
+    Bucket: bucket,
     Key: sanitizeKey(key),
   });
   return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
@@ -178,9 +190,9 @@ export async function getSignedUploadUrl(
   contentType: string,
   expiresInSeconds = 600
 ): Promise<string> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   const command = new PutObjectCommand({
-    Bucket: env.R2_BUCKET,
+    Bucket: bucket,
     Key: sanitizeKey(key),
     ContentType: contentType,
   });
@@ -191,11 +203,11 @@ export async function getSignedUploadUrl(
  * Check if a key exists in R2.
  */
 export async function existsInR2(key: string): Promise<boolean> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   try {
     await client.send(
       new HeadObjectCommand({
-        Bucket: env.R2_BUCKET,
+        Bucket: bucket,
         Key: sanitizeKey(key),
       })
     );
@@ -212,10 +224,10 @@ export async function listR2Prefix(
   prefix: string,
   maxKeys = 1000
 ): Promise<{ key: string; size: number; lastModified?: Date }[]> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   const result = await client.send(
     new ListObjectsV2Command({
-      Bucket: env.R2_BUCKET,
+      Bucket: bucket,
       Prefix: sanitizeKey(prefix),
       MaxKeys: maxKeys,
     })
@@ -232,10 +244,10 @@ export async function listR2Prefix(
  * Download a file from R2 as a Buffer.
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
-  const client = getClient();
+  const { client, bucket } = await getClient();
   const response = await client.send(
     new GetObjectCommand({
-      Bucket: env.R2_BUCKET,
+      Bucket: bucket,
       Key: sanitizeKey(key),
     })
   );
@@ -261,16 +273,16 @@ export async function checkR2Health(): Promise<{
   detail?: string;
   latencyMs?: number;
 }> {
-  if (!isR2Configured()) {
+  if (!(await isR2Configured())) {
     return { status: "unconfigured", detail: "R2 credentials not set" };
   }
 
   const t0 = Date.now();
   try {
-    const client = getClient();
+    const { client, bucket } = await getClient();
     await client.send(
       new ListObjectsV2Command({
-        Bucket: env.R2_BUCKET,
+        Bucket: bucket,
         MaxKeys: 1,
       })
     );

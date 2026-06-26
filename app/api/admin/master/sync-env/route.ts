@@ -8,7 +8,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/role-guard";
 import { saveSetting, isVaultConfigured, maskSecret } from "@/lib/secret-vault";
 import { logAuditEvent } from "@/lib/audit";
-import { REQUIRES_RESTART } from "@/lib/runtime-config";
+import { REQUIRES_RESTART, invalidateConfigCache } from "@/lib/runtime-config";
+import { prisma } from "@/lib/prisma";
 
 // Keys that should stay in process.env only (boot-critical)
 const SKIP_SYNC = new Set(["DATABASE_URL", "AUTH_SECRET", "NEXTAUTH_SECRET", "SETTINGS_ENCRYPTION_KEY"]);
@@ -16,10 +17,20 @@ const SKIP_SYNC = new Set(["DATABASE_URL", "AUTH_SECRET", "NEXTAUTH_SECRET", "SE
 const SYNC_KEYS: Array<{ key: string; category: string; isSecret: boolean }> = [
   { key: "NEXTAUTH_URL", category: "auth", isSecret: false },
   { key: "AUTH_URL", category: "auth", isSecret: false },
+  { key: "APP_PUBLIC_URL", category: "runtime", isSecret: false },
   { key: "OPENROUTER_API_KEY", category: "openrouter", isSecret: true },
   { key: "OPENROUTER_BASE_URL", category: "openrouter", isSecret: false },
   { key: "OPENROUTER_MODEL", category: "openrouter", isSecret: false },
+  { key: "OPENROUTER_FALLBACK_MODEL", category: "openrouter", isSecret: false },
   { key: "MELDEX_BRAIN_PROVIDER", category: "openrouter", isSecret: false },
+  { key: "QWEN_TEMPERATURE", category: "qwen", isSecret: false },
+  { key: "QWEN_MAX_TOKENS", category: "qwen", isSecret: false },
+  { key: "QWEN_TIMEOUT_MS", category: "qwen", isSecret: false },
+  { key: "QWEN_RETRY_COUNT", category: "qwen", isSecret: false },
+  { key: "QWEN_CONTEXT_SIZE", category: "qwen", isSecret: false },
+  { key: "QWEN_ACTION_MODE", category: "qwen", isSecret: false },
+  { key: "SERPER_API_KEY", category: "search", isSecret: true },
+  { key: "BRAVE_API_KEY", category: "search", isSecret: true },
   { key: "R2_ACCOUNT_ID", category: "r2", isSecret: true },
   { key: "R2_ACCESS_KEY_ID", category: "r2", isSecret: true },
   { key: "R2_SECRET_ACCESS_KEY", category: "r2", isSecret: true },
@@ -45,7 +56,11 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "SETTINGS_ENCRYPTION_KEY not configured" }, { status: 503 });
   }
 
-  const results: Array<{ key: string; status: "synced" | "skipped" | "missing" }> = [];
+  const url = new URL(req.url);
+  const overwrite = url.searchParams.get("overwrite") === "true";
+  const existingRows = await prisma.systemSetting.findMany({ select: { key: true } });
+  const existing = new Set(existingRows.map((r) => r.key));
+  const results: Array<{ key: string; status: "synced" | "skipped" | "missing" | "exists" }> = [];
   const updatedBy = session.user.email ?? session.user.id;
   const ipAddress = req.headers.get("x-forwarded-for") ?? undefined;
 
@@ -59,6 +74,10 @@ export async function POST(req: NextRequest) {
       results.push({ key: item.key, status: "missing" });
       continue;
     }
+    if (existing.has(item.key) && !overwrite) {
+      results.push({ key: item.key, status: "exists" });
+      continue;
+    }
     await saveSetting(item.key, val, {
       category: item.category,
       isSecret: item.isSecret,
@@ -66,6 +85,7 @@ export async function POST(req: NextRequest) {
       updatedBy,
       ipAddress,
     });
+    invalidateConfigCache(item.key);
     results.push({ key: item.key, status: "synced" });
   }
 

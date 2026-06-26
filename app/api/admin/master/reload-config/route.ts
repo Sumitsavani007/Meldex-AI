@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/role-guard";
 import { invalidateConfigCache, getConfig } from "@/lib/runtime-config";
 import { logAuditEvent } from "@/lib/audit";
+import { testOpenRouterHealth } from "@/lib/provider-health";
 
 export async function POST(req: NextRequest) {
   const { session, error } = await requireAdmin();
@@ -21,6 +22,7 @@ export async function POST(req: NextRequest) {
     getConfig("MELDEX_BRAIN_PROVIDER"),
     getConfig("OPENROUTER_BASE_URL"),
   ]);
+  const openrouter = await testOpenRouterHealth();
 
   await logAuditEvent({
     userId: session.user.id,
@@ -37,5 +39,6 @@ export async function POST(req: NextRequest) {
     fallbackModel: fallbackModel ?? "liquid/lfm-2.5-1.2b-instruct:free",
     provider: provider ?? "local_ollama",
     baseUrl: baseUrl ?? "https://openrouter.ai/api/v1",
+    openrouter,
   });
 }

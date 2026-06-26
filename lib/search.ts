@@ -11,6 +11,8 @@
  * Add SERPER_API_KEY to .env.local for best results on news/current events.
  */
 
+import { getProviderConfig } from "@/lib/runtime-config";
+
 export interface SearchResult {
   answer: string | null;
   sources: Array<{ title: string; url: string; snippet?: string }>;
@@ -22,12 +24,14 @@ export interface SearchResult {
 export async function webSearch(query: string): Promise<SearchResult> {
   const timestamp = new Date().toISOString();
 
-  const serperKey = process.env.SERPER_API_KEY;
+  const cfg = await getProviderConfig("search") as { serperApiKey?: string; braveApiKey?: string };
+
+  const serperKey = cfg.serperApiKey;
   if (serperKey) {
     return searchWithSerper(query, serperKey, timestamp);
   }
 
-  const braveKey = process.env.BRAVE_API_KEY;
+  const braveKey = cfg.braveApiKey;
   if (braveKey) {
     return searchWithBrave(query, braveKey, timestamp);
   }

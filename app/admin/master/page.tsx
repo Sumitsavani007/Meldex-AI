@@ -9,7 +9,7 @@ import {
   Eye, EyeOff, Globe, HardDrive, Info, Key, Loader2, Lock,
   MemoryStick, MessageSquare, Monitor, Package, RefreshCw,
   RotateCcw, Save, Server, Settings, Shield, ShieldAlert,
-  TestTube2, Timer, Users, WifiOff, X, Zap, Terminal,
+  TestTube2, Timer, Users, WifiOff, X, Zap, Terminal, Search,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ type TabId = "overview" | "vault" | "integrations" | "users" | "conversations" |
 interface SettingRow {
   key: string; label: string; category: string; isSecret: boolean;
   requireRestart: boolean; source: "ENV" | "VAULT" | "MISSING";
+  hotReload?: boolean; status?: string;
   maskedValue: string | null; configured: boolean;
   updatedBy: string | null; updatedAt: string | null; description?: string;
 }
@@ -97,9 +98,12 @@ const CREDENTIAL_GROUPS = [
   { category: "database", label: "Database", icon: Database },
   { category: "auth", label: "Authentication", icon: Lock },
   { category: "openrouter", label: "OpenRouter AI", icon: Zap },
+  { category: "qwen", label: "Qwen3-Coder", icon: Code2 },
+  { category: "search", label: "Search Providers", icon: Search },
   { category: "r2", label: "Cloudflare R2", icon: Cloud },
   { category: "oauth", label: "OAuth Providers", icon: Globe },
   { category: "aws", label: "AWS Deployment", icon: Server },
+  { category: "runtime", label: "App Runtime", icon: Settings },
   { category: "security", label: "Security", icon: Shield },
 ];
 
@@ -504,6 +508,12 @@ export default function MasterAdminPage() {
                                       <Timer className="w-2.5 h-2.5" /> restart
                                     </span>
                                   )}
+                                  {row.hotReload && !row.requireRestart && (
+                                    <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/15 px-1.5 py-0.5 rounded">
+                                      <RefreshCw className="w-2.5 h-2.5" /> hot reload
+                                    </span>
+                                  )}
+                                  {row.status && <Badge label={row.status} variant={row.status === "missing" ? "red" : "emerald"} />}
                                   {row.isSecret && <Lock className="w-2.5 h-2.5 text-slate-600" />}
                                 </div>
                                 <div className="flex items-center gap-3 mt-1">

@@ -6,7 +6,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { isVaultConfigured, getSetting } from "@/lib/secret-vault";
+import { isVaultConfigured } from "@/lib/secret-vault";
+import { getProviderConfig, getRuntimeSetting } from "@/lib/runtime-config";
 import os from "os";
 
 export async function GET() {
@@ -39,24 +40,25 @@ export async function GET() {
 
   const vaultOk = isVaultConfigured();
 
-  // Check OAuth credentials — env first, then vault
-  const googleId = process.env.GOOGLE_CLIENT_ID
-    || (vaultOk ? await getSetting("GOOGLE_CLIENT_ID").catch(() => null) : null);
-  const githubId = process.env.GITHUB_ID
-    || (vaultOk ? await getSetting("GITHUB_ID").catch(() => null) : null);
+  const [openrouterCfg, r2Cfg, googleCfg, githubCfg] = await Promise.all([
+    getProviderConfig("openrouter") as Promise<{ apiKey?: string }>,
+    getProviderConfig("r2") as Promise<{ accountId?: string; accessKeyId?: string; secretAccessKey?: string; bucket?: string }>,
+    getProviderConfig("google") as Promise<{ clientId?: string; clientSecret?: string }>,
+    getProviderConfig("github") as Promise<{ clientId?: string; clientSecret?: string }>,
+  ]);
 
   const checks = {
     database: { status: dbStatus, latencyMs: dbLatencyMs },
     auth: { status: (process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET) ? "ok" : "misconfigured" },
-    r2: { status: (process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID) ? "configured" : "not_configured" },
-    openrouter: { status: process.env.OPENROUTER_API_KEY ? "configured" : "not_configured" },
-    googleOauth: { status: googleId ? (process.env.GOOGLE_CLIENT_ID ? "configured" : "configured_needs_restart") : "not_configured" },
-    githubOauth: { status: githubId ? (process.env.GITHUB_ID ? "configured" : "configured_needs_restart") : "not_configured" },
+    r2: { status: (r2Cfg.accountId && r2Cfg.accessKeyId && r2Cfg.secretAccessKey && r2Cfg.bucket) ? "configured" : "not_configured" },
+    openrouter: { status: openrouterCfg.apiKey ? "configured" : "not_configured" },
+    googleOauth: { status: (googleCfg.clientId && googleCfg.clientSecret) ? "configured" : "not_configured" },
+    githubOauth: { status: (githubCfg.clientId && githubCfg.clientSecret) ? "configured" : "not_configured" },
     vault: { status: vaultOk ? "ok" : "not_configured" },
   };
 
   return NextResponse.json({
-    appUrl: process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? "http://localhost:3000",
+    appUrl: await getRuntimeSetting("APP_PUBLIC_URL", process.env.NEXTAUTH_URL ?? process.env.AUTH_URL ?? "http://localhost:3000"),
     environment: process.env.NODE_ENV ?? "development",
     nodeVersion: process.version,
     buildVersion: process.env.npm_package_version ?? "0.1.0",
@@ -77,9 +79,9 @@ export async function GET() {
     },
     stats: { users: userCount, projects: projectCount, conversations: convCount, messages: msgCount, vaultKeys: settingCount },
     awsMeta: {
-      instanceId: process.env.AWS_INSTANCE_ID,
-      region: process.env.AWS_REGION,
-      publicIp: process.env.AWS_PUBLIC_IP,
+      instanceId: await getRuntimeSetting("AWS_INSTANCE_ID"),
+      region: await getRuntimeSetting("AWS_REGION"),
+      publicIp: await getRuntimeSetting("AWS_PUBLIC_IP"),
       deployPath: process.env.AWS_DEPLOY_PATH,
       sshUser: process.env.AWS_SSH_USER,
       serverName: process.env.AWS_SERVER_NAME,

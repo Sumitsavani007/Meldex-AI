@@ -110,7 +110,7 @@ export async function uploadProjectFile(
   content: Buffer | string,
   contentType = "application/octet-stream"
 ): Promise<{ key: string; publicUrl: string | null } | { localPath: string }> {
-  if (isR2Configured()) {
+  if (await isR2Configured()) {
     const key = buildKey("workspace", projectId, relativePath);
     const body = typeof content === "string" ? Buffer.from(content, "utf8") : content;
     return uploadToR2({ key, body, contentType });
@@ -131,7 +131,7 @@ export async function downloadProjectFile(
   projectId: string,
   relativePath: string
 ): Promise<string> {
-  if (isR2Configured()) {
+  if (await isR2Configured()) {
     const key = buildKey("workspace", projectId, relativePath);
     const buf = await downloadFromR2(key);
     return buf.toString("utf8");
@@ -147,7 +147,7 @@ export async function deleteProjectFile(
   projectId: string,
   relativePath: string
 ): Promise<void> {
-  if (isR2Configured()) {
+  if (await isR2Configured()) {
     const key = buildKey("workspace", projectId, relativePath);
     await deleteFromR2(key);
     return;
@@ -162,7 +162,7 @@ export async function deleteProjectFile(
 export async function listProjectFiles(
   projectId: string
 ): Promise<{ path: string; size: number }[]> {
-  if (isR2Configured()) {
+  if (await isR2Configured()) {
     const prefix = buildKey("workspace", projectId, "");
     const objects = await listR2Prefix(prefix);
     return objects.map((o) => ({

@@ -13,6 +13,16 @@ import { prisma } from "@/lib/prisma";
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
+const db = prisma as typeof prisma & {
+  systemSetting: {
+    findUnique(args: unknown): Promise<{ valueMasked: string | null; isSecret: boolean; valueEncrypted: string | null } | null>;
+    upsert(args: unknown): Promise<unknown>;
+    delete(args: unknown): Promise<unknown>;
+  };
+  systemSettingAudit: {
+    create(args: unknown): Promise<unknown>;
+  };
+};
 
 // ── Key loading ─────────────────────────────────────────────────────────────
 
@@ -114,14 +124,14 @@ export async function saveSetting(
   } = opts;
 
   // Get old value for audit
-  const existing = await prisma.systemSetting.findUnique({ where: { key } });
+  const existing = await db.systemSetting.findUnique({ where: { key } });
   const oldMasked = existing?.valueMasked ?? null;
 
   const valueEncrypted = isSecret ? encryptSecret(value) : null;
   const valueMasked = isSecret ? maskSecret(value) : value;
-  const newMasked = isSecret ? valueMasked : null;
+  const newMasked = valueMasked;
 
-  await prisma.systemSetting.upsert({
+  await db.systemSetting.upsert({
     where: { key },
     update: {
       valueEncrypted,
@@ -142,7 +152,7 @@ export async function saveSetting(
     },
   });
 
-  await prisma.systemSettingAudit.create({
+  await db.systemSettingAudit.create({
     data: {
       key,
       action: existing ? "UPDATE" : "CREATE",
@@ -161,7 +171,7 @@ export async function saveSetting(
  * Returns null if not found anywhere.
  */
 export async function getSetting(key: string): Promise<string | null> {
-  const row = await prisma.systemSetting.findUnique({ where: { key } });
+  const row = await db.systemSetting.findUnique({ where: { key } });
   if (!row) return process.env[key] ?? null;
   if (row.isSecret && row.valueEncrypted) {
     try {
@@ -177,7 +187,7 @@ export async function getSetting(key: string): Promise<string | null> {
  * Return a setting value safe to show in the UI (masked if secret).
  */
 export async function getPublicSetting(key: string): Promise<string | null> {
-  const row = await prisma.systemSetting.findUnique({ where: { key } });
+  const row = await db.systemSetting.findUnique({ where: { key } });
   if (!row) {
     const envVal = process.env[key];
     return envVal ? maskSecret(envVal) : null;
@@ -193,10 +203,10 @@ export async function deleteSetting(
   updatedBy?: string,
   ipAddress?: string
 ): Promise<void> {
-  const existing = await prisma.systemSetting.findUnique({ where: { key } });
+  const existing = await db.systemSetting.findUnique({ where: { key } });
   if (!existing) return;
-  await prisma.systemSetting.delete({ where: { key } });
-  await prisma.systemSettingAudit.create({
+  await db.systemSetting.delete({ where: { key } });
+  await db.systemSettingAudit.create({
     data: {
       key,
       action: "DELETE",
