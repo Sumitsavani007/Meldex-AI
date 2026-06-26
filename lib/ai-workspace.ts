@@ -125,6 +125,187 @@ function safeMemoryText(value = "", max = 900) {
     .trim();
 }
 
+function decodeGeneratedContent(value: unknown) {
+  let content = typeof value === "string" ? value : value == null ? "" : JSON.stringify(value, null, 2);
+  const escapedNewlines = (content.match(/\\n/g) || []).length;
+  if (escapedNewlines >= 2 && content.split(/\r?\n/).length <= 3) {
+    content = content
+      .replace(/\\r\\n/g, "\n")
+      .replace(/\\n/g, "\n")
+      .replace(/\\t/g, "  ")
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'");
+  }
+  return content.trim();
+}
+
+function hasUnresolvedTemplatePlaceholder(content = "") {
+  return /\$\{[a-zA-Z0-9_.[\]\s'"`+-]+\}/.test(content);
+}
+
+function looksLikeRawModelDump(content = "") {
+  const trimmed = content.trim();
+  return (
+    /^[{[]/.test(trimmed) ||
+    /^```/.test(trimmed) ||
+    /"plan"\s*:|"files"\s*:|"summary"\s*:/.test(trimmed.slice(0, 2000)) ||
+    (trimmed.match(/\\n/g) || []).length > 8
+  );
+}
+
+function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileAction[] {
+  const productName = /meldex/i.test(prompt) ? "Meldex" : "Meldex AI";
+  const isPricing = /\bpricing|price|plan|subscription\b/i.test(prompt);
+  const title = isPricing ? `${productName} Pricing` : productName;
+  const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${title}</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main class="page-shell">
+    <section class="pricing-hero" aria-labelledby="pricing-title">
+      <p class="eyebrow">AI SaaS Pricing</p>
+      <h1 id="pricing-title">Choose the right Meldex plan</h1>
+      <p class="hero-copy">Launch faster with a workspace that plans, builds, previews, and learns from every task.</p>
+      <div class="billing-toggle" role="group" aria-label="Billing period">
+        <button class="toggle-option active" type="button" data-billing="monthly">Monthly</button>
+        <button class="toggle-option" type="button" data-billing="yearly">Yearly <span>Save 20%</span></button>
+      </div>
+    </section>
+    <section class="pricing-grid" aria-label="Pricing plans">
+      <article class="plan-card">
+        <p class="plan-kicker">Starter</p>
+        <h2>Builder</h2>
+        <p class="plan-description">For solo makers validating landing pages and product ideas.</p>
+        <div class="price"><span data-monthly="$19" data-yearly="$15">$19</span><small>/mo</small></div>
+        <ul>
+          <li>25 AI workspace tasks</li>
+          <li>Live preview and file diffs</li>
+          <li>Offline starter mode</li>
+        </ul>
+        <a href="#contact" class="plan-button secondary">Start building</a>
+      </article>
+      <article class="plan-card featured">
+        <div class="badge">Most popular</div>
+        <p class="plan-kicker">Pro</p>
+        <h2>Launch Team</h2>
+        <p class="plan-description">For teams shipping polished SaaS flows with agent QA.</p>
+        <div class="price"><span data-monthly="$49" data-yearly="$39">$49</span><small>/mo</small></div>
+        <ul>
+          <li>150 AI workspace tasks</li>
+          <li>Codex hybrid runtime</li>
+          <li>Context memory and rollback</li>
+        </ul>
+        <a href="#contact" class="plan-button">Choose Pro</a>
+      </article>
+      <article class="plan-card">
+        <p class="plan-kicker">Scale</p>
+        <h2>Business</h2>
+        <p class="plan-description">For high-volume product teams that need governance and support.</p>
+        <div class="price"><span data-monthly="$149" data-yearly="$119">$149</span><small>/mo</small></div>
+        <ul>
+          <li>Unlimited projects</li>
+          <li>Advanced model controls</li>
+          <li>Priority support and audit logs</li>
+        </ul>
+        <a href="#contact" class="plan-button secondary">Talk to sales</a>
+      </article>
+    </section>
+    <section id="contact" class="cta-panel">
+      <h2>Ready to build with Meldex?</h2>
+      <p>Start with a premium AI workspace and keep improving every release.</p>
+      <button type="button">Create workspace</button>
+    </section>
+  </main>
+  <script src="./script.js"></script>
+</body>
+</html>`;
+  const css = `:root {
+  color-scheme: dark;
+  --bg: #080914;
+  --panel: rgba(255,255,255,.07);
+  --panel-strong: rgba(255,255,255,.12);
+  --text: #f8fafc;
+  --muted: #a7b0c3;
+  --border: rgba(255,255,255,.14);
+  --accent: #8b5cf6;
+  --accent-2: #22d3ee;
+  --success: #34d399;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(139,92,246,.34), transparent 36rem),
+    radial-gradient(circle at bottom right, rgba(34,211,238,.18), transparent 30rem),
+    var(--bg);
+  color: var(--text);
+}
+.page-shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 72px 0; }
+.pricing-hero { text-align: center; max-width: 780px; margin: 0 auto 36px; }
+.eyebrow { color: var(--accent-2); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+h1 { margin: 12px 0; font-size: clamp(42px, 8vw, 78px); line-height: .95; letter-spacing: -0.04em; }
+.hero-copy { margin: 0 auto 28px; max-width: 640px; color: var(--muted); font-size: 18px; line-height: 1.7; }
+.billing-toggle { display: inline-flex; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 999px; background: rgba(255,255,255,.06); }
+.toggle-option { border: 0; border-radius: 999px; padding: 11px 16px; color: var(--muted); background: transparent; font-weight: 800; cursor: pointer; }
+.toggle-option span { color: var(--success); }
+.toggle-option.active { color: #fff; background: linear-gradient(135deg, var(--accent), #6d5dfc); box-shadow: 0 14px 34px rgba(139,92,246,.35); }
+.pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+  box-shadow: 0 24px 80px rgba(0,0,0,.28);
+  backdrop-filter: blur(18px);
+  transition: transform .2s ease, border-color .2s ease;
+}
+.plan-card:hover { transform: translateY(-6px); border-color: rgba(139,92,246,.65); }
+.featured { border-color: rgba(139,92,246,.72); background: linear-gradient(180deg, rgba(139,92,246,.22), rgba(255,255,255,.08)); }
+.badge { position: absolute; right: 22px; top: 22px; border-radius: 999px; padding: 7px 10px; color: #fff; background: rgba(139,92,246,.38); font-size: 12px; font-weight: 800; }
+.plan-kicker { margin: 0 0 12px; color: var(--accent-2); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
+h2 { margin: 0; font-size: 28px; }
+.plan-description { color: var(--muted); min-height: 72px; line-height: 1.6; }
+.price { display: flex; align-items: flex-end; gap: 6px; margin: 18px 0 20px; }
+.price span { font-size: 54px; font-weight: 900; letter-spacing: -0.05em; }
+.price small { color: var(--muted); padding-bottom: 10px; }
+ul { display: grid; gap: 12px; padding: 0; margin: 0 0 28px; list-style: none; color: #dbe4f5; }
+li::before { content: "✓"; color: var(--success); margin-right: 10px; }
+.plan-button, .cta-panel button { margin-top: auto; display: inline-flex; justify-content: center; border: 0; border-radius: 16px; padding: 14px 18px; color: #fff; background: linear-gradient(135deg, var(--accent), #6d5dfc); font-weight: 900; text-decoration: none; cursor: pointer; }
+.plan-button.secondary { background: rgba(255,255,255,.09); border: 1px solid var(--border); }
+.cta-panel { margin-top: 20px; padding: 30px; border: 1px solid var(--border); border-radius: 28px; background: rgba(255,255,255,.06); text-align: center; }
+.cta-panel p { color: var(--muted); }
+@media (max-width: 900px) { .pricing-grid { grid-template-columns: 1fr; } .plan-card { min-height: auto; } }
+@media (max-width: 540px) { .page-shell { padding: 42px 0; } h1 { font-size: 42px; } .billing-toggle { width: 100%; } .toggle-option { flex: 1; } }`;
+  const js = `const buttons = document.querySelectorAll(".toggle-option");
+buttons.forEach((button) => {
+  button.addEventListener("click", () => {
+    buttons.forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    const billing = button.dataset.billing;
+    document.querySelectorAll(".price span").forEach((price) => {
+      price.textContent = price.dataset[billing] || price.textContent;
+    });
+  });
+});`;
+  return [
+    { operation: "create", path: "index.html", content: html, description: `Generated safe preview fallback: ${reason}` },
+    { operation: "create", path: "style.css", content: css, description: "Premium responsive pricing styles" },
+    { operation: "create", path: "script.js", content: js, description: "Monthly/yearly pricing toggle" },
+    { operation: "create", path: "README.md", content: `# ${title}\n\nGenerated by Meldex Workspace.\n\n## Files\n\n- index.html\n- style.css\n- script.js\n\n## Validation\n\nPreview must render HTML, load CSS/JS, and contain no raw model JSON or unresolved placeholders.\n`, description: "Project notes" },
+  ];
+}
+
 function uniqueLimit(values: string[], limit: number) {
   return [...new Set(values.map((item) => safeMemoryText(item, 240)).filter(Boolean))].slice(0, limit);
 }
@@ -505,15 +686,24 @@ export async function findStaticPreviewEntry(storagePath: string) {
 }
 
 export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prompt = "") {
-  const hasIndex = files.some((file) => safeRelative(file.path).toLowerCase() === "index.html");
-  if (hasIndex || !isStaticWebsitePrompt(prompt)) return files;
+  const normalizedFiles: WorkspaceFileAction[] = files
+    .map((file) => ({
+      ...file,
+      operation: file.operation || "create",
+      path: safeRelative(file.path || ""),
+      content: file.operation === "delete" ? file.content : decodeGeneratedContent(file.content),
+    }))
+    .filter((file) => file.path);
+  const isStatic = isStaticWebsitePrompt(prompt);
+  const hasIndex = normalizedFiles.some((file) => file.path.toLowerCase() === "index.html");
+  if (!isStatic) return normalizedFiles;
 
   let normalizedEntry = false;
-  return files.map((file) => {
-    const relative = safeRelative(file.path);
+  let nextFiles: WorkspaceFileAction[] = normalizedFiles.map((file) => {
+    const relative = file.path;
     const isHtml = relative.toLowerCase().endsWith(".html");
     const isPlaceholderPath = /^relative\/path\/[^/]+\.html$/i.test(relative);
-    const isLikelyStaticEntry = isHtml && !normalizedEntry && (isPlaceholderPath || files.filter((item) => safeRelative(item.path).toLowerCase().endsWith(".html")).length === 1);
+    const isLikelyStaticEntry = !hasIndex && isHtml && !normalizedEntry && (isPlaceholderPath || normalizedFiles.filter((item) => item.path.toLowerCase().endsWith(".html")).length === 1);
 
     if (!isLikelyStaticEntry) return { ...file, path: relative };
     normalizedEntry = true;
@@ -523,6 +713,54 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
       description: file.description || `Normalized ${relative} to static preview entry`,
     };
   });
+  const html = nextFiles.find((file) => file.path === "index.html" && file.operation !== "delete");
+  const invalidHtml = !html?.content ||
+    !/<!doctype html|<html[\s>]/i.test(html.content) ||
+    looksLikeRawModelDump(html.content) ||
+    hasUnresolvedTemplatePlaceholder(html.content);
+
+  if (invalidHtml) return staticFallbackFiles(prompt, "invalid or missing HTML entry");
+
+  let htmlContent = html.content || "";
+  htmlContent = htmlContent
+    .replace(/href=["'](?:\.\/)?style\.css["']/i, 'href="./style.css"')
+    .replace(/src=["'](?:\.\/)?script\.js["']/i, 'src="./script.js"');
+  if (!/href=["']\.\/style\.css["']/i.test(htmlContent)) {
+    htmlContent = htmlContent.replace(/<\/head>/i, '  <link rel="stylesheet" href="./style.css">\n</head>');
+  }
+  if (!/src=["']\.\/script\.js["']/i.test(htmlContent)) {
+    htmlContent = htmlContent.replace(/<\/body>/i, '  <script src="./script.js"></script>\n</body>');
+  }
+  nextFiles = nextFiles.map((file) => file.path === "index.html" ? { ...file, content: htmlContent } : file);
+
+  const hasCss = nextFiles.some((file) => file.path === "style.css" && file.operation !== "delete" && file.content && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
+  const hasJs = nextFiles.some((file) => file.path === "script.js" && file.operation !== "delete" && file.content && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
+  const fallback = staticFallbackFiles(prompt, "missing required static asset");
+  if (!hasCss) nextFiles.push(fallback.find((file) => file.path === "style.css")!);
+  if (!hasJs) nextFiles.push(fallback.find((file) => file.path === "script.js")!);
+
+  const invalidContent = nextFiles.some((file) =>
+    file.operation !== "delete" &&
+    /\.(html|css|js)$/i.test(file.path) &&
+    (looksLikeRawModelDump(file.content || "") || hasUnresolvedTemplatePlaceholder(file.content || ""))
+  );
+  return invalidContent ? staticFallbackFiles(prompt, "raw model dump or unresolved placeholder detected") : nextFiles;
+}
+
+export function validateStaticPreviewContent(html: string, linkedAssets: string[], existingAssets: Set<string>) {
+  const issues: string[] = [];
+  const trimmed = html.trim();
+  if (!/<!doctype html|<html[\s>]/i.test(trimmed)) issues.push("HTML entry must contain <!doctype html> or <html.");
+  if (/^[{[]/.test(trimmed)) issues.push("HTML entry looks like raw JSON/model output.");
+  if ((trimmed.match(/\\n/g) || []).length > 8) issues.push("HTML entry contains raw escaped newline spam.");
+  if (hasUnresolvedTemplatePlaceholder(trimmed)) issues.push("HTML entry contains unresolved template placeholders.");
+  if (/"plan"\s*:|"files"\s*:|"summary"\s*:/.test(trimmed.slice(0, 2000))) issues.push("HTML entry contains model plan JSON.");
+  const cssAssets = linkedAssets.filter((asset) => /\.css(?:$|[?#])/i.test(asset));
+  const jsAssets = linkedAssets.filter((asset) => /\.js(?:$|[?#])/i.test(asset));
+  if (!cssAssets.length) issues.push("HTML entry must link a CSS asset.");
+  if (existingAssets.has("script.js") && !jsAssets.length) issues.push("HTML entry must load script.js when it exists.");
+  if (existingAssets.has("style.css") && !cssAssets.some((asset) => asset.replace(/^\.\//, "") === "style.css")) issues.push("HTML entry must link ./style.css.");
+  return { valid: issues.length === 0, issues };
 }
 
 export async function createWorkspaceSnapshot(userId: string, projectId: string, taskId?: string, label = "before-task") {
@@ -579,6 +817,9 @@ export async function verifyStaticPreview(userId: string, projectId: string) {
   const linkedAssets = [...html.matchAll(/(?:href|src)=["']([^"']+)["']/gi)]
     .map((match) => match[1])
     .filter((asset) => !asset.startsWith("http") && !asset.startsWith("#") && !asset.startsWith("data:"));
+  const physicalFiles = await listPhysicalFiles(project.storagePath);
+  const existingAssets = new Set(physicalFiles);
+  const contentValidation = validateStaticPreviewContent(html, linkedAssets, existingAssets);
   const missing: string[] = [];
   const entryDir = path.posix.dirname(entry);
   for (const asset of linkedAssets) {
@@ -586,17 +827,27 @@ export async function verifyStaticPreview(userId: string, projectId: string) {
       ? safeRelative(asset.replace(/^\//, ""))
       : safeRelative(path.posix.join(entryDir === "." ? "" : entryDir, asset));
     try {
-      await stat(resolveProjectFile(project.storagePath, assetPath).absolute);
+      const assetAbsolute = resolveProjectFile(project.storagePath, assetPath).absolute;
+      await stat(assetAbsolute);
+      if (/\.(css|js)$/i.test(assetPath)) {
+        const assetContent = await readFile(assetAbsolute, "utf8").catch(() => "");
+        if (looksLikeRawModelDump(assetContent) || hasUnresolvedTemplatePlaceholder(assetContent)) {
+          missing.push(`${asset} invalid`);
+        }
+      }
     } catch {
       missing.push(asset);
     }
   }
   const previewUrl = entry === "index.html" ? `/api/workspaces/${projectId}/preview` : `/api/workspaces/${projectId}/preview?file=${encodeURIComponent(entry)}`;
+  const verified = hasHtml && missing.length === 0 && contentValidation.valid;
+  const failureDetails = [...contentValidation.issues, ...(missing.length ? [`missing or invalid assets: ${missing.join(", ")}`] : [])];
   return {
-    verified: hasHtml && missing.length === 0,
+    verified,
     httpStatus: hasHtml ? 200 : 422,
-    message: hasHtml && missing.length === 0 ? "HTTP 200 verified. HTML and linked assets loaded." : `Preview verification failed${missing.length ? `, missing: ${missing.join(", ")}` : ""}.`,
+    message: verified ? "HTTP 200 verified. HTML and linked assets loaded." : `Preview render validation failed: ${failureDetails.join(" ") || "invalid HTML"}.`,
     url: previewUrl,
+    issues: failureDetails,
   };
 }
 
@@ -623,6 +874,33 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
   return { projectId, projectFiles: files.slice(0, 80), relevantFiles: relevant, memory, memoryContext };
 }
 
+function coerceWorkspaceAgentResponse(value: unknown): WorkspaceAgentResponse {
+  const raw = (value || {}) as {
+    plan?: unknown;
+    files?: unknown;
+    commands?: unknown;
+    summary?: unknown;
+    warnings?: unknown;
+  };
+  const files = Array.isArray(raw.files) ? raw.files.map((item) => {
+    const file = (item || {}) as Record<string, unknown>;
+    return {
+      operation: file.operation === "delete" ? "delete" : file.operation === "edit" ? "edit" : "create",
+      path: String(file.path || file.file || file.filename || ""),
+      content: decodeGeneratedContent(file.content ?? file.body ?? file.code ?? ""),
+      description: typeof file.description === "string" ? file.description : undefined,
+    } satisfies WorkspaceFileAction;
+  }).filter((file) => file.path) : [];
+
+  return {
+    plan: Array.isArray(raw.plan) ? raw.plan.map((item) => String(item)).slice(0, 10) : undefined,
+    files,
+    commands: Array.isArray(raw.commands) ? raw.commands.map((item) => String(item)).slice(0, 8) : undefined,
+    summary: typeof raw.summary === "string" ? safeMemoryText(raw.summary, 600) : undefined,
+    warnings: Array.isArray(raw.warnings) ? raw.warnings.map((item) => safeMemoryText(String(item), 240)).slice(0, 8) : undefined,
+  };
+}
+
 function parseAgentJson(raw: string): WorkspaceAgentResponse {
   const trimmed = raw.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -631,7 +909,8 @@ function parseAgentJson(raw: string): WorkspaceAgentResponse {
   const last = candidate.lastIndexOf("}");
   if (first === -1 || last <= first) return parseLooseWorkspaceResponse(raw);
   try {
-    return JSON.parse(candidate.slice(first, last + 1)) as WorkspaceAgentResponse;
+    const parsed = coerceWorkspaceAgentResponse(JSON.parse(candidate.slice(first, last + 1)));
+    return parsed.files?.length ? parsed : parseLooseWorkspaceResponse(raw);
   } catch {
     return parseLooseWorkspaceResponse(raw);
   }
@@ -643,7 +922,7 @@ function extractFence(raw: string, language: string) {
 }
 
 function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
-  const html = extractFence(raw, "html") || (/<!doctype html|<html[\s>]/i.test(raw) ? raw.trim() : "");
+  const html = extractFence(raw, "html") || (/<!doctype html|<html[\s>]/i.test(raw) && !looksLikeRawModelDump(raw) ? raw.trim() : "");
   const css = extractFence(raw, "css");
   const js = extractFence(raw, "js|javascript");
   const files: WorkspaceFileAction[] = [];
@@ -652,7 +931,7 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     files.push({
       operation: "create",
       path: "index.html",
-      content: html,
+      content: decodeGeneratedContent(html),
       description: "HTML generated from non-JSON model response",
     });
   }
@@ -660,7 +939,7 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     files.push({
       operation: "create",
       path: "style.css",
-      content: css,
+      content: decodeGeneratedContent(css),
       description: "CSS generated from non-JSON model response",
     });
   }
@@ -668,7 +947,7 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     files.push({
       operation: "create",
       path: "script.js",
-      content: js,
+      content: decodeGeneratedContent(js),
       description: "JavaScript generated from non-JSON model response",
     });
   }

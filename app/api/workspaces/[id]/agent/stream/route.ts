@@ -12,6 +12,7 @@ import {
   createWorkspaceTaskEvent,
   deleteProjectFile,
   getOwnedWorkspaceProject,
+  normalizeWorkspaceFileActions,
   offlineStaticWorkspace,
   readProjectFile,
   updateWorkspaceMemorySnapshot,
@@ -117,7 +118,7 @@ export async function POST(
           await send("changes_planned", "Planned changes");
           if (/website|landing|portfolio|page|site|ui|style|design/i.test(body.data.prompt)) await send("layout_designed", "Designed layout and visual direction");
 
-          const files = Array.isArray(response.files) ? response.files : [];
+          const files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
           const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
           for (const file of files) {
             if (!file.path) continue;
@@ -191,7 +192,7 @@ export async function POST(
           const updatedTask = await prisma.workspaceTask.update({
             where: { id: task.id },
             data: {
-              status: verification.verified || changedFiles.length ? "SUCCEEDED" : "FAILED",
+              status: verification.verified ? "SUCCEEDED" : "FAILED",
               planJson: plan,
               summary,
               qualityScore,

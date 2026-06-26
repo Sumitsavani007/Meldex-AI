@@ -188,7 +188,7 @@ export async function POST(
     const updatedTask = await prisma.workspaceTask.update({
       where: { id: task.id },
       data: {
-        status: verification.verified || changedFiles.length ? "SUCCEEDED" : "FAILED",
+        status: verification.verified ? "SUCCEEDED" : "FAILED",
         planJson: plan,
         summary,
         qualityScore,
