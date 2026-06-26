@@ -5,6 +5,7 @@ import { DiffManager } from "../diff/diffManager";
 import { isCommandAllowed, runProcess, RunResult } from "../terminal/processRunner";
 import { detectValidationCommands, requestNeedsExecution, requestNeedsServer, ServerRunner, ServerStatus } from "../terminal/serverRunner";
 import { autonomousPromptSection, buildAutonomousPlan, planNeedsUserInput, safeReasoningSummary } from "./autonomousOrchestrator";
+import { buildCodexIntelligencePlan } from "./codexIntelligenceEngine";
 import { ContextBuilder } from "./contextBuilder";
 import { EventNormalizer } from "./eventNormalizer";
 import { errorFingerprint, parseAgentError } from "./errorParser";
@@ -97,6 +98,19 @@ export class AgentRunner {
       const built = await this.withTimeout(ContextBuilder.build(root, task, maxFiles), STEP_TIMEOUT_MS, "Workspace scan");
       this.lastContext = built.context;
       const memory = readWorkspaceMemory(this.storageRoot || root);
+      const codexPlan = buildCodexIntelligencePlan({
+        task,
+        framework: built.projectType,
+        files: built.relevantFiles.map((file) => file.path),
+        packageJson: built.context.packageJson,
+        memory,
+      });
+      this.event("task-classified", "", "Classified task", `${codexPlan.classification.type} · confidence ${codexPlan.confidence.score}%`, Date.now(), "done");
+      this.event("role-pipeline", "", "Prepared role pipeline", codexPlan.roles.filter((role) => role.selected).map((role) => `${role.role} ${role.confidence}%`).join(" · "), Date.now(), "done");
+      if (codexPlan.confidence.decision === "block" || codexPlan.confidence.decision === "ask_user") {
+        this.onError(codexPlan.confidence.reason, false);
+        return;
+      }
       const aoePlan = buildAutonomousPlan({
         task,
         projectType: built.projectType,
@@ -113,7 +127,7 @@ export class AgentRunner {
         this.onError(`Need clarification before continuing. Confidence ${aoePlan.confidence}%. Please add one or two specifics.`, false);
         return;
       }
-      const optimized = optimizeForQwen(task, built, undefined, autonomousPromptSection(aoePlan));
+      const optimized = optimizeForQwen(task, built, undefined, [codexPlan.promptSection, autonomousPromptSection(aoePlan)].join("\n\n"));
       this.currentTask = optimized.task;
       this.mark("workspace", "done", `${this.lastContext.projectFiles?.length ?? 0} files indexed`);
       this.event("workspace", "", "Read workspace", `${this.lastContext.projectFiles?.length ?? 0} files indexed`, started, "done");

@@ -93,6 +93,9 @@ export async function POST(
           });
           if (context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
           if (context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
+          await send("task_classified", "Classified task", {
+            type: /website|landing|portfolio|page|site/i.test(body.data.prompt) ? "website_generation" : /fix|bug|error|broken/i.test(body.data.prompt) ? "bug_fix" : "coding_task",
+          });
           await send("thinking", "Planning files");
 
           let response: WorkspaceAgentResponse;
@@ -111,6 +114,8 @@ export async function POST(
 
           const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
           await send("plan", `Planned ${plan.length} step${plan.length === 1 ? "" : "s"}`, { plan, offlineMode });
+          await send("changes_planned", "Planned changes");
+          if (/website|landing|portfolio|page|site|ui|style|design/i.test(body.data.prompt)) await send("layout_designed", "Designed layout and visual direction");
 
           const files = Array.isArray(response.files) ? response.files : [];
           const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
@@ -144,11 +149,13 @@ export async function POST(
             await send(eventType, `${file.operation === "create" ? "Created" : file.operation === "delete" ? "Deleted" : "Updated"} ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
             await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
           }
+          await send("code_reviewed", "Reviewed code and patch scope");
 
           await send("server_starting", "Starting preview");
           const verification = await verifyStaticPreview(session.user.id, project.id);
           await send("server_ready", "Preview URL ready", { url: verification.url });
           await send(verification.verified ? "preview_verified" : "error", verification.message, verification);
+          if (!verification.verified) await send("error_fixed", "Preview issue recorded for debugger follow-up", { message: verification.message });
 
           const preview = await prisma.workspacePreview.create({
             data: {

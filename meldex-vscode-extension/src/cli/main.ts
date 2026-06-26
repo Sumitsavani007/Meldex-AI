@@ -13,6 +13,7 @@ import { errorFingerprint, parseAgentError, type ParsedError } from "../agent/er
 import { blockUnsafePatch, buildMilInsight, insightSummary } from "../agent/milEngine";
 import { learnFromTask, readWorkspaceMemory, retrieveRelevantMemory } from "../agent/workspaceMemory";
 import { runBenchmarkLab } from "../agent/benchmarkLab";
+import { buildCodexIntelligencePlan } from "../agent/codexIntelligenceEngine";
 import { buildToolIntelligencePlan, learnToolSequence, TOOL_REGISTRY, validatePatchPlan } from "../agent/toolIntelligenceEngine";
 import { CodexStyleRuntimeAdapter } from "./runtime/codexStyleRuntime";
 
@@ -1642,6 +1643,46 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     reusedStyle: relevantMemory.reusedStyle,
   });
   const projectMeta = (index.project || {}) as Json;
+  const codexPlan = buildCodexIntelligencePlan({
+    task,
+    framework: String(projectMeta.framework || "Unknown"),
+    files: (index.fileTree as string[]) || [],
+    packageJson: relevantFiles.find((file) => file.path === "package.json")?.content,
+    memory,
+  });
+  emit("tool_result", {
+    tool: "task_classifier",
+    status: "ok",
+    classification: codexPlan.classification,
+  });
+  emit("tool_result", {
+    tool: "confidence_engine",
+    status: codexPlan.confidence.decision === "block" ? "blocked" : codexPlan.confidence.decision === "ask_user" ? "needs_input" : "ok",
+    confidence: codexPlan.confidence,
+  });
+  emit("tool_result", {
+    tool: "role_pipeline",
+    status: "ok",
+    roles: codexPlan.roles.filter((role) => role.selected),
+    summaries: codexPlan.safeSummary,
+  });
+  for (const role of codexPlan.roles.filter((item) => item.selected)) {
+    runtime.event("task_started", {
+      stage: "role_pipeline",
+      role: role.role,
+      summary: role.summary,
+      confidence: role.confidence,
+      nextAction: role.nextAction,
+    });
+  }
+  if (codexPlan.confidence.decision === "block" || codexPlan.confidence.decision === "ask_user") {
+    emit("error", {
+      message: codexPlan.confidence.reason,
+      classification: codexPlan.classification,
+      missingInfo: codexPlan.planner.missingInfo,
+    });
+    return;
+  }
   const milBefore = buildMilInsight({
     root,
     task,
@@ -1691,7 +1732,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     task,
     index,
     packedContext.files,
-    [autonomousPromptSection(aoePlan), relevantMemory.snippet, packedContext.instructions ? `Project instructions:\n${packedContext.instructions}` : ""].filter(Boolean).join("\n\n")
+    [codexPlan.promptSection, autonomousPromptSection(aoePlan), relevantMemory.snippet, packedContext.instructions ? `Project instructions:\n${packedContext.instructions}` : ""].filter(Boolean).join("\n\n")
   );
   emit("tool_result", { tool: "qwen_optimizer", status: "ok", profile: optimized.profile, reasoning: optimized.reasoning });
   emit("plan", plan);
