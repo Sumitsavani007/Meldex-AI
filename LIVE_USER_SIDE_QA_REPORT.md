@@ -8,17 +8,21 @@ Date: 2026-06-27
 - `npx prisma generate`: passed.
 - `npm run build`: passed.
 
-## Live Verification Plan
+## Live Verification
 
-After deploy:
+- AWS commit: `3001919781594ddf5d9fe1275c96e6316258af7f`
+- PM2 process: `meldex-ai` online
+- Prisma migration deploy: no pending migrations
+- Production build: passed
+- Nginx reload: passed
 
-- Verify latest commit on AWS.
-- Restart PM2 process.
-- Reload nginx so preview iframe header exception applies.
-- Check `/dashboard`, `/workspace`, `/chat`, `/settings`, `/settings/tokens`.
-- Check unauthenticated protected routes redirect to login.
-- Check preview route no longer sends global `X-Frame-Options: DENY`.
+Checked live:
+
+- `/dashboard`: protected route redirects to login when unauthenticated.
+- `/workspace`: protected route redirects to login when unauthenticated.
+- `/chat`: protected route redirects to login when unauthenticated.
+- `/api/workspaces/test-preview-id/preview`: returns `401` unauthenticated and `X-Frame-Options: SAMEORIGIN`, confirming the preview iframe route no longer inherits global `DENY`.
 
 ## Status
 
-Pending live deployment at report creation time.
+Live deployment completed.
