@@ -10,9 +10,12 @@ import {
   ChevronRight,
   Clock3,
   Copy,
+  FileJson,
+  FileSpreadsheet,
   FileCode2,
   FileText,
   Folder,
+  FolderOpen,
   Loader2,
   Play,
   RefreshCw,
@@ -81,6 +84,8 @@ type WorkspaceState = {
   preview: { url: string; verified: boolean; httpStatus?: number; message?: string } | null;
 };
 
+type WorkspaceTab = "Overview" | "Files" | "Changes" | "Logs" | "Settings";
+
 const examples = [
   "Create a landing page",
   "Build a SaaS dashboard",
@@ -98,27 +103,47 @@ function statusLabel(status?: string) {
   return status === "CREATED" ? "Created" : status === "EDITED" ? "Edited" : status === "ROLLED_BACK" ? "Restored" : status;
 }
 
+function fileIconFor(name: string) {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".json")) return { Icon: FileJson, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" };
+  if (lower.endsWith(".css")) return { Icon: FileCode2, color: "text-sky-500", bg: "bg-sky-50 dark:bg-sky-500/10" };
+  if (lower.endsWith(".js") || lower.endsWith(".ts") || lower.endsWith(".tsx") || lower.endsWith(".jsx")) return { Icon: FileCode2, color: "text-violet-500", bg: "bg-violet-50 dark:bg-violet-500/10" };
+  if (lower.endsWith(".md")) return { Icon: FileText, color: "text-slate-500", bg: "bg-slate-50 dark:bg-white/[0.05]" };
+  if (lower.endsWith(".html")) return { Icon: FileSpreadsheet, color: "text-orange-500", bg: "bg-orange-50 dark:bg-orange-500/10" };
+  return { Icon: FileText, color: "text-slate-500", bg: "bg-slate-50 dark:bg-white/[0.05]" };
+}
+
 function FileNode({ node, active, onOpen }: { node: TreeNode; active: string; onOpen: (file: string) => void }) {
   const [open, setOpen] = useState(true);
   const isFolder = node.type === "folder";
   const badge = statusLabel(node.status);
+  const fileIcon = fileIconFor(node.name);
+  const FileIcon = fileIcon.Icon;
   return (
     <div>
       <button
         onClick={() => isFolder ? setOpen(!open) : onOpen(node.path)}
-        className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
+        className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-xs transition ${
           active === node.path
-            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-950"
-            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-400 dark:hover:bg-white/8 dark:hover:text-white"
+            ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-100"
+            : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white"
         }`}
       >
-        {isFolder ? <Folder className="size-3.5 shrink-0" /> : <FileText className="size-3.5 shrink-0" />}
+        {isFolder ? (
+          <span className="grid size-5 shrink-0 place-items-center rounded-md bg-blue-50 text-blue-500 dark:bg-blue-500/10">
+            {open ? <FolderOpen className="size-3.5" /> : <Folder className="size-3.5" />}
+          </span>
+        ) : (
+          <span className={`grid size-5 shrink-0 place-items-center rounded-md ${fileIcon.bg} ${fileIcon.color}`}>
+            <FileIcon className="size-3.5" />
+          </span>
+        )}
         <span className="min-w-0 flex-1 truncate">{node.name}</span>
         {badge && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-300">{badge}</span>}
         {isFolder && <ChevronRight className={`size-3 shrink-0 transition ${open ? "rotate-90" : ""}`} />}
       </button>
       {isFolder && open && node.children?.length ? (
-        <div className="ml-3 border-l border-zinc-200 pl-2 dark:border-white/10">
+        <div className="ml-4 border-l border-slate-200 pl-2 dark:border-white/10">
           {node.children.map((child) => <FileNode key={child.path} node={child} active={active} onOpen={onOpen} />)}
         </div>
       ) : null}
@@ -167,6 +192,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Ready");
   const [mobileTab, setMobileTab] = useState<"chat" | "files" | "preview" | "logs">("chat");
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>("Overview");
   const [logsOpen, setLogsOpen] = useState(false);
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
@@ -366,7 +392,18 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     await loadWorkspace(state.project.id);
   }
 
+  async function shareWorkspace() {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    if (!url) return;
+    await navigator.clipboard?.writeText(url);
+    setMessage("Workspace link copied");
+  }
+
   const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
+  const showFilesPanel = activeTab === "Overview" || activeTab === "Files";
+  const showChangesPanel = activeTab === "Overview" || activeTab === "Changes";
+  const showLogsPanel = activeTab === "Logs";
+  const showSettingsPanel = activeTab === "Settings";
 
   return (
     <div className="min-h-screen bg-[#f7f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
@@ -388,15 +425,18 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 disabled:opacity-45">
                   {loading ? <Square className="size-4" /> : <Play className="size-4" />} {loading ? "Stop" : "Run"}
                 </button>
-                <button disabled title="Workspace sharing is not available in this release" className="mx-focus h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-400 dark:border-white/10 dark:bg-white/[0.04]">Share</button>
+                <button onClick={shareWorkspace} className="mx-focus h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]">Share</button>
                 <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]" title="Refresh">
                   <RefreshCw className="size-4" />
                 </button>
               </div>
             </div>
             <nav className="mt-3 flex items-center gap-5 text-sm">
-              {["Overview", "Files", "Changes", "Logs", "Settings"].map((tab) => (
-                <button key={tab} disabled={tab === "Settings"} title={tab === "Settings" ? "Workspace settings are not available in this release" : tab} className={`pb-2 font-medium ${tab === "Overview" ? "border-b-2 border-violet-600 text-violet-600" : "text-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400"}`}>
+              {(["Overview", "Files", "Changes", "Logs", "Settings"] as WorkspaceTab[]).map((tab) => (
+                <button key={tab} onClick={() => {
+                  setActiveTab(tab);
+                  if (tab === "Logs") setLogsOpen(true);
+                }} title={tab} className={`pb-2 font-medium ${activeTab === tab ? "border-b-2 border-violet-600 text-violet-600" : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"}`}>
                   {tab}
                 </button>
               ))}
@@ -447,8 +487,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         </section>
       )}
 
-      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid lg:grid-cols-[280px_minmax(520px,1fr)_300px]`}>
-        <aside className="hidden min-h-0 border-r border-slate-200 bg-white dark:border-white/10 dark:bg-[#111113] lg:flex lg:flex-col">
+      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid ${showFilesPanel && showChangesPanel ? "lg:grid-cols-[280px_minmax(520px,1fr)_300px]" : showFilesPanel ? "lg:grid-cols-[300px_minmax(520px,1fr)]" : showChangesPanel ? "lg:grid-cols-[minmax(520px,1fr)_340px]" : "lg:grid-cols-1"}`}>
+        {showFilesPanel && <aside className="hidden min-h-0 border-r border-slate-200 bg-white dark:border-white/10 dark:bg-[#111113] lg:flex lg:flex-col">
           <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
             <div>
               <div className="text-xs font-semibold text-slate-500">Files</div>
@@ -461,10 +501,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-xs text-zinc-500 dark:border-white/10">Files will appear live as Meldex creates them.</div>
             )}
           </div>
-        </aside>
+        </aside>}
 
         <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-white/10 dark:bg-black">
-          <div className="border-b border-slate-200 p-3 dark:border-white/10">
+          {!showLogsPanel && !showSettingsPanel && <div className="border-b border-slate-200 p-3 dark:border-white/10">
             <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-violet-600" /> Agent prompt</div>
             <div className="mt-2 flex gap-2">
               <textarea
@@ -491,10 +531,32 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <button key={example} onClick={() => setPrompt(example)} className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8">{example}</button>
               ))}
             </div>
-          </div>
+          </div>}
 
-          <div className={`grid min-h-0 flex-1 ${logsOpen ? "grid-rows-[minmax(240px,1fr)_190px]" : "grid-rows-[minmax(240px,1fr)_44px]"}`}>
+          <div className={`grid min-h-0 flex-1 ${logsOpen || showLogsPanel ? "grid-rows-[minmax(240px,1fr)_190px]" : "grid-rows-[minmax(240px,1fr)_44px]"}`}>
             <div className="min-h-0 overflow-y-auto p-3">
+              {showSettingsPanel ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
+                  <h2 className="text-sm font-semibold">Workspace Settings</h2>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Workspace settings are managed automatically in this release.</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <button disabled title="Rename workspace is not available in this release" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 text-sm text-slate-400 dark:border-white/10">Rename unavailable</button>
+                    <button disabled title="Visibility controls are not available in this release" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 text-sm text-slate-400 dark:border-white/10">Visibility unavailable</button>
+                  </div>
+                </div>
+              ) : showLogsPanel ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
+                  <h2 className="mb-3 text-sm font-semibold">Logs</h2>
+                  <div className="h-[420px] overflow-y-auto rounded-xl bg-slate-950 p-3 font-mono text-xs leading-6 text-zinc-300">
+                    {[...(activeTask?.events || []), ...streamEvents].length
+                      ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
+                      : <div>[idle] Workspace ready</div>}
+                    {activeTask?.logs?.map((log) => <div key={log.id}>[{log.event}] {log.message}</div>)}
+                    {activeTask?.runs?.map((run) => <div key={run.id}>[{run.status}] {run.command} {run.stdout || run.stderr || ""}</div>)}
+                  </div>
+                </div>
+              ) : (
+              <>
               <div className="mb-3 rounded-2xl border border-slate-200 p-3 dark:border-white/10">
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">Agent timeline</h2>
@@ -510,13 +572,15 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </div>
                 <pre className="max-h-[360px] overflow-auto p-3 text-xs leading-5 text-zinc-700 dark:text-zinc-300">{selectedFile ? fileContent : "Select a file to preview content and diff."}</pre>
               </div>
+              </>
+              )}
             </div>
 
             <div className="border-t border-slate-200 bg-white p-3 text-slate-900 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-100">
               <button onClick={() => setLogsOpen((value) => !value)} className="flex w-full items-center gap-2 text-left text-xs font-semibold" aria-expanded={logsOpen}>
                 <TerminalSquare className="size-3.5" /> Logs / terminal / build output
               </button>
-              {logsOpen && (
+              {(logsOpen || showLogsPanel) && !showSettingsPanel && (
                 <div className="mt-2 h-32 overflow-y-auto rounded-xl bg-slate-950 p-2 font-mono text-[11px] leading-5 text-zinc-300">
                   {[...(activeTask?.events || []), ...streamEvents].length
                     ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
@@ -529,7 +593,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           </div>
         </section>
 
-        <aside className="hidden min-h-0 flex-col bg-[#f7f7fb] dark:bg-[#111113] lg:flex">
+        {showChangesPanel && <aside className="hidden min-h-0 flex-col bg-[#f7f7fb] dark:bg-[#111113] lg:flex">
           <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
             <h2 className="text-sm font-semibold">Changes</h2>
             <div className="flex items-center gap-1">
@@ -598,7 +662,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               ))}
             </div>
           </div>
-        </aside>
+        </aside>}
       </main>
         </div>
       </div>
