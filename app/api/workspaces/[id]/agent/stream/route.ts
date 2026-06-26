@@ -21,6 +21,13 @@ import {
   type WorkspaceAgentResponse,
   type WorkspaceStreamEvent,
 } from "@/lib/ai-workspace";
+import {
+  performanceReviewWorkspaceFiles,
+  recordWorkspaceLearning,
+  reviewWorkspaceFiles,
+  runWorkspaceOrchestration,
+  securityReviewWorkspaceFiles,
+} from "@/lib/workspace-orchestrator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,16 +101,30 @@ export async function POST(
           });
           if (context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
           if (context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
-          await send("task_classified", "Classified task", {
-            type: /website|landing|portfolio|page|site/i.test(body.data.prompt) ? "website_generation" : /fix|bug|error|broken/i.test(body.data.prompt) ? "bug_fix" : "coding_task",
+          const orchestration = await runWorkspaceOrchestration({
+            workspaceId: project.id,
+            taskId: task.id,
+            userId: session.user.id,
+            prompt: body.data.prompt,
+            workspaceContext: context,
+            currentFiles: context.projectFiles,
+            provider: "openrouter",
           });
+          for (const event of orchestration.events) await send(event.type, event.message, event.payload);
+          if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
+            throw new Error(orchestration.confidence.reason);
+          }
           await send("thinking", "Planning files");
 
           let response: WorkspaceAgentResponse;
           let offlineMode = false;
           let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
           try {
-            response = await askWorkspaceAgent(body.data.prompt, context);
+            await send("qwen_generation_started", "Qwen generation started", {
+              classification: orchestration.classification,
+              confidence: orchestration.confidence.score,
+            });
+            response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction);
           } catch (providerError) {
             providerFailure = classifyWorkspaceProviderFailure(providerError, body.data.prompt);
             await send("error", providerFailure.userMessage, { providerFailure });
@@ -116,9 +137,30 @@ export async function POST(
           const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
           await send("plan", `Planned ${plan.length} step${plan.length === 1 ? "" : "s"}`, { plan, offlineMode });
           await send("changes_planned", "Planned changes");
-          if (/website|landing|portfolio|page|site|ui|style|design/i.test(body.data.prompt)) await send("layout_designed", "Designed layout and visual direction");
 
-          const files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
+          let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
+          await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
+            files: files.map((file) => ({ path: file.path, operation: file.operation })),
+          });
+          let reviewer = reviewWorkspaceFiles(files, orchestration.classification);
+          if (reviewer.status === "block") {
+            await send("reviewer_needs_fix", reviewer.summary, { reviewer });
+            const fixPrompt = `${body.data.prompt}\n\nTARGETED FIX REQUIRED:\n${reviewer.findings.join("\n")}\nReturn complete corrected index.html, style.css, script.js, and README.md only.`;
+            const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction);
+            files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
+            reviewer = reviewWorkspaceFiles(files, orchestration.classification);
+            await send("debugger_fix_applied", "Debugger regenerated a targeted file fix", {
+              fixed: reviewer.status !== "block",
+              findings: reviewer.findings,
+            });
+          }
+          await send("reviewer_done", reviewer.summary, { reviewer });
+          if (reviewer.status === "block") throw new Error(`Reviewer blocked generated files: ${reviewer.findings.join("; ")}`);
+          const security = securityReviewWorkspaceFiles(files);
+          await send("security_reviewed", security.summary, { security });
+          if (security.status === "block") throw new Error(`Security reviewer blocked generated files: ${security.findings.join("; ")}`);
+          const performance = performanceReviewWorkspaceFiles(files);
+          await send("performance_reviewed", performance.summary, { performance });
           const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
           for (const file of files) {
             if (!file.path) continue;
@@ -150,7 +192,6 @@ export async function POST(
             await send(eventType, `${file.operation === "create" ? "Created" : file.operation === "delete" ? "Deleted" : "Updated"} ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
             await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
           }
-          await send("code_reviewed", "Reviewed code and patch scope");
 
           await send("server_starting", "Starting preview");
           const verification = await verifyStaticPreview(session.user.id, project.id);
@@ -202,6 +243,11 @@ export async function POST(
             include: { diffs: true, runs: true, previews: true, logs: true, events: { orderBy: { sequence: "asc" } } },
           });
           await prisma.workspaceProject.update({ where: { id: project.id }, data: { qualityScore, lastPreviewUrl: verification.url } });
+          await send("finalized", "Finalized workspace task", {
+            status: updatedTask.status,
+            qualityScore,
+            previewVerified: verification.verified,
+          });
           const memory = await updateWorkspaceMemorySnapshot({
             userId: session.user.id,
             projectId: project.id,
@@ -217,6 +263,19 @@ export async function POST(
             commands: ["static-preview-verify"],
           });
           await send("memory_updated", "Updated workspace memory", { recentTasks: memory.recentTasks.length, knownIssues: memory.knownIssues.length });
+          const learning = await recordWorkspaceLearning({
+            userId: session.user.id,
+            projectId: project.id,
+            taskId: task.id,
+            prompt: body.data.prompt,
+            classification: orchestration.classification,
+            qualityScore,
+            reviewer,
+            security,
+            performance,
+            verification,
+          });
+          await send("learning_updated", "Recorded safe learning summary", { learning });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode });
           await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory });
           completed = true;
