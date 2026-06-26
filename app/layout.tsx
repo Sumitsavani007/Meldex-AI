@@ -2,6 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
 import { Header } from "@/components/header";
+import { ThemeProvider } from "@/components/theme-provider";
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Meldex AI | Plan. Build. Debug. Deploy.",
@@ -10,14 +18,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-ink font-sans antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <body className={`${inter.variable} min-h-screen overflow-x-hidden bg-white font-sans text-slate-950 antialiased dark:bg-[#0d0d0d] dark:text-white`}>
         <AuthProvider>
-          <div className="pointer-events-none fixed inset-0 grid-sheen opacity-35" />
-          <div className="relative flex min-h-screen flex-col">
-            <Header />
-            <main className="flex-1">{children}</main>
-          </div>
+          <ThemeProvider>
+            <div className="relative flex min-h-screen min-w-0 flex-col overflow-x-hidden">
+              <Header />
+              <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+            </div>
+          </ThemeProvider>
         </AuthProvider>
       </body>
     </html>

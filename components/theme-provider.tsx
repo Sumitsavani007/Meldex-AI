@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 type ThemePreference = "light" | "dark" | "system";
+
+type ThemeContextValue = {
+  theme: ThemePreference;
+  setTheme: (theme: ThemePreference) => void;
+};
+
+const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function applyTheme(theme: ThemePreference) {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -10,7 +17,7 @@ function applyTheme(theme: ThemePreference) {
   document.documentElement.classList.toggle("dark", shouldUseDark);
 }
 
-export function useThemePreference() {
+function useThemeState() {
   const [theme, setThemeState] = useState<ThemePreference>("system");
 
   useEffect(() => {
@@ -35,4 +42,18 @@ export function useThemePreference() {
   }
 
   return { theme, setTheme };
+}
+
+export function ThemeProvider({ children }: { children: React.ReactNode }) {
+  const value = useThemeState();
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+}
+
+export function useThemePreference() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    throw new Error("useThemePreference must be used inside ThemeProvider");
+  }
+  return context;
 }
