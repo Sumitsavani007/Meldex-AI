@@ -75,6 +75,15 @@ model User {
   sessions       Session[]
   extensionTokens ExtensionToken[]
   extensionDeviceCodes ExtensionDeviceCode[]
+  workspaceProjects WorkspaceProject[]
+  workspaceFiles WorkspaceFile[]
+  workspaceTasks WorkspaceTask[]
+  workspaceRuns WorkspaceRun[]
+  workspaceDiffs WorkspaceDiff[]
+  workspacePreviews WorkspacePreview[]
+  workspaceLogs WorkspaceLog[]
+  workspaceTaskEvents WorkspaceTaskEvent[]
+  workspaceSnapshots WorkspaceSnapshot[]
 }
 
 model Account {
@@ -408,4 +417,215 @@ model ExtensionDeviceCode {
   @@index([userCode])
   @@index([deviceCode])
   @@index([expiresAt])
+}
+
+// ── AI Workspace ─────────────────────────────────────────────────────────────
+
+model WorkspaceProject {
+  id            String              @id @default(cuid())
+  userId        String
+  name          String
+  slug          String
+  description   String?
+  storagePath   String
+  status        String              @default("ACTIVE")
+  qualityScore  Int                 @default(0)
+  lastPreviewUrl String?
+  deletedAt     DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  files         WorkspaceFile[]
+  tasks         WorkspaceTask[]
+  runs          WorkspaceRun[]
+  diffs         WorkspaceDiff[]
+  previews      WorkspacePreview[]
+  logs          WorkspaceLog[]
+  events        WorkspaceTaskEvent[]
+  snapshots     WorkspaceSnapshot[]
+
+  @@unique([userId, slug])
+  @@index([userId, updatedAt])
+  @@index([userId, deletedAt])
+  @@index([status])
+}
+
+model WorkspaceFile {
+  id         String           @id @default(cuid())
+  userId     String
+  projectId  String
+  path       String
+  status     String           @default("UNCHANGED")
+  language   String?
+  sizeBytes  Int              @default(0)
+  contentHash String?
+  changed    Boolean          @default(false)
+  deletedAt  DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    WorkspaceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, path])
+  @@index([userId, updatedAt])
+  @@index([projectId, status])
+  @@index([projectId, deletedAt])
+}
+
+model WorkspaceTask {
+  id            String             @id @default(cuid())
+  userId        String
+  projectId     String
+  prompt        String             @db.Text
+  planJson      Json?
+  status        String             @default("QUEUED")
+  summary       String?            @db.Text
+  qualityScore  Int                @default(0)
+  previewUrl    String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       WorkspaceProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runs          WorkspaceRun[]
+  diffs         WorkspaceDiff[]
+  previews      WorkspacePreview[]
+  logs          WorkspaceLog[]
+  events        WorkspaceTaskEvent[]
+  snapshots     WorkspaceSnapshot[]
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([status])
+}
+
+model WorkspaceRun {
+  id          String            @id @default(cuid())
+  userId      String
+  projectId   String
+  taskId      String?
+  command     String
+  status      String            @default("PENDING")
+  exitCode    Int?
+  stdout      String?           @db.Text
+  stderr      String?           @db.Text
+  durationMs  Int?
+  previewUrl  String?
+  deletedAt   DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     WorkspaceProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        WorkspaceTask?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([taskId])
+}
+
+model WorkspaceDiff {
+  id          String          @id @default(cuid())
+  userId      String
+  projectId   String
+  taskId      String
+  path        String
+  operation   String
+  added       Int             @default(0)
+  removed     Int             @default(0)
+  oldContent  String?         @db.Text
+  newContent  String?         @db.Text
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     WorkspaceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        WorkspaceTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([taskId])
+  @@index([path])
+}
+
+model WorkspacePreview {
+  id            String            @id @default(cuid())
+  userId        String
+  projectId     String
+  taskId        String?
+  url           String
+  port          Int?
+  status        String            @default("STARTING")
+  httpStatus    Int?
+  verified      Boolean           @default(false)
+  message       String?
+  logs          Json?
+  lastCheckedAt DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       WorkspaceProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task          WorkspaceTask?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([taskId])
+}
+
+model WorkspaceLog {
+  id          String             @id @default(cuid())
+  userId      String?
+  projectId   String
+  taskId      String?
+  level       String             @default("info")
+  event       String
+  message     String
+  metadata    Json?
+  createdAt   DateTime           @default(now())
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project     WorkspaceProject   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task        WorkspaceTask?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([taskId, createdAt])
+  @@index([userId])
+}
+
+model WorkspaceTaskEvent {
+  id          String          @id @default(cuid())
+  userId      String
+  taskId      String
+  projectId   String
+  sequence    Int
+  type        String
+  message     String
+  payloadJson Json?
+  createdAt   DateTime        @default(now())
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task        WorkspaceTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  project     WorkspaceProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, sequence])
+  @@index([userId, createdAt])
+  @@index([taskId, sequence])
+  @@index([projectId, createdAt])
+}
+
+model WorkspaceSnapshot {
+  id           String            @id @default(cuid())
+  userId       String
+  projectId    String
+  taskId       String?
+  label        String?
+  snapshotJson Json
+  fileCount    Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project      WorkspaceProject  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task         WorkspaceTask?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([taskId])
 }

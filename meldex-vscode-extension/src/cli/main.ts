@@ -14,6 +14,7 @@ import { blockUnsafePatch, buildMilInsight, insightSummary } from "../agent/milE
 import { learnFromTask, readWorkspaceMemory } from "../agent/workspaceMemory";
 import { runBenchmarkLab } from "../agent/benchmarkLab";
 import { buildToolIntelligencePlan, learnToolSequence, TOOL_REGISTRY, validatePatchPlan } from "../agent/toolIntelligenceEngine";
+import { CodexStyleRuntimeAdapter } from "./runtime/codexStyleRuntime";
 
 type Json = Record<string, unknown>;
 type FileAction = { operation: "create" | "edit" | "update" | "delete"; path: string; content?: string; description?: string };
@@ -194,7 +195,9 @@ function readExtensionProvidedToken(): CliToken | null {
         expiresAt: parsed.expiresAt ?? null,
         backendUrl: parsed.backendUrl,
       };
-    } catch {}
+    } catch {
+      // Missing or unreadable extension token files are expected across editors.
+    }
   }
   return null;
 }
@@ -779,21 +782,6 @@ function runCommand(command: string, cwd: string, safeMode: boolean) {
   return { stdout: child.stdout || "", stderr: child.stderr || "", exitCode: child.status ?? 1, durationMs };
 }
 
-function isServerCommand(command: string) {
-  const normalized = command.trim().toLowerCase();
-  return [
-    /^npm\s+start(?:\s|$)/,
-    /^npm\s+run\s+dev(?:\s|$)/,
-    /^pnpm\s+(?:start|dev|run\s+dev)(?:\s|$)/,
-    /^yarn\s+(?:start|dev)(?:\s|$)/,
-    /^bun\s+(?:start|dev|run\s+dev)(?:\s|$)/,
-    /\bnext\s+dev\b/,
-    /\bvite(?:\s|$).*--host\b/,
-    /\bphp\s+artisan\s+serve\b/,
-    /\bpython3?\s+-m\s+http\.server\b/,
-  ].some((pattern) => pattern.test(normalized));
-}
-
 function isPackageManagerCommand(command: string) {
   return /^(npm|pnpm|yarn|bun)\s+/i.test(command.trim());
 }
@@ -991,8 +979,45 @@ async function autofixFailure(
     return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: "Skipped autofix for safety-policy-blocked command." };
   }
   const fix = buildFixTask({ root, taskGoal: task, error: parsed, rawOutput: rawError, recentFiles });
+  const runtime = new CodexStyleRuntimeAdapter({
+    root,
+    taskId: `${taskId}-fix-${attempt}`,
+    emit,
+    safeMode: config.safeMode,
+    contextCharBudget: 18000,
+  });
   let response = validateAgentResponse(await apiRequest<AgentResponse>(config.backendUrl, token, "/api/extensions/agent", "POST", { task: fix.task, context: fix.context }));
   let patches = preparePatches(root, response.files || []);
+  const allowed = allowedAutofixFiles(root, parsed, recentFiles);
+  let guard = runtime.guardPatch({
+    patches,
+    mode: "autofix",
+    allowedFiles: allowed ? [...allowed] : undefined,
+    staticProject: isStaticOnlyProject(root),
+  });
+  if (!guard.ok) {
+    emit("tool_result", {
+      tool: "autofix_scope",
+      status: "rejected",
+      reason: "Autofix patch failed Codex-style runtime guard.",
+      rejectedFiles: guard.rejectedFiles,
+      reasons: guard.reasons,
+    });
+    response = validateAgentResponse(await apiRequest<AgentResponse>(config.backendUrl, token, "/api/extensions/agent", "POST", {
+      task: `${fix.task}\n\nSTRICT PATCH SCOPE: Return the smallest possible patch. ${allowed ? `Only edit: ${[...allowed].join(", ")}.` : "Do not edit unrelated files."} Static HTML projects must not add package.json, package-lock.json, Express, or server.js.`,
+      context: fix.context,
+    }));
+    patches = preparePatches(root, response.files || []);
+    guard = runtime.guardPatch({
+      patches,
+      mode: "autofix",
+      allowedFiles: allowed ? [...allowed] : undefined,
+      staticProject: isStaticOnlyProject(root),
+    });
+    if (!guard.ok) {
+      return { applied: [] as string[], fingerprint: errorFingerprint(parsed), summary: `Autofix guard blocked: ${guard.rejectedFiles.join(", ")}` };
+    }
+  }
   const staticViolations = staticAutofixRuleViolations(root, patches);
   if (staticViolations.length) {
     emit("tool_result", {
@@ -1054,11 +1079,27 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   const token = resolvedToken.token;
   const taskId = `${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
   const logFile = path.join(meldexDir(root), "logs", `${taskId}.jsonl`);
+  const runtime = new CodexStyleRuntimeAdapter({
+    root,
+    taskId,
+    emit,
+    safeMode: config.safeMode,
+    contextCharBudget: Number(process.env.MELDEX_CONTEXT_CHAR_BUDGET || 24000),
+  });
   const originalEmit = emit;
+  runtime.event("task_started", {
+    goal: task,
+    backendUrl: config.backendUrl,
+    modelProfile: config.modelProfile || "coding",
+    tokenSource: resolvedToken.source,
+    token: resolvedToken.masked,
+  });
   emit("thinking", { message: "Understanding request", taskId });
+  runtime.assertNotInterrupted();
   const index = buildIndex(root, config);
   emit("thinking", { message: "Analyzing project" });
   const relevantFiles = selectRelevantFiles(root, task, index);
+  const packedContext = runtime.packContext(relevantFiles);
   const tiePlan = buildToolIntelligencePlan({
     root,
     goal: task,
@@ -1133,10 +1174,25 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     emit("error", { message: `Need clarification before continuing. Confidence ${aoePlan.confidence}%.`, assumptions: aoePlan.assumptions });
     return;
   }
-  const optimized = optimizeCliTaskForQwen(task, index, relevantFiles, autonomousPromptSection(aoePlan));
+  runtime.assertNotInterrupted();
+  const optimized = optimizeCliTaskForQwen(
+    task,
+    index,
+    packedContext.files,
+    [autonomousPromptSection(aoePlan), packedContext.instructions ? `Project instructions:\n${packedContext.instructions}` : ""].filter(Boolean).join("\n\n")
+  );
   emit("tool_result", { tool: "qwen_optimizer", status: "ok", profile: optimized.profile, reasoning: optimized.reasoning });
   emit("plan", plan);
-  const context = { workspaceName: path.basename(root), projectType: (index.project as Json)?.framework, packageManager: (index.project as Json)?.packageManager, projectFiles: (index.fileTree as string[]).slice(0, 80), relevantFiles, packageJson: relevantFiles.find((file) => file.path === "package.json")?.content };
+  const context = {
+    workspaceName: path.basename(root),
+    projectType: (index.project as Json)?.framework,
+    packageManager: (index.project as Json)?.packageManager,
+    projectFiles: (index.fileTree as string[]).slice(0, 80),
+    relevantFiles: packedContext.files,
+    projectInstructions: packedContext.instructions,
+    contextPacking: { omitted: packedContext.omitted, charCount: packedContext.charCount },
+    packageJson: relevantFiles.find((file) => file.path === "package.json")?.content,
+  };
   let response: AgentResponse;
   if (canUseStaticLandingFastPath(task, root)) {
     emit("tool_start", { tool: "fast_path", task: "static_landing_page" });
@@ -1182,7 +1238,10 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   });
   if (unsafe.length) throw new Error(`MIL security blocked patch: ${unsafe.join("; ")}`);
   const patches = preparePatches(root, response.files || []);
+  const patchGuard = runtime.guardPatch({ patches, mode: "task", staticProject: isStaticOnlyProject(root) });
+  if (!patchGuard.ok) throw new Error(`Runtime patch guard blocked patch: ${patchGuard.reasons.join("; ")}`);
   writeRollback(root, taskId, patches);
+  runtime.event("rollback_recorded", { files: patches.map((patch) => patch.path) });
   let totalAdded = 0;
   let totalRemoved = 0;
   for (const patch of patches) {
@@ -1202,6 +1261,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   const shouldApply = config.autoApply || opts.apply === true;
   let applied: string[] = [];
   if (shouldApply) {
+    runtime.assertNotInterrupted();
     emit("tool_start", { tool: "apply_patch" });
     applied = applyPatches(root, patches);
     emit("tool_result", { tool: "apply_patch", status: "ok", applied });
@@ -1211,8 +1271,9 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   if (applied.length) {
     const shouldExecute = requestNeedsExecution(task);
     const requestedCommands = response.commands?.length ? response.commands : shouldExecute ? detectValidationCommands(root) : plan.commandsToRun;
-    const serverCommands = requestedCommands.filter(isServerCommand);
-    const commands = requestedCommands.filter((command) => !isServerCommand(command));
+    const classifiedCommands = runtime.splitCommands(requestedCommands);
+    const serverCommands = classifiedCommands.server;
+    const commands = classifiedCommands.validation;
     if (serverCommands.length) {
       emit("tool_result", { tool: "server_command_classifier", status: "ok", serverCommands, validationCommands: commands });
     }
@@ -1223,6 +1284,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
     const skippedCommands: string[] = [];
     const seenErrors = new Map<string, number>();
     for (const command of commands) {
+      runtime.assertNotInterrupted();
       let commandPassed = false;
       for (let attempt = 1; attempt <= config.maxRetries; attempt += 1) {
         if (!fs.existsSync(path.join(root, "package.json")) && isPackageManagerCommand(command)) {
@@ -1334,6 +1396,7 @@ async function runTask(root: string, task: string, config: CliConfig, opts: Reco
   });
   fs.appendFileSync(logFile, JSON.stringify({ taskId, task, summary, files: patches.map((patch) => patch.path), at: new Date().toISOString() }) + "\n");
   learnToolSequence(meldexDir(root), String((index.project as Json)?.framework || "Unknown"), tiePlan.selectedTools.map((item) => item.tool.name), Date.now() - Number(taskId.split("-")[0] || Date.now()));
+  runtime.complete(summary, { applied, files: patches.map((patch) => patch.path) });
   originalEmit("done", { taskId, summary, applied, files: patches.map((patch) => patch.path) });
 }
 
