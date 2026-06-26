@@ -8,10 +8,34 @@ import { Mail, Lock, Github, Chrome, KeyRound, Eye, EyeOff, ExternalLink, Shield
 
 type Tab = "password" | "token" | "oauth";
 
-export default function LoginForm() {
+type LoginFormProps = {
+  mode?: "user" | "master";
+  title?: string;
+  subtitle?: string;
+  showRegisterLink?: boolean;
+};
+
+function safeRelativePath(value: string | null): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return null;
+  return value;
+}
+
+function roleTarget(role: string | undefined, requested: string | null) {
+  if (role === "OWNER") return "/admin/master";
+  if (role === "ADMIN") return requested?.startsWith("/admin") ? requested : "/admin";
+  if (requested && !requested.startsWith("/admin")) return requested;
+  return "/dashboard";
+}
+
+export default function LoginForm({
+  mode = "user",
+  title = "Welcome back",
+  subtitle = "Sign in to your Meldex AI account",
+  showRegisterLink = true,
+}: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [tab, setTab] = useState<Tab>("password");
+  const [tab, setTab] = useState<Tab>(mode === "master" ? "oauth" : "password");
 
   // Email/password state
   const [email, setEmail] = useState("");
@@ -22,10 +46,20 @@ export default function LoginForm() {
   const [apiToken, setApiToken] = useState("");
   const [showToken, setShowToken] = useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    mode === "master" && searchParams.get("error") === "not_master"
+      ? "This Google account does not have master access. Choose the owner account."
+      : ""
+  );
   const [loading, setLoading] = useState(false);
 
-  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+  const requestedCallbackUrl = safeRelativePath(searchParams.get("callbackUrl"));
+  const callbackUrl =
+    mode === "master"
+      ? "/auth/master-redirect"
+      : requestedCallbackUrl
+        ? `/auth/redirect?callbackUrl=${encodeURIComponent(requestedCallbackUrl)}`
+        : "/auth/redirect";
 
   const handleCredentialsLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +68,14 @@ export default function LoginForm() {
     const result = await signIn("credentials", { email, password, redirect: false });
     setLoading(false);
     if (result?.ok) {
-      router.push(callbackUrl);
+      const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = await sessionRes.json().catch(() => null);
+      if (mode === "master" && session?.user?.role !== "OWNER" && session?.user?.role !== "ADMIN") {
+        setError("This account does not have master access.");
+        return;
+      }
+      router.replace(mode === "master" ? "/admin/master" : roleTarget(session?.user?.role, requestedCallbackUrl));
+      router.refresh();
     } else {
       setError(result?.error || "Invalid email or password");
     }
@@ -53,7 +94,14 @@ export default function LoginForm() {
     const result = await signIn("api-token", { token: trimmed, redirect: false });
     setLoading(false);
     if (result?.ok) {
-      router.push(callbackUrl);
+      const sessionRes = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = await sessionRes.json().catch(() => null);
+      if (mode === "master" && session?.user?.role !== "OWNER" && session?.user?.role !== "ADMIN") {
+        setError("This account does not have master access.");
+        return;
+      }
+      router.replace(mode === "master" ? "/admin/master" : roleTarget(session?.user?.role, requestedCallbackUrl));
+      router.refresh();
     } else {
       setError(result?.error || "Invalid or expired API token");
     }
@@ -76,8 +124,8 @@ export default function LoginForm() {
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-mint/10 border border-mint/20 mb-4">
               <span className="text-mint font-bold text-xl">M</span>
             </div>
-            <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-            <p className="text-slate-400 text-sm mt-1">Sign in to your Meldex AI account</p>
+            <h1 className="text-2xl font-bold text-white">{title}</h1>
+            <p className="text-slate-400 text-sm mt-1">{subtitle}</p>
           </div>
 
           {/* Tabs */}
@@ -272,16 +320,17 @@ export default function LoginForm() {
             )}
 
             {/* Footer */}
-            <p className="text-center text-slate-500 text-xs mt-6">
-              Don&apos;t have an account?{" "}
-              <Link href="/register" className="text-mint hover:text-mint/80 font-medium transition">
-                Create account
-              </Link>
-            </p>
+            {showRegisterLink && (
+              <p className="text-center text-slate-500 text-xs mt-6">
+                Don&apos;t have an account?{" "}
+                <Link href="/register" className="text-mint hover:text-mint/80 font-medium transition">
+                  Create account
+                </Link>
+              </p>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
-
