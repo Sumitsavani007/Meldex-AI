@@ -27,7 +27,7 @@ export function Header() {
     ? "/master/login"
     : "/login";
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat")) {
     return null;
   }
 
