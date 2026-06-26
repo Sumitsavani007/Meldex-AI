@@ -65,6 +65,18 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/api/workspaces/:id/preview",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Content-Security-Policy",
+            value: "default-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'; base-uri 'self'",
+          },
+        ],
+      },
     ];
   },
 };

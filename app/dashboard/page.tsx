@@ -197,8 +197,10 @@ export default function DashboardPage() {
   const { theme, setTheme } = useThemePreference();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
   const [idea, setIdea] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -229,7 +231,32 @@ export default function DashboardPage() {
   }, [projects]);
 
   const firstName = session?.user?.name?.split(" ")[0] || session?.user?.email?.split("@")[0] || "there";
-  const recentProjects = projects.slice(0, 4);
+  const filteredProjects = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return projects;
+    return projects.filter((project) => project.name.toLowerCase().includes(term) || project.status.toLowerCase().includes(term));
+  }, [projects, search]);
+  const recentProjects = filteredProjects.slice(0, 4);
+
+  async function createWorkspaceFromDashboard(seed = idea) {
+    setCreating(true);
+    setMessage("");
+    try {
+      const name = seed.trim() || "Create a landing page";
+      const response = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Unable to create workspace");
+      router.push(`/workspace/${data.project.id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to create workspace");
+    } finally {
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
@@ -248,7 +275,7 @@ export default function DashboardPage() {
               <h1 className="hidden text-2xl font-semibold tracking-tight lg:block">Dashboard</h1>
               <label className="ml-auto hidden h-10 w-full max-w-sm items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
                 <Search className="size-4" />
-                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
+                <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
                 <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 dark:bg-white/10">⌘ K</span>
               </label>
               <button
@@ -281,17 +308,21 @@ export default function DashboardPage() {
                     placeholder="Describe your idea or task..."
                   />
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Link href="/workspace" className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
-                      <Plus className="size-3.5" /> Create Workspace
-                    </Link>
+                    <button onClick={() => void createWorkspaceFromDashboard()} disabled={creating} className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
+                      <Plus className="size-3.5" /> {creating ? "Creating" : "Create Workspace"}
+                    </button>
                     <Link href="/chat" className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
                       <Bot className="size-3.5" /> Ask AI
                     </Link>
-                    <Link href="/settings/tokens" className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
-                      <KeyRound className="size-3.5" /> API Tokens
+                    <Link href="/templates" className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.06]">
+                      <Box className="size-3.5" /> Browse Templates
                     </Link>
+                    <button disabled title="Repository import is not available in this release" className="mx-focus inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-400 opacity-70 dark:border-white/10 dark:text-slate-500">
+                      <FolderKanban className="size-3.5" /> Import Repository
+                    </button>
                     <button
-                      onClick={() => router.push("/workspace")}
+                      onClick={() => void createWorkspaceFromDashboard()}
+                      disabled={creating}
                       className="mx-focus ml-auto grid size-10 place-items-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-600/20 transition hover:bg-violet-700"
                       aria-label="Open workspace"
                     >

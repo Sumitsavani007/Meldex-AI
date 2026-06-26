@@ -81,7 +81,7 @@ type WorkspaceState = {
   projects: Project[];
   tree: TreeNode[];
   tasks: Task[];
-  preview: { url: string; verified: boolean; httpStatus?: number; message?: string } | null;
+  preview: { url: string; verified: boolean; httpStatus?: number; message?: string; status?: string; lastCheckedAt?: string } | null;
 };
 
 type WorkspaceTab = "Overview" | "Files" | "Changes" | "Logs" | "Settings";
@@ -197,6 +197,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
   const [queuedPrompt, setQueuedPrompt] = useState("");
+  const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
+  const [previewStopped, setPreviewStopped] = useState(false);
+  const [copiedPreview, setCopiedPreview] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
@@ -204,6 +207,34 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const changed = liveDiffs.length ? liveDiffs : activeTask?.diffs || [];
   const totalAdded = changed.reduce((sum, diff) => sum + diff.added, 0);
   const totalRemoved = changed.reduce((sum, diff) => sum + diff.removed, 0);
+  const hasPreviewFile = files.some((file) => file.path === "index.html");
+  const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
+  const previewDisplayUrl = state.preview?.url || (hasPreviewFile && state.project ? `/api/workspaces/${state.project.id}/preview` : "");
+  const previewFullUrl = typeof window !== "undefined" && previewDisplayUrl ? `${window.location.origin}${previewDisplayUrl}` : previewDisplayUrl;
+  const previewReady = Boolean(state.project && hasPreviewFile && previewDisplayUrl && !previewStopped);
+  const previewStatus = previewAction === "refreshing"
+    ? "Verifying"
+    : previewAction === "stopping"
+      ? "Stopping"
+      : previewStopped
+        ? "Stopped"
+        : !state.project || !hasPreviewFile
+          ? "Not started"
+          : state.preview?.verified
+            ? "Verified"
+            : state.preview?.httpStatus
+              ? "Failed"
+              : loading
+                ? "Starting"
+                : "Running";
+  const statusTone = previewStatus === "Verified"
+    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+    : previewStatus === "Failed"
+      ? "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-200"
+      : previewStatus === "Stopped"
+        ? "bg-slate-100 text-slate-600 dark:bg-white/8 dark:text-slate-300"
+        : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200";
+  const lastVerified = state.preview?.lastCheckedAt || (state.preview?.verified ? state.project?.updatedAt : "");
 
   async function loadWorkspace(id = projectId) {
     if (status !== "authenticated") return;
@@ -228,6 +259,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       tasks: data.tasks || [],
       preview: data.preview || null,
     });
+    if (data.preview?.verified) setPreviewStopped(false);
   }
 
   useEffect(() => {
@@ -361,15 +393,19 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   async function refreshPreview() {
     if (!state.project) return;
+    setPreviewAction("refreshing");
+    setPreviewStopped(false);
     const response = await fetch(`/api/workspaces/${state.project.id}/run`, { method: "POST" });
     const data = await response.json();
     if (!response.ok) setMessage(data.error || "Preview failed");
     else setMessage(data.verification?.message || "Preview refreshed");
     await loadWorkspace(state.project.id);
+    setPreviewAction("idle");
   }
 
   async function stopPreview() {
     if (!state.project) return;
+    setPreviewAction("stopping");
     const response = await fetch(`/api/workspaces/${state.project.id}/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -377,7 +413,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     });
     const data = await response.json();
     setMessage(response.ok ? "Preview stopped" : data.error || "Unable to stop preview");
+    if (response.ok) setPreviewStopped(true);
     await loadWorkspace(state.project.id);
+    setPreviewAction("idle");
   }
 
   async function rollback() {
@@ -399,7 +437,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setMessage("Workspace link copied");
   }
 
-  const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
+  async function copyPreviewUrl() {
+    if (!previewFullUrl) return;
+    await navigator.clipboard?.writeText(previewFullUrl);
+    setCopiedPreview(true);
+    setMessage("Preview URL copied");
+    setTimeout(() => setCopiedPreview(false), 1800);
+  }
+
   const showFilesPanel = activeTab === "Overview" || activeTab === "Files";
   const showChangesPanel = activeTab === "Overview" || activeTab === "Changes";
   const showLogsPanel = activeTab === "Logs";
@@ -468,10 +513,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         <section className="h-[calc(100vh-104px)] overflow-y-auto bg-zinc-50 p-3 dark:bg-black lg:hidden">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-sm font-semibold">Live preview</span>
-            <button onClick={refreshPreview} className="rounded-md border border-zinc-200 p-1.5 dark:border-white/10" aria-label="Refresh preview"><RefreshCw className="size-3.5" /></button>
+            <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10" aria-label="Refresh preview"><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
           </div>
           <div className="aspect-[4/3] rounded-lg border border-zinc-200 bg-white dark:border-white/10">
-            {state.project && files.some((file) => file.path === "index.html") ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-lg bg-white" sandbox="allow-scripts" /> : <div className="flex h-full items-center justify-center text-sm text-zinc-500">Preview appears after files are created.</div>}
+            {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-lg bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center text-sm text-zinc-500">Preview appears after files are created.</div>}
           </div>
           <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3 text-xs dark:border-white/10 dark:bg-zinc-950">{state.preview?.message || "No preview verification yet."}</div>
         </section>
@@ -597,28 +642,38 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
             <h2 className="text-sm font-semibold">Changes</h2>
             <div className="flex items-center gap-1">
-              <button onClick={refreshPreview} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Refresh preview"><RefreshCw className="size-3.5" /></button>
-              {previewUrl ? (
-                <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Open preview"><ArrowUpRight className="size-3.5" /></a>
+              <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8" title={state.project ? "Refresh preview" : "Create a workspace first"}><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
+              {previewReady ? (
+                <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Open preview in new tab"><ArrowUpRight className="size-3.5" /></a>
               ) : (
-                <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-1.5 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Preview is not ready"><ArrowUpRight className="size-3.5" /></button>
+                <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-1.5 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title={previewStopped ? "Preview is stopped" : "Preview is not ready"}><ArrowUpRight className="size-3.5" /></button>
               )}
-              <button onClick={() => navigator.clipboard?.writeText(window.location.origin + previewUrl)} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Copy URL"><Copy className="size-3.5" /></button>
-              <button onClick={stopPreview} className="rounded-md border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8" title="Stop preview"><Square className="size-3.5" /></button>
+              <button onClick={copyPreviewUrl} disabled={!previewReady} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8" title={previewReady ? "Copy preview URL" : "Preview URL unavailable"}>{copiedPreview ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}</button>
+              <button onClick={stopPreview} disabled={!previewReady || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8" title={previewReady ? "Stop preview" : "Preview is not running"}><Square className="size-3.5" /></button>
             </div>
           </div>
           <div className="border-b border-slate-200 p-3 dark:border-white/10">
-            <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center justify-between gap-2 text-xs">
               <span className="text-zinc-500">Preview URL</span>
-              <span className={state.preview?.verified ? "text-emerald-600" : "text-zinc-500"}>{state.preview?.verified ? "HTTP 200 verified" : "Not verified"}</span>
+              <span className={`rounded-full px-2 py-0.5 font-medium ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span>
             </div>
-            <div className="mt-1 truncate rounded-md bg-white px-2 py-1 text-xs text-zinc-500 dark:bg-white/5">{previewUrl || "No preview yet"}</div>
+            <div className="mt-1 truncate rounded-md bg-white px-2 py-1 text-xs text-zinc-500 dark:bg-white/5">{previewFullUrl || "No preview yet"}</div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-500">
+              <div className="rounded-md bg-white px-2 py-1 dark:bg-white/5">State: <span className="font-medium text-zinc-700 dark:text-zinc-200">{previewStatus}</span></div>
+              <div className="rounded-md bg-white px-2 py-1 dark:bg-white/5">Last verified: <span className="font-medium text-zinc-700 dark:text-zinc-200">{lastVerified ? new Date(lastVerified).toLocaleTimeString() : "Never"}</span></div>
+            </div>
+            <button onClick={() => { setActiveTab("Logs"); setLogsOpen(true); }} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/8">
+              View preview logs
+            </button>
           </div>
           <div className="aspect-[4/3] border-b border-slate-200 bg-white dark:border-white/10">
-            {state.project && files.some((file) => file.path === "index.html") ? (
-              <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" sandbox="allow-scripts" />
+            {previewReady ? (
+              <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" sandbox="allow-scripts allow-forms" />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-zinc-500">Preview appears after files are created.</div>
+              <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-500">
+                <span>{previewStopped ? "Preview is stopped." : "Preview appears after files are created."}</span>
+                {state.project && <button onClick={refreshPreview} disabled={previewAction !== "idle"} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8">Start preview</button>}
+              </div>
             )}
           </div>
 
