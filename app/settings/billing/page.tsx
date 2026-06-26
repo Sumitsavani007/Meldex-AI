@@ -120,28 +120,29 @@ export default function BillingPage() {
   const currentPlan = billing?.plan || "free";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-12">
-          <h1 className="text-4xl font-bold text-white mb-2">Billing & Plans</h1>
-          <p className="text-slate-400">Choose the perfect plan for your needs</p>
+    <div className="min-h-screen bg-white px-4 py-8 text-slate-950 dark:bg-black dark:text-white sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-10">
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Billing</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">Plans</h1>
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Choose the plan that matches how you work.</p>
         </div>
 
         {billing && (
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-6 mb-12">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="mb-10 rounded-lg border border-slate-200 bg-slate-50 p-5 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               <div>
-                <p className="text-slate-400 text-sm">Current Plan</p>
-                <p className="text-2xl font-bold text-white capitalize">{currentPlan}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Current Plan</p>
+                <p className="mt-1 text-2xl font-semibold capitalize text-slate-950 dark:text-white">{currentPlan}</p>
               </div>
               <div>
-                <p className="text-slate-400 text-sm">Status</p>
-                <p className="text-2xl font-bold text-green-400">{billing.status}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Status</p>
+                <p className="mt-1 text-2xl font-semibold text-blue-600 dark:text-blue-400">{billing.status}</p>
               </div>
               {billing.currentPeriodEnd && (
                 <div>
-                  <p className="text-slate-400 text-sm">Renews On</p>
-                  <p className="text-2xl font-bold text-white">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Renews On</p>
+                  <p className="mt-1 text-2xl font-semibold text-slate-950 dark:text-white">
                     {new Date(billing.currentPeriodEnd).toLocaleDateString()}
                   </p>
                 </div>
@@ -150,44 +151,44 @@ export default function BillingPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           {PLANS.map((plan) => (
             <div
               key={plan.id}
-              className={`relative rounded-xl border transition ${
+              className={`relative rounded-lg border p-5 transition ${
                 plan.highlighted
-                  ? "border-mint bg-slate-800/80 ring-2 ring-mint/20 md:scale-105"
-                  : "border-white/10 bg-slate-800/50 hover:border-mint/50"
-              } backdrop-blur-xl p-6`}
+                  ? "border-blue-600 bg-blue-50 ring-2 ring-blue-600/10 dark:bg-blue-600/10"
+                  : "border-slate-200 bg-white hover:border-slate-300 dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-white/20"
+              }`}
             >
               {plan.highlighted && (
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2">
-                  <span className="bg-mint text-slate-950 px-3 py-1 rounded-full text-xs font-bold">
+                  <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
                     POPULAR
                   </span>
                 </div>
               )}
 
-              <h3 className="text-xl font-bold text-white mb-2">{plan.name}</h3>
-              <p className="text-slate-400 text-sm mb-4">{plan.description}</p>
+              <h3 className="mb-2 text-xl font-semibold text-slate-950 dark:text-white">{plan.name}</h3>
+              <p className="mb-5 text-sm leading-6 text-slate-500 dark:text-slate-400">{plan.description}</p>
 
               <div className="mb-6">
                 <div className="flex items-baseline">
-                  <span className="text-4xl font-bold text-white">${plan.price}</span>
+                  <span className="text-4xl font-semibold text-slate-950 dark:text-white">${plan.price}</span>
                   {plan.period !== "custom" && (
-                    <span className="text-slate-400 ml-2">/{plan.period}</span>
+                    <span className="ml-2 text-slate-500 dark:text-slate-400">/{plan.period}</span>
                   )}
                 </div>
               </div>
 
               <button
                 disabled={currentPlan === plan.id}
-                className={`w-full py-2 rounded-lg font-medium transition mb-6 ${
+                className={`mx-focus mb-6 w-full rounded-lg py-2 text-sm font-medium transition ${
                   currentPlan === plan.id
-                    ? "bg-slate-700 text-slate-400 cursor-not-allowed"
+                    ? "cursor-not-allowed bg-slate-100 text-slate-400 dark:bg-white/5"
                     : plan.highlighted
-                    ? "bg-mint text-slate-950 hover:bg-mint/90"
-                    : "bg-slate-700 hover:bg-slate-600 text-slate-300"
+                    ? "bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
                 }`}
               >
                 {currentPlan === plan.id ? "Current Plan" : plan.cta}
@@ -196,8 +197,8 @@ export default function BillingPage() {
               <div className="space-y-3">
                 {plan.features.map((feature) => (
                   <div key={feature} className="flex items-start gap-3">
-                    <Check className="w-4 h-4 text-mint flex-shrink-0 mt-0.5" />
-                    <span className="text-sm text-slate-300">{feature}</span>
+                    <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm text-slate-600 dark:text-slate-300">{feature}</span>
                   </div>
                 ))}
               </div>
@@ -205,33 +206,33 @@ export default function BillingPage() {
           ))}
         </div>
 
-        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Zap className="w-5 h-5 text-mint" />
-              <h3 className="text-lg font-semibold text-white">Flexible Scaling</h3>
+        <div className="mt-12 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className="mb-4 flex items-center gap-3">
+              <Zap className="h-5 w-5 text-slate-500" />
+              <h3 className="text-lg font-semibold text-slate-950 dark:text-white">Flexible Scaling</h3>
             </div>
-            <p className="text-slate-400 text-sm">
+            <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
               Start small and scale up as your needs grow. Pay only for what you use.
             </p>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Users className="w-5 h-5 text-mint" />
-              <h3 className="text-lg font-semibold text-white">Team Management</h3>
+          <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className="mb-4 flex items-center gap-3">
+              <Users className="h-5 w-5 text-slate-500" />
+              <h3 className="text-lg font-semibold text-slate-950 dark:text-white">Team Management</h3>
             </div>
-            <p className="text-slate-400 text-sm">
+            <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
               Invite team members and manage permissions with ease on Pro and Team plans.
             </p>
           </div>
 
-          <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Package className="w-5 h-5 text-mint" />
-              <h3 className="text-lg font-semibold text-white">No Hidden Fees</h3>
+          <div className="rounded-lg border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className="mb-4 flex items-center gap-3">
+              <Package className="h-5 w-5 text-slate-500" />
+              <h3 className="text-lg font-semibold text-slate-950 dark:text-white">No Hidden Fees</h3>
             </div>
-            <p className="text-slate-400 text-sm">
+            <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">
               Transparent pricing with no surprises. Cancel anytime without penalties.
             </p>
           </div>

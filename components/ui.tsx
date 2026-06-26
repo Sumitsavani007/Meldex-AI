@@ -16,10 +16,10 @@ export function ButtonLink({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition",
+        "mx-focus inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium transition active:scale-[0.99]",
         variant === "primary"
-          ? "bg-mint text-slate-950 shadow-[0_0_20px_rgba(99,242,190,0.25)] hover:bg-mint/90 hover:shadow-[0_0_28px_rgba(99,242,190,0.35)]"
-          : "border border-white/10 bg-white/5 text-slate-100 hover:bg-white/10 hover:border-white/20"
+          ? "bg-slate-950 text-white shadow-sm hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+          : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"
       )}
     >
       {children}
@@ -28,11 +28,11 @@ export function ButtonLink({
 }
 
 export function SectionShell({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <section className={cn("mx-auto w-full max-w-7xl px-4 py-14 sm:px-6 lg:px-8", className)}>{children}</section>;
+  return <section className={cn("mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8", className)}>{children}</section>;
 }
 
 export function Panel({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={cn("glass-panel rounded-xl", className)}>{children}</div>;
+  return <div className={cn("glass-panel rounded-lg", className)}>{children}</div>;
 }
 
 export function ActionCard({
@@ -47,15 +47,15 @@ export function ActionCard({
   action: string;
 }) {
   return (
-    <Panel className="p-5 transition hover:border-mint/30 hover:bg-white/[0.055]">
+    <Panel className="p-5 transition hover:border-slate-300 hover:bg-slate-50 dark:hover:border-white/20 dark:hover:bg-white/[0.05]">
       <div className="mb-5 flex items-center justify-between">
-        <span className="grid size-10 place-items-center rounded-lg border border-mint/20 bg-mint/10 text-mint">
+        <span className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
           <Icon className="size-5" />
         </span>
-        <span className="text-xs text-slate-500">{action}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">{action}</span>
       </div>
-      <h3 className="text-base font-semibold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+      <h3 className="text-base font-semibold text-slate-950 dark:text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">{description}</p>
     </Panel>
   );
 }
@@ -65,17 +65,17 @@ export function StatusPill({ tone, children }: { tone: "success" | "error" | "id
     <span
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium",
-        tone === "success" && "border-mint/30 bg-mint/10 text-mint",
-        tone === "error" && "border-red-400/30 bg-red-400/10 text-red-300",
-        tone === "warning" && "border-amber-400/30 bg-amber-400/10 text-amber-300",
-        tone === "idle" && "border-white/10 bg-white/5 text-slate-300"
+        tone === "success" && "border-emerald-600/20 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300",
+        tone === "error" && "border-red-600/20 bg-red-600/10 text-red-700 dark:text-red-300",
+        tone === "warning" && "border-amber-600/20 bg-amber-600/10 text-amber-700 dark:text-amber-300",
+        tone === "idle" && "border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
       )}
     >
       <span className={cn(
         "size-1.5 rounded-full",
-        tone === "success" && "bg-mint",
-        tone === "error" && "bg-red-400",
-        tone === "warning" && "bg-amber-400",
+        tone === "success" && "bg-emerald-600",
+        tone === "error" && "bg-red-600",
+        tone === "warning" && "bg-amber-600",
         tone === "idle" && "bg-slate-500"
       )} />
       {children}
@@ -95,12 +95,12 @@ export function Badge({
   return (
     <span className={cn(
       "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-      variant === "default" && "border border-white/10 bg-white/5 text-slate-300",
-      variant === "mint" && "border border-mint/20 bg-mint/10 text-mint",
-      variant === "iris" && "border border-iris/20 bg-iris/10 text-iris",
-      variant === "ember" && "border border-ember/20 bg-ember/10 text-ember",
-      variant === "rose" && "border border-rose/20 bg-rose/10 text-rose",
-      variant === "amber" && "border border-amber-400/20 bg-amber-400/10 text-amber-300",
+      variant === "default" && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+      variant === "mint" && "border border-blue-600/20 bg-blue-600/10 text-blue-700 dark:text-blue-300",
+      variant === "iris" && "border border-indigo-600/20 bg-indigo-600/10 text-indigo-700 dark:text-indigo-300",
+      variant === "ember" && "border border-slate-400/20 bg-slate-400/10 text-slate-600 dark:text-slate-300",
+      variant === "rose" && "border border-red-600/20 bg-red-600/10 text-red-700 dark:text-red-300",
+      variant === "amber" && "border border-amber-600/20 bg-amber-600/10 text-amber-700 dark:text-amber-300",
       className
     )}>
       {children}
@@ -120,15 +120,15 @@ export function EmptyState({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-white/8 bg-white/[0.02] py-16 text-center">
+    <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-slate-200 bg-slate-50 py-16 text-center dark:border-white/10 dark:bg-white/[0.03]">
       {Icon && (
-        <span className="grid size-14 place-items-center rounded-xl border border-white/10 bg-white/5 text-slate-500">
+        <span className="grid size-14 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 dark:border-white/10 dark:bg-white/5">
           <Icon className="size-7" />
         </span>
       )}
       <div>
-        <p className="font-semibold text-slate-200">{title}</p>
-        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+        <p className="font-semibold text-slate-950 dark:text-slate-200">{title}</p>
+        {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
       </div>
       {action && <div className="mt-1">{action}</div>}
     </div>
@@ -136,7 +136,7 @@ export function EmptyState({
 }
 
 export function Spinner({ className }: { className?: string }) {
-  return <Loader2 className={cn("animate-spin text-mint", className ?? "size-5")} />;
+  return <Loader2 className={cn("animate-spin text-blue-600 dark:text-blue-400", className ?? "size-5")} />;
 }
 
 export function PageHeader({
@@ -153,12 +153,11 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div>
-        {label && <p className="text-xs font-semibold uppercase tracking-wider text-mint">{label}</p>}
-        <h1 className={cn("font-bold text-white", label ? "mt-1 text-2xl sm:text-3xl" : "text-2xl sm:text-3xl")}>{title}</h1>
-        {description && <p className="mt-1.5 text-sm text-slate-400">{description}</p>}
+        {label && <p className="text-xs font-semibold uppercase text-blue-600 dark:text-blue-400">{label}</p>}
+        <h1 className={cn("font-semibold tracking-tight text-slate-950 dark:text-white", label ? "mt-1 text-2xl sm:text-3xl" : "text-2xl sm:text-3xl")}>{title}</h1>
+        {description && <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
       </div>
       {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }
-

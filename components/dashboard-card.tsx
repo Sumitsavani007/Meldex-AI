@@ -22,40 +22,30 @@ export function DashboardCard({
   className?: string;
 }) {
   const accentMap = {
-    mint: "text-mint bg-mint/10 border-mint/20",
-    iris: "text-iris bg-iris/10 border-iris/20",
-    ember: "text-ember bg-ember/10 border-ember/20",
-    rose: "text-rose bg-rose/10 border-rose/20",
+    mint: "border-blue-600/20 bg-blue-600/10 text-blue-700 dark:text-blue-300",
+    iris: "border-indigo-600/20 bg-indigo-600/10 text-indigo-700 dark:text-indigo-300",
+    ember: "border-slate-400/20 bg-slate-400/10 text-slate-600 dark:text-slate-300",
+    rose: "border-red-600/20 bg-red-600/10 text-red-700 dark:text-red-300",
   };
 
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border border-white/8 bg-white/[0.03] p-5 transition hover:border-white/15 hover:bg-white/[0.055]",
+        "group relative overflow-hidden rounded-lg border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:hover:border-white/20 dark:hover:bg-white/[0.055]",
         className
       )}
     >
-      {/* background gradient blob */}
-      <div
-        className={cn(
-          "pointer-events-none absolute -right-6 -top-6 size-28 rounded-full opacity-10 blur-2xl transition group-hover:opacity-20",
-          accent === "mint" && "bg-mint",
-          accent === "iris" && "bg-iris",
-          accent === "ember" && "bg-ember",
-          accent === "rose" && "bg-rose"
-        )}
-      />
       <div className="relative flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-slate-400">{label}</p>
-          <p className="mt-1.5 text-3xl font-bold tabular-nums text-white">{value}</p>
-          {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+          <p className="truncate text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
+          <p className="mt-1.5 text-3xl font-semibold tabular-nums text-slate-950 dark:text-white">{value}</p>
+          {sub && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</p>}
           {trendLabel && (
             <div
               className={cn(
                 "mt-2 inline-flex items-center gap-1 text-xs font-medium",
-                trend === "up" && "text-mint",
-                trend === "down" && "text-rose",
+                trend === "up" && "text-blue-600 dark:text-blue-400",
+                trend === "down" && "text-red-600 dark:text-red-300",
                 trend === "neutral" && "text-slate-400"
               )}
             >

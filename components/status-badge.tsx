@@ -4,11 +4,11 @@ import type { LucideIcon } from "lucide-react";
 type Tone = "success" | "error" | "warning" | "idle" | "info";
 
 const TONE_CLASSES: Record<Tone, string> = {
-  success: "bg-mint/15 text-mint border-mint/25",
-  error: "bg-rose/15 text-rose border-rose/25",
-  warning: "bg-ember/15 text-ember border-ember/25",
-  idle: "bg-white/8 text-slate-400 border-white/10",
-  info: "bg-iris/15 text-iris border-iris/25",
+  success: "border-emerald-600/20 bg-emerald-600/10 text-emerald-700 dark:text-emerald-300",
+  error: "border-red-600/20 bg-red-600/10 text-red-700 dark:text-red-300",
+  warning: "border-amber-600/20 bg-amber-600/10 text-amber-700 dark:text-amber-300",
+  idle: "border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300",
+  info: "border-blue-600/20 bg-blue-600/10 text-blue-700 dark:text-blue-300",
 };
 
 export function StatusBadge({
@@ -38,11 +38,11 @@ export function StatusBadge({
 
 export function StatusDot({ tone = "idle" }: { tone?: Tone }) {
   const dotColors: Record<Tone, string> = {
-    success: "bg-mint shadow-[0_0_6px_rgba(99,242,190,0.8)]",
-    error: "bg-rose shadow-[0_0_6px_rgba(255,107,139,0.8)]",
-    warning: "bg-ember shadow-[0_0_6px_rgba(255,184,107,0.8)]",
+    success: "bg-emerald-600",
+    error: "bg-red-600",
+    warning: "bg-amber-600",
     idle: "bg-slate-500",
-    info: "bg-iris shadow-[0_0_6px_rgba(154,164,255,0.8)]",
+    info: "bg-blue-600",
   };
   return <span className={cn("inline-block size-2 rounded-full", dotColors[tone])} />;
 }

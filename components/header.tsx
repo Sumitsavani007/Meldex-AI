@@ -4,17 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import {
-  Bot, LayoutDashboard, MessageSquare, Settings, TerminalSquare,
-  LogOut, User, Shield, ChevronDown, Zap
+  Bot, MessageSquare, FolderKanban, Files,
+  LogOut, User, ChevronDown, CircleHelp, CreditCard, History, Sparkles, Brush, Search
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
 const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/chat", label: "AI Chat", icon: MessageSquare },
-  { href: "/workspace", label: "Workspace", icon: TerminalSquare },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/workspace", label: "Projects", icon: FolderKanban },
+  { href: "/chat", label: "History", icon: History },
+  { href: "/workspace", label: "Files", icon: Files },
+  { href: "/settings/profile", label: "Profile", icon: User },
+  { href: "/settings/billing", label: "Billing", icon: CreditCard },
+  { href: "/settings", label: "Help", icon: CircleHelp },
+  { href: "/settings", label: "Appearance", icon: Brush },
 ];
 
 export function Header() {
@@ -22,27 +26,22 @@ export function Header() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isAdmin = session?.user?.role === "ADMIN" || session?.user?.role === "OWNER";
   const logoutCallbackUrl = session?.user?.role === "OWNER" || pathname.startsWith("/admin")
     ? "/master/login"
     : "/login";
 
-  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat")) {
-    return null;
-  }
+  if (pathname.startsWith("/admin") || pathname.startsWith("/master/login") || pathname.startsWith("/chat")) return null;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-white/8 bg-ink/90 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2.5">
-          <span className="relative grid size-8 place-items-center rounded-lg border border-mint/30 bg-gradient-to-br from-mint/20 to-iris/10">
-            <Bot className="size-4 text-mint" />
-            <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-mint shadow-[0_0_6px_rgba(99,242,190,0.8)]" />
+        <Link href="/" className="mx-focus flex items-center gap-2.5 rounded-lg">
+          <span className="relative grid size-8 place-items-center rounded-lg border border-slate-200 bg-slate-950 text-white shadow-sm dark:border-white/10 dark:bg-white dark:text-slate-950">
+            <Bot className="size-4" />
           </span>
           <span className="hidden sm:block">
-            <span className="block text-sm font-bold tracking-tight text-white">Meldex AI</span>
-            <span className="block text-[10px] text-slate-500">Plan. Build. Deploy.</span>
+            <span className="block text-sm font-semibold tracking-tight text-slate-950 dark:text-white">Meldex AI</span>
           </span>
         </Link>
 
@@ -53,13 +52,13 @@ export function Header() {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
               return (
                 <Link
-                  key={item.href}
+                  key={`${item.href}-${item.label}`}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
+                    "mx-focus flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
                     active
-                      ? "bg-mint/10 text-mint"
-                      : "text-slate-400 hover:bg-white/6 hover:text-slate-200"
+                      ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
                   )}
                 >
                   <item.icon className="size-4" />
@@ -67,30 +66,16 @@ export function Header() {
                 </Link>
               );
             })}
-            {isAdmin && (
-              <Link
-                href="/admin"
-                className={cn(
-                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition",
-                  pathname.startsWith("/admin")
-                    ? "bg-ember/10 text-ember"
-                    : "text-slate-400 hover:bg-white/6 hover:text-slate-200"
-                )}
-              >
-                <Shield className="size-4" />
-                Admin
-              </Link>
-            )}
           </nav>
         )}
 
         {/* Right actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {session ? (
             <>
               {/* User pill */}
               <div className="hidden items-center gap-2 sm:flex">
-                <div className="grid size-7 place-items-center rounded-full bg-iris/20 text-xs font-bold text-iris">
+                <div className="grid size-7 place-items-center rounded-full bg-slate-950 text-xs font-bold text-white dark:bg-white dark:text-slate-950">
                   {(session.user?.email?.[0] ?? "U").toUpperCase()}
                 </div>
                 <span className="max-w-[140px] truncate text-xs text-slate-400">
@@ -99,7 +84,7 @@ export function Header() {
               </div>
               <button
                 onClick={() => signOut({ callbackUrl: logoutCallbackUrl })}
-                className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-slate-300 transition hover:border-white/20 hover:bg-white/6"
+                className="mx-focus flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
               >
                 <LogOut className="size-3.5" />
                 <span className="hidden sm:inline">Logout</span>
@@ -109,16 +94,16 @@ export function Header() {
             <>
               <Link
                 href="/login"
-                className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/6"
+                className="mx-focus rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10 sm:px-3"
               >
                 Login
               </Link>
               <Link
                 href="/register"
-                className="flex items-center gap-1.5 rounded-lg bg-mint px-3 py-1.5 text-sm font-semibold text-slate-950 transition hover:bg-mint/90"
+                className="mx-focus flex items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 py-1.5 text-sm font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 sm:px-3"
               >
-                <Zap className="size-3.5" />
-                Get Started
+                <Sparkles className="size-3.5" />
+                <span className="hidden sm:inline">Get Started</span>
               </Link>
             </>
           )}
@@ -127,7 +112,8 @@ export function Header() {
           {session && (
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
-              className="ml-1 grid size-8 place-items-center rounded-lg border border-white/10 text-slate-400 transition hover:bg-white/6 md:hidden"
+              className="ml-1 grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/10 md:hidden"
+              aria-label="Open navigation"
             >
               <ChevronDown className={cn("size-4 transition", mobileOpen && "rotate-180")} />
             </button>
@@ -137,18 +123,22 @@ export function Header() {
 
       {/* Mobile menu */}
       {mobileOpen && session && (
-        <div className="border-t border-white/8 bg-ink/95 px-4 pb-3 md:hidden">
-          <nav className="grid gap-0.5 pt-2">
+        <div className="border-t border-slate-200 bg-white/95 px-4 pb-3 dark:border-white/10 dark:bg-slate-950/95 md:hidden">
+          <div className="relative mb-2 pt-3">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <input className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm outline-none dark:border-white/10 dark:bg-white/[0.04]" placeholder="Search" />
+          </div>
+          <nav className="grid gap-0.5">
             {navItems.map((item) => {
               const active = pathname === item.href;
               return (
                 <Link
-                  key={item.href}
+                  key={`${item.href}-${item.label}`}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition",
-                    active ? "bg-mint/10 text-mint" : "text-slate-400 hover:bg-white/6"
+                    active ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950" : "text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
                   )}
                 >
                   <item.icon className="size-4" />
@@ -156,16 +146,6 @@ export function Header() {
                 </Link>
               );
             })}
-            {isAdmin && (
-              <Link
-                href="/admin"
-                onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400 hover:bg-white/6"
-              >
-                <Shield className="size-4" />
-                Admin
-              </Link>
-            )}
           </nav>
         </div>
       )}

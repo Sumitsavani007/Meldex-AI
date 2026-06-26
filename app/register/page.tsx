@@ -58,23 +58,23 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 flex items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-white px-4 py-8 text-slate-950 dark:bg-black dark:text-white">
       <div className="w-full max-w-md">
-        <div className="bg-slate-800/50 backdrop-blur-xl border border-white/10 rounded-xl p-8">
+        <div className="rounded-lg border border-slate-200 bg-white p-8 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-white mb-2">Meldex AI</h1>
-            <p className="text-slate-400">Create your account</p>
+            <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">Meldex AI</h1>
+            <p className="text-slate-500 dark:text-slate-400">Create your account</p>
           </div>
 
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3 mb-6 text-red-300 text-sm">
+            <div className="mb-6 rounded-lg border border-red-600/20 bg-red-600/10 p-3 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
 
           <form onSubmit={handleRegister} className="space-y-4 mb-6">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="name" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Full Name
               </label>
               <div className="relative">
@@ -85,14 +85,14 @@ export default function RegisterPage() {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="John Doe"
-                  className="w-full pl-10 pr-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
+                  className="mx-focus w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-slate-950 placeholder:text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="email" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Email
               </label>
               <div className="relative">
@@ -103,14 +103,14 @@ export default function RegisterPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className="w-full pl-10 pr-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
+                  className="mx-focus w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-slate-950 placeholder:text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Password
               </label>
               <div className="relative">
@@ -120,15 +120,15 @@ export default function RegisterPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
+                  placeholder="Password"
+                  className="mx-focus w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-slate-950 placeholder:text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300 mb-2">
+              <label htmlFor="confirmPassword" className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
                 Confirm Password
               </label>
               <div className="relative">
@@ -138,8 +138,8 @@ export default function RegisterPage() {
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-4 py-2 bg-slate-700/50 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-mint/50"
+                  placeholder="Confirm password"
+                  className="mx-focus w-full rounded-lg border border-slate-200 bg-white py-2 pl-10 pr-4 text-slate-950 placeholder:text-slate-400 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-600"
                   required
                 />
               </div>
@@ -148,7 +148,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-mint/20 hover:bg-mint/30 disabled:opacity-50 text-mint border border-mint/50 font-medium py-2 rounded-lg transition mt-6"
+              className="mx-focus mt-6 w-full rounded-lg bg-slate-950 py-2 font-medium text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
             >
               {loading ? "Creating account..." : "Sign Up"}
             </button>
@@ -156,10 +156,10 @@ export default function RegisterPage() {
 
           <div className="relative mb-6">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-600" />
+              <div className="w-full border-t border-slate-200 dark:border-white/10" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-slate-800/50 text-slate-400">Or continue with</span>
+              <span className="bg-white px-2 text-slate-500 dark:bg-[#0c0c0f] dark:text-slate-400">Or continue with</span>
             </div>
           </div>
 
@@ -167,7 +167,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-              className="w-full flex items-center justify-center gap-2 bg-slate-700/50 hover:bg-slate-600/50 text-white border border-slate-600 font-medium py-2 rounded-lg transition"
+              className="mx-focus flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-2 font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
             >
               <Chrome className="w-4 h-4" />
               Google
@@ -176,16 +176,16 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
-              className="w-full flex items-center justify-center gap-2 bg-slate-700/50 hover:bg-slate-600/50 text-white border border-slate-600 font-medium py-2 rounded-lg transition"
+              className="mx-focus flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white py-2 font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:bg-white/[0.06]"
             >
               <Github className="w-4 h-4" />
               GitHub
             </button>
           </div>
 
-          <p className="text-center text-slate-400 text-sm">
+          <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Already have an account?{" "}
-            <Link href="/login" className="text-mint hover:text-mint/80 font-medium">
+            <Link href="/login" className="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
               Sign in
             </Link>
           </p>

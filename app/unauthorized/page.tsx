@@ -3,20 +3,20 @@ import { AlertTriangle } from "lucide-react";
 
 export default function UnauthorizedPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-ink via-slate-900 to-slate-800 flex items-center justify-center px-4">
-      <div className="text-center max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-white px-4 text-slate-950 dark:bg-black dark:text-white">
+      <div className="max-w-md text-center">
         <div className="flex justify-center mb-6">
-          <div className="p-4 rounded-full bg-red-500/20 border border-red-500/50">
+          <div className="rounded-full border border-red-600/20 bg-red-600/10 p-4">
             <AlertTriangle className="w-8 h-8 text-red-500" />
           </div>
         </div>
-        <h1 className="text-3xl font-bold text-white mb-2">Access Denied</h1>
-        <p className="text-slate-400 mb-6">
+        <h1 className="mb-2 text-3xl font-semibold tracking-tight text-slate-950 dark:text-white">Access Denied</h1>
+        <p className="mb-6 text-slate-500 dark:text-slate-400">
           You do not have permission to access this resource. Only administrators can access this area.
         </p>
         <Link
           href="/dashboard"
-          className="inline-block bg-mint/20 hover:bg-mint/30 text-mint border border-mint/50 font-medium py-2 px-6 rounded-lg transition"
+          className="mx-focus inline-block rounded-lg bg-slate-950 px-6 py-2 font-medium text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
         >
           Back to Dashboard
         </Link>
