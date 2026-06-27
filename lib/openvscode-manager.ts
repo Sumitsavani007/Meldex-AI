@@ -101,7 +101,7 @@ for (const file of candidates) {
 }
 NODE
 `;
-  await docker(["exec", containerName, "sh", "-lc", script]).catch(() => undefined);
+  await docker(["exec", "-u", "0", containerName, "sh", "-lc", script]).catch(() => undefined);
 }
 
 async function containerIsRunning(name: string, workspaceId: string) {
