@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Brush, CreditCard, KeyRound, Languages, Monitor, Moon, Shield, Sun, User } from "lucide-react";
+import { Bell, Brush, CreditCard, KeyRound, Languages, Monitor, Moon, Shield, Sun, User, BarChart3 } from "lucide-react";
 import { PanelCard, SoftButton, UserPanelShell } from "@/components/user-panel-shell";
 import { useThemePreference } from "@/components/theme-provider";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ const settingsSections = [
   { href: "/settings/security", label: "Security", description: "Password, sessions, recovery, and account safety.", icon: Shield },
   { href: "/settings/tokens", label: "API Tokens", description: "Create and revoke extension, CLI, and benchmark tokens.", icon: KeyRound },
   { href: "/settings/billing", label: "Billing", description: "Subscription, usage, invoices, and plan controls.", icon: CreditCard },
+  { href: "/settings/usage", label: "Usage", description: "Credit transactions, model usage, and CSV export.", icon: BarChart3 },
   { href: "/settings/models", label: "Models", description: "Provider configuration, model health, and defaults.", icon: Monitor },
   { href: "/settings/brain", label: "Brain", description: "AI routing preferences and provider diagnostics.", icon: Brush },
 ];

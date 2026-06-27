@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "users" | "audit" | "diagnostics";
+type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "usage-pricing" | "users" | "audit" | "diagnostics";
 type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
@@ -124,6 +124,27 @@ interface UserPlanDetail {
     plan: PlanRow;
     windows: Record<"FIVE_HOUR" | "WEEKLY" | "MONTHLY", UsageWindowRow>;
   };
+  transactions: Array<{ id: string; type: string; credits: number; reason?: string | null; metadataJson?: Record<string, unknown> | null; createdAt: string }>;
+}
+
+interface ModelUsageConfigRow {
+  id: string;
+  provider: string;
+  model: string;
+  inputCreditMultiplier: number;
+  outputCreditMultiplier: number;
+  reasoningCreditMultiplier: number;
+  cachedCreditMultiplier: number;
+  toolCallCreditCost: number;
+  previewCreditCost: number;
+  fileReadCreditCost: number;
+  fileWriteCreditCost: number;
+  memoryReadCreditCost: number;
+  memoryWriteCreditCost: number;
+  fallbackEstimateCredits: number;
+  retryMultiplier: number;
+  autofixMultiplier: number;
+  isActive: boolean;
 }
 
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
@@ -172,7 +193,7 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function getSection(): TabId {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("section") as TabId | null;
-  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
+  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
@@ -254,6 +275,8 @@ export default function MasterAdminPage() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
+  const [usageConfigs, setUsageConfigs] = useState<ModelUsageConfigRow[]>([]);
+  const [editingUsageConfig, setEditingUsageConfig] = useState<ModelUsageConfigRow | null>(null);
   const [selectedUserPlan, setSelectedUserPlan] = useState<UserPlanDetail | null>(null);
   const [grantCredits, setGrantCredits] = useState("500");
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
@@ -261,7 +284,7 @@ export default function MasterAdminPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, usagePricing: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -332,6 +355,22 @@ export default function MasterAdminPage() {
     }
   }, [pushToast]);
 
+  const fetchUsagePricing = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, usagePricing: true }));
+    try {
+      const res = await fetch("/api/admin/usage-pricing", { cache: "no-store" });
+      if (!res.ok) throw new Error("Usage pricing unavailable");
+      const data = await res.json();
+      const rows = data.configs ?? [];
+      setUsageConfigs(rows);
+      setEditingUsageConfig((current) => current ?? rows[0] ?? null);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Usage pricing unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, usagePricing: false }));
+    }
+  }, [pushToast]);
+
   const fetchAudit = useCallback(async () => {
     setLoading((prev) => ({ ...prev, audit: true }));
     try {
@@ -360,9 +399,10 @@ export default function MasterAdminPage() {
 
   useEffect(() => {
     if (tab === "plans") fetchPlans();
+    if (tab === "usage-pricing") fetchUsagePricing();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchUsagePricing, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -544,6 +584,46 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "Reset failed");
     } finally {
       setSaving((prev) => ({ ...prev, resetPlans: false }));
+    }
+  }
+
+  async function saveUsagePricing() {
+    if (!editingUsageConfig) return;
+    setSaving((prev) => ({ ...prev, usagePricing: true }));
+    try {
+      const res = await fetch("/api/admin/usage-pricing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingUsageConfig),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      setEditingUsageConfig(data.config);
+      pushToast("success", "Usage pricing saved. Next task uses the new costs.");
+      await fetchUsagePricing();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Usage pricing save failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, usagePricing: false }));
+    }
+  }
+
+  async function resetUsagePricing() {
+    setSaving((prev) => ({ ...prev, resetUsagePricing: true }));
+    try {
+      const res = await fetch("/api/admin/usage-pricing", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resetDefaults: true }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Default usage pricing restored.");
+      setEditingUsageConfig(null);
+      await fetchUsagePricing();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Usage pricing reset failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, resetUsagePricing: false }));
     }
   }
 
@@ -797,7 +877,7 @@ export default function MasterAdminPage() {
                     maxStorageMb: 500,
                     maxParallelTasks: 1,
                     priorityLevel: 1,
-                    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+                    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct", "qwen/qwen3-coder:free"],
                     featuresJson: [],
                     isActive: true,
                     sortOrder: 99,
@@ -888,6 +968,108 @@ export default function MasterAdminPage() {
         </>
       )}
 
+      {tab === "usage-pricing" && (
+        <>
+          <SectionTitle
+            title="Usage Pricing"
+            description="Edit model/token/tool credit costs. Changes are database-backed and apply to the next AI task without redeploy."
+            action={<div className="flex gap-2"><IconButton onClick={fetchUsagePricing}><RefreshCw className={cx("size-4", loading.usagePricing && "animate-spin")} />Refresh</IconButton><IconButton onClick={resetUsagePricing} disabled={saving.resetUsagePricing}>{saving.resetUsagePricing ? <SpinnerText label="Resetting" /> : <><RotateCcw className="size-4" />Reset defaults</>}</IconButton></div>}
+          />
+          <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <button
+                  onClick={() => setEditingUsageConfig({
+                    id: "",
+                    provider: "openrouter",
+                    model: "custom/model",
+                    inputCreditMultiplier: 1,
+                    outputCreditMultiplier: 2,
+                    reasoningCreditMultiplier: 3,
+                    cachedCreditMultiplier: 0.25,
+                    toolCallCreditCost: 1,
+                    previewCreditCost: 2,
+                    fileReadCreditCost: 0.2,
+                    fileWriteCreditCost: 1,
+                    memoryReadCreditCost: 0.2,
+                    memoryWriteCreditCost: 0.5,
+                    fallbackEstimateCredits: 15,
+                    retryMultiplier: 1.25,
+                    autofixMultiplier: 1.5,
+                    isActive: true,
+                  })}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
+                >
+                  Create pricing config
+                </button>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {usageConfigs.map((config) => (
+                  <button key={config.id} onClick={() => setEditingUsageConfig(config)} className={cx("flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.04]", editingUsageConfig?.id === config.id && "bg-violet-50 dark:bg-violet-500/10")}>
+                    <span>
+                      <span className="block text-sm font-semibold">{config.provider}</span>
+                      <span className="block truncate text-xs text-slate-500">{config.model}</span>
+                    </span>
+                    <Badge tone={config.isActive ? "green" : "neutral"}>{config.isActive ? "Active" : "Off"}</Badge>
+                  </button>
+                ))}
+                {!usageConfigs.length && <div className="p-5 text-sm text-slate-500">{loading.usagePricing ? "Loading pricing..." : "No usage pricing configs yet."}</div>}
+              </div>
+            </Panel>
+            <Panel className="p-5">
+              {editingUsageConfig ? (
+                <div className="space-y-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">Model Usage Config</h3>
+                      <p className="mt-1 text-sm text-slate-500">Token multipliers and fixed costs used by the real credit calculator.</p>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={editingUsageConfig.isActive} onChange={(event) => setEditingUsageConfig({ ...editingUsageConfig, isActive: event.target.checked })} />
+                      Active
+                    </label>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {[
+                      ["Provider", "provider", "text"],
+                      ["Model", "model", "text"],
+                    ].map(([label, key, type]) => (
+                      <label key={key} className="grid gap-1 text-sm">
+                        <span className="font-medium">{label}</span>
+                        <input type={type} value={String(editingUsageConfig[key as keyof ModelUsageConfigRow] ?? "")} onChange={(event) => setEditingUsageConfig({ ...editingUsageConfig, [key]: event.target.value })} className="h-10 rounded-md border border-slate-200 bg-white px-3 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                      </label>
+                    ))}
+                    {[
+                      ["Input token multiplier", "inputCreditMultiplier"],
+                      ["Output token multiplier", "outputCreditMultiplier"],
+                      ["Reasoning token multiplier", "reasoningCreditMultiplier"],
+                      ["Cached token multiplier", "cachedCreditMultiplier"],
+                      ["Tool call cost", "toolCallCreditCost"],
+                      ["Preview run cost", "previewCreditCost"],
+                      ["File read cost", "fileReadCreditCost"],
+                      ["File write cost", "fileWriteCreditCost"],
+                      ["Memory read cost", "memoryReadCreditCost"],
+                      ["Memory write cost", "memoryWriteCreditCost"],
+                      ["Fallback estimate credits", "fallbackEstimateCredits"],
+                      ["Retry multiplier", "retryMultiplier"],
+                      ["Autofix multiplier", "autofixMultiplier"],
+                    ].map(([label, key]) => (
+                      <label key={key} className="grid gap-1 text-sm">
+                        <span className="font-medium">{label}</span>
+                        <input type="number" step="0.01" min={0} value={Number(editingUsageConfig[key as keyof ModelUsageConfigRow] ?? 0)} onChange={(event) => setEditingUsageConfig({ ...editingUsageConfig, [key]: Number(event.target.value) })} className="h-10 rounded-md border border-slate-200 bg-white px-3 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end">
+                    <IconButton onClick={saveUsagePricing} disabled={saving.usagePricing}>{saving.usagePricing ? <SpinnerText label="Saving" /> : <><Save className="size-4" />Save pricing</>}</IconButton>
+                  </div>
+                </div>
+              ) : <div className="p-8 text-center text-sm text-slate-500">Select usage pricing to edit.</div>}
+            </Panel>
+          </div>
+        </>
+      )}
+
       {tab === "users" && (
         <>
           <SectionTitle title="Users" description="View users, update roles, assign plans, grant credits, and reset usage. Role changes are owner-only." action={<IconButton onClick={fetchUsers}><RefreshCw className={cx("size-4", loading.users && "animate-spin")} />Refresh</IconButton>} />
@@ -942,6 +1124,15 @@ export default function MasterAdminPage() {
                   <IconButton onClick={() => updateUserPlan({ action: "grant", credits: Number(grantCredits), reason: "Master panel grant" })} disabled={saving.userPlan}>Grant</IconButton>
                 </div>
                 <IconButton onClick={() => updateUserPlan({ action: "reset", reason: "Master panel reset" })} disabled={saving.userPlan}><RotateCcw className="size-4" />Reset usage</IconButton>
+                <div className="space-y-2 pt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Recent usage</p>
+                  {(selectedUserPlan.transactions || []).slice(0, 8).map((tx) => {
+                    const meta = tx.metadataJson || {};
+                    const spike = tx.type === "USAGE" && tx.credits > Math.max(100, selectedUserPlan.usage.plan.fiveHourCredits * 0.5);
+                    return <div key={tx.id} className="rounded-md border border-slate-200 p-2 text-xs dark:border-white/[0.1]"><div className="flex justify-between gap-3"><span>{tx.type}{spike ? " · spike" : ""}</span><span className={spike ? "text-amber-600" : ""}>{tx.credits}</span></div><div className="mt-1 truncate text-slate-500">{String(meta.model || tx.reason || "-")}</div><div className="mt-1 text-slate-400">{new Date(tx.createdAt).toLocaleString()}</div></div>;
+                  })}
+                  {!selectedUserPlan.transactions?.length && <p className="text-xs text-slate-500">No usage transactions yet.</p>}
+                </div>
               </div>
             )}
           </Panel>

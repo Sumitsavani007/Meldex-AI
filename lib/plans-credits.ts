@@ -1,7 +1,14 @@
 import { CreditTransactionType, Prisma, UsageWindowType, UserPlanStatus, type Plan } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getConfig } from "@/lib/runtime-config";
+import type { CompletionUsage } from "@/lib/model-router";
 
 export const DEFAULT_PLAN_SLUGS = ["free", "meldex-plus", "meldex-pro", "meldex-pro-plus"] as const;
+
+export const DEFAULT_ALLOWED_MODELS = [
+  "qwen/qwen3-coder-30b-a3b-instruct",
+  "qwen/qwen3-coder:free",
+];
 
 export const DEFAULT_PLANS = [
   {
@@ -20,7 +27,7 @@ export const DEFAULT_PLANS = [
     maxStorageMb: 500,
     maxParallelTasks: 1,
     priorityLevel: 1,
-    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+    allowedModelsJson: DEFAULT_ALLOWED_MODELS,
     featuresJson: ["Basic workspace", "AI chat", "Offline mode"],
     isActive: true,
     sortOrder: 10,
@@ -41,7 +48,7 @@ export const DEFAULT_PLANS = [
     maxStorageMb: 10000,
     maxParallelTasks: 2,
     priorityLevel: 2,
-    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+    allowedModelsJson: DEFAULT_ALLOWED_MODELS,
     featuresJson: ["Priority workspace runs", "Extension tokens", "Memory"],
     isActive: true,
     sortOrder: 20,
@@ -62,7 +69,7 @@ export const DEFAULT_PLANS = [
     maxStorageMb: 50000,
     maxParallelTasks: 4,
     priorityLevel: 3,
-    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+    allowedModelsJson: DEFAULT_ALLOWED_MODELS,
     featuresJson: ["Higher context", "More workspaces", "Priority model access"],
     isActive: true,
     sortOrder: 30,
@@ -83,7 +90,7 @@ export const DEFAULT_PLANS = [
     maxStorageMb: 200000,
     maxParallelTasks: 8,
     priorityLevel: 4,
-    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+    allowedModelsJson: DEFAULT_ALLOWED_MODELS,
     featuresJson: ["Maximum credits", "Largest context", "Top priority"],
     isActive: true,
     sortOrder: 40,
@@ -91,6 +98,23 @@ export const DEFAULT_PLANS = [
 ];
 
 export type UsageSummary = Awaited<ReturnType<typeof getUserPlanLimits>>;
+
+export type CreditCalculationInput = {
+  model?: string;
+  provider?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cachedTokens?: number;
+  toolCalls?: number;
+  fileReads?: number;
+  fileWrites?: number;
+  previewRuns?: number;
+  memoryReads?: number;
+  memoryWrites?: number;
+  retries?: number;
+  autofixes?: number;
+};
 
 function startOfMonth(now: Date) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
@@ -152,6 +176,96 @@ export function estimateCredits(input: { prompt?: string; filesChanged?: number;
   const promptCredits = Math.ceil((input.prompt || "").length / 120);
   const fileCredits = (input.filesChanged || 0) * 3;
   return Math.max(5, promptCredits + fileCredits + 10);
+}
+
+export async function seedDefaultModelUsageConfigs({ overwrite = false } = {}) {
+  const data = {
+    provider: "openrouter",
+    model: "qwen/qwen3-coder-30b-a3b-instruct",
+    inputCreditMultiplier: 1,
+    outputCreditMultiplier: 2,
+    reasoningCreditMultiplier: 3,
+    cachedCreditMultiplier: 0.25,
+    toolCallCreditCost: 1,
+    previewCreditCost: 2,
+    fileReadCreditCost: 0.2,
+    fileWriteCreditCost: 1,
+    memoryReadCreditCost: 0.2,
+    memoryWriteCreditCost: 0.5,
+    fallbackEstimateCredits: 15,
+    retryMultiplier: 1.25,
+    autofixMultiplier: 1.5,
+    isActive: true,
+  };
+  return prisma.modelUsageConfig.upsert({
+    where: { provider_model: { provider: data.provider, model: data.model } },
+    update: overwrite ? data : { isActive: true },
+    create: { id: "model_usage_openrouter_qwen3_coder", ...data },
+  });
+}
+
+export async function listModelUsageConfigs() {
+  await seedDefaultModelUsageConfigs();
+  return prisma.modelUsageConfig.findMany({ orderBy: [{ provider: "asc" }, { model: "asc" }] });
+}
+
+export async function getModelUsageConfig(provider = "openrouter", model?: string) {
+  await seedDefaultModelUsageConfigs();
+  const targetModel = model || await getConfig("OPENROUTER_MODEL") || "qwen/qwen3-coder-30b-a3b-instruct";
+  return (await prisma.modelUsageConfig.findFirst({
+    where: { provider, model: targetModel, isActive: true },
+  })) || (await prisma.modelUsageConfig.findFirst({
+    where: { provider, isActive: true },
+    orderBy: { createdAt: "asc" },
+  })) || seedDefaultModelUsageConfigs();
+}
+
+export async function calculateCredits(input: CreditCalculationInput) {
+  const config = await getModelUsageConfig(input.provider || "openrouter", input.model);
+  const tokenCredits =
+    ((input.inputTokens || 0) / 1000) * config.inputCreditMultiplier +
+    ((input.outputTokens || 0) / 1000) * config.outputCreditMultiplier +
+    ((input.reasoningTokens || 0) / 1000) * config.reasoningCreditMultiplier +
+    ((input.cachedTokens || 0) / 1000) * config.cachedCreditMultiplier;
+  const toolCredits =
+    (input.toolCalls || 0) * config.toolCallCreditCost +
+    (input.previewRuns || 0) * config.previewCreditCost +
+    (input.fileReads || 0) * config.fileReadCreditCost +
+    (input.fileWrites || 0) * config.fileWriteCreditCost +
+    (input.memoryReads || 0) * config.memoryReadCreditCost +
+    (input.memoryWrites || 0) * config.memoryWriteCreditCost;
+  const retryCredits = (input.retries || 0) * config.retryMultiplier;
+  const autofixCredits = (input.autofixes || 0) * config.autofixMultiplier;
+  const raw = tokenCredits + toolCredits + retryCredits + autofixCredits;
+  return {
+    credits: Math.max(1, Math.ceil(raw || config.fallbackEstimateCredits)),
+    rawCredits: raw,
+    config,
+    breakdown: {
+      tokenCredits,
+      toolCredits,
+      retryCredits,
+      autofixCredits,
+      input,
+    },
+  };
+}
+
+export function usageFromCompletion(usage?: CompletionUsage | null) {
+  return {
+    inputTokens: usage?.inputTokens || 0,
+    outputTokens: usage?.outputTokens || 0,
+    reasoningTokens: usage?.reasoningTokens || 0,
+    cachedTokens: usage?.cachedTokens || 0,
+    estimated: usage?.estimated ?? true,
+  };
+}
+
+export async function getActiveGenerationModel() {
+  return {
+    provider: "openrouter",
+    model: await getConfig("OPENROUTER_MODEL") || "qwen/qwen3-coder-30b-a3b-instruct",
+  };
 }
 
 export async function seedDefaultPlans({ overwrite = false } = {}) {
@@ -258,6 +372,35 @@ export async function checkUserCreditLimit(userId: string, estimatedCredits: num
   };
 }
 
+export async function precheckUserAiRequest(input: { userId: string; estimatedCredits: number; model?: string; provider?: string; estimatedContextTokens?: number }) {
+  const summary = await getUserPlanLimits(input.userId);
+  const model = input.model || (await getActiveGenerationModel()).model;
+  const allowed = summary.allowedModels.map(String);
+  if (allowed.length && !allowed.includes(model)) {
+    return {
+      ok: false as const,
+      code: "MODEL_NOT_ALLOWED",
+      message: "This model is not available on your current Meldex plan.",
+      model,
+      summary,
+    };
+  }
+  if ((input.estimatedContextTokens || 0) > summary.plan.maxContextTokens) {
+    return {
+      ok: false as const,
+      code: "CONTEXT_TOO_LARGE",
+      message: "This request is larger than your current Meldex context limit.",
+      model,
+      maxContextTokens: summary.plan.maxContextTokens,
+      estimatedContextTokens: input.estimatedContextTokens || 0,
+      summary,
+    };
+  }
+  const credit = await checkUserCreditLimit(input.userId, input.estimatedCredits);
+  if (!credit.ok) return credit;
+  return { ok: true as const, summary, model, estimatedCredits: input.estimatedCredits };
+}
+
 export async function recordCreditUsage(userId: string, credits: number, metadata: Record<string, unknown> = {}) {
   const summary = await getUserPlanLimits(userId);
   const windows = Object.values(summary.windows);
@@ -278,6 +421,38 @@ export async function recordCreditUsage(userId: string, credits: number, metadat
     }),
   ]);
   return getUserPlanLimits(userId);
+}
+
+export async function recordAiCreditUsage(input: {
+  userId: string;
+  credits: number;
+  provider?: string;
+  model?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const summary = await getUserPlanLimits(input.userId);
+  const windows = Object.values(summary.windows);
+  await prisma.$transaction([
+    ...windows.map((window) => prisma.usageWindow.update({
+      where: { id: window.id },
+      data: { creditsUsed: { increment: input.credits }, creditsLimit: limitFor(summary.plan, window.windowType) },
+    })),
+    prisma.creditTransaction.create({
+      data: {
+        userId: input.userId,
+        planId: summary.plan.id,
+        type: CreditTransactionType.USAGE,
+        credits: input.credits,
+        reason: "AI generation usage",
+        metadataJson: {
+          provider: input.provider,
+          model: input.model,
+          ...(input.metadata || {}),
+        } as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
+  return getUserPlanLimits(input.userId);
 }
 
 export async function assignUserPlan(input: { userId: string; planId: string; assignedByAdmin?: boolean; endsAt?: Date | null }) {

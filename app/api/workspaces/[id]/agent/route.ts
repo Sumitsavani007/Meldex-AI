@@ -21,7 +21,7 @@ import {
 } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
-import { checkUserCreditLimit, estimateCredits, recordCreditUsage } from "@/lib/plans-credits";
+import { calculateCredits, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,16 +43,22 @@ export async function POST(
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
     const project = await getOwnedWorkspaceProject(session.user.id, id);
-    const estimatedCredits = estimateCredits({ prompt: body.prompt });
-    const creditCheck = await checkUserCreditLimit(session.user.id, estimatedCredits);
+    const activeModel = await getActiveGenerationModel();
+    const promptTokens = Math.ceil(body.prompt.length / 4);
+    const preEstimate = await calculateCredits({ provider: activeModel.provider, model: activeModel.model, inputTokens: promptTokens, toolCalls: 2, memoryReads: 1 });
+    const creditCheck = await precheckUserAiRequest({
+      userId: session.user.id,
+      estimatedCredits: preEstimate.credits,
+      provider: activeModel.provider,
+      model: activeModel.model,
+      estimatedContextTokens: promptTokens,
+    });
     if (!creditCheck.ok) {
       return NextResponse.json({
         error: creditCheck.message,
         code: creditCheck.code,
-        windowType: creditCheck.windowType,
-        creditsUsed: creditCheck.creditsUsed,
-        creditsLimit: creditCheck.creditsLimit,
-        estimatedCredits,
+        estimatedCredits: preEstimate.credits,
+        details: creditCheck,
       }, { status: 402, headers: { "Cache-Control": "no-store" } });
     }
 
@@ -80,6 +86,20 @@ export async function POST(
     });
 
     const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.prompt);
+    const contextTokens = Math.ceil([
+      body.prompt,
+      context.projectFiles.join("\n"),
+      context.memoryContext?.snippet || "",
+      ...context.relevantFiles.map((file) => file.content),
+    ].join("\n").length / 4);
+    const contextCheck = await precheckUserAiRequest({
+      userId: session.user.id,
+      estimatedCredits: preEstimate.credits,
+      provider: activeModel.provider,
+      model: activeModel.model,
+      estimatedContextTokens: contextTokens,
+    });
+    if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
     await prisma.workspaceLog.create({
       data: {
         userId: session.user.id,
@@ -93,6 +113,8 @@ export async function POST(
     let response: WorkspaceAgentResponse;
     let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
     let offlineMode = false;
+    const retries = 0;
+    let autofixes = 0;
     try {
       response = await askWorkspaceAgent(body.prompt, context);
     } catch (providerError) {
@@ -125,6 +147,7 @@ export async function POST(
     const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
     let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.prompt);
     if (!files.length && isStaticWebsitePrompt(body.prompt)) {
+      autofixes += 1;
       const fallback = offlineStaticWorkspace(body.prompt);
       response = {
         ...fallback,
@@ -249,13 +272,45 @@ export async function POST(
       fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
       commands: ["static-preview-verify"],
     });
-    const creditsUsed = estimateCredits({ prompt: body.prompt, filesChanged: changedFiles.length });
-    const usage = await recordCreditUsage(session.user.id, creditsUsed, {
+    const tokenUsage = usageFromCompletion(response.usage);
+    const finalCredit = await calculateCredits({
+      provider: response.provider || activeModel.provider,
+      model: response.model || activeModel.model,
+      ...tokenUsage,
+      toolCalls: 6 + changedFiles.length,
+      fileReads: context.relevantFiles.length,
+      fileWrites: changedFiles.length,
+      previewRuns: 1,
+      memoryReads: 1,
+      memoryWrites: 1,
+      retries,
+      autofixes,
+    });
+    const usage = await recordAiCreditUsage({
+      userId: session.user.id,
+      credits: finalCredit.credits,
+      provider: response.provider || activeModel.provider,
+      model: response.model || activeModel.model,
+      metadata: {
       projectId: project.id,
       taskId: task.id,
       promptLength: body.prompt.length,
+      contextTokens,
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      reasoningTokens: tokenUsage.reasoningTokens,
+      cachedTokens: tokenUsage.cachedTokens,
+      estimated: tokenUsage.estimated,
       filesChanged: changedFiles.length,
+      fileReads: context.relevantFiles.length,
+      fileWrites: changedFiles.length,
+      toolCalls: 6 + changedFiles.length,
+      retries,
+      autofixes,
+      previewRuns: 1,
       previewVerified: verification.verified,
+      breakdown: finalCredit.breakdown,
+      },
     });
 
     return NextResponse.json({
@@ -270,7 +325,7 @@ export async function POST(
       providerFailure,
       memory,
       usage,
-      creditsUsed,
+      creditsUsed: finalCredit.credits,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (taskId) {

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
-import { checkUserCreditLimit, estimateCredits, recordCreditUsage } from "@/lib/plans-credits";
+import { calculateCredits, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -58,16 +58,28 @@ export async function POST(
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
     const project = await getOwnedWorkspaceProject(session.user.id, id);
-    const estimatedCredits = estimateCredits({ prompt: body.data.prompt });
-    const creditCheck = await checkUserCreditLimit(session.user.id, estimatedCredits);
+    const activeModel = await getActiveGenerationModel();
+    const promptTokens = Math.ceil(body.data.prompt.length / 4);
+    const preEstimate = await calculateCredits({
+      provider: activeModel.provider,
+      model: activeModel.model,
+      inputTokens: promptTokens,
+      toolCalls: 2,
+      memoryReads: 1,
+    });
+    const creditCheck = await precheckUserAiRequest({
+      userId: session.user.id,
+      estimatedCredits: preEstimate.credits,
+      provider: activeModel.provider,
+      model: activeModel.model,
+      estimatedContextTokens: promptTokens,
+    });
     if (!creditCheck.ok) {
       return NextResponse.json({
         error: creditCheck.message,
         code: creditCheck.code,
-        windowType: creditCheck.windowType,
-        creditsUsed: creditCheck.creditsUsed,
-        creditsLimit: creditCheck.creditsLimit,
-        estimatedCredits,
+        estimatedCredits: preEstimate.credits,
+        details: creditCheck,
       }, { status: 402, headers: { "Cache-Control": "no-store" } });
     }
     const encoder = new TextEncoder();
@@ -105,12 +117,27 @@ export async function POST(
           const snapshot = await createWorkspaceSnapshot(session.user.id, project.id, task.id);
           await send("thinking", "Thinking", { taskId, snapshotId: snapshot.id });
           await send("usage_checked", "Plan and credit limits checked", {
-            estimatedCredits,
+            estimatedCredits: preEstimate.credits,
             plan: creditCheck.summary.plan.name,
+            model: activeModel.model,
           });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("tool_start", "Reading workspace");
           const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.data.prompt);
+          const contextTokens = Math.ceil([
+            body.data.prompt,
+            context.projectFiles.join("\n"),
+            context.memoryContext?.snippet || "",
+            ...context.relevantFiles.map((file) => file.content),
+          ].join("\n").length / 4);
+          const contextCheck = await precheckUserAiRequest({
+            userId: session.user.id,
+            estimatedCredits: preEstimate.credits,
+            provider: activeModel.provider,
+            model: activeModel.model,
+            estimatedContextTokens: contextTokens,
+          });
+          if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length });
           await send("memory_loaded", context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task" : "Loaded workspace memory", {
             relatedTaskCount: context.memoryContext.relatedTaskCount,
@@ -137,6 +164,8 @@ export async function POST(
           let response: WorkspaceAgentResponse;
           let offlineMode = false;
           let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
+          let retries = 0;
+          let autofixes = 0;
           try {
             await send("qwen_generation_started", "Qwen generation started", {
               classification: orchestration.classification,
@@ -161,6 +190,7 @@ export async function POST(
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
           });
           if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
+            autofixes += 1;
             const fallback = offlineStaticWorkspace(body.data.prompt);
             response = {
               ...fallback,
@@ -175,11 +205,13 @@ export async function POST(
           }
           let reviewer = reviewWorkspaceFiles(files, orchestration.classification);
           if (reviewer.status === "block") {
+            retries += 1;
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
             const fixPrompt = `${body.data.prompt}\n\nTARGETED FIX REQUIRED:\n${reviewer.findings.join("\n")}\nReturn complete corrected index.html, style.css, script.js, and README.md only.`;
             const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction);
             files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
             if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
+              autofixes += 1;
               const fallback = offlineStaticWorkspace(body.data.prompt);
               response = {
                 ...fallback,
@@ -316,23 +348,55 @@ export async function POST(
             verification,
           });
           await send("learning_updated", "Recorded safe learning summary", { learning });
-          const creditsUsed = estimateCredits({ prompt: body.data.prompt, filesChanged: changedFiles.length });
-          const usage = await recordCreditUsage(session.user.id, creditsUsed, {
+          const tokenUsage = usageFromCompletion(response.usage);
+          const finalCredit = await calculateCredits({
+            provider: response.provider || activeModel.provider,
+            model: response.model || activeModel.model,
+            ...tokenUsage,
+            toolCalls: 8 + changedFiles.length,
+            fileReads: context.relevantFiles.length,
+            fileWrites: changedFiles.length,
+            previewRuns: 1,
+            memoryReads: 1,
+            memoryWrites: 1,
+            retries,
+            autofixes,
+          });
+          const usage = await recordAiCreditUsage({
+            userId: session.user.id,
+            credits: finalCredit.credits,
+            provider: response.provider || activeModel.provider,
+            model: response.model || activeModel.model,
+            metadata: {
             projectId: project.id,
             taskId: task.id,
             promptLength: body.data.prompt.length,
+            contextTokens,
+            inputTokens: tokenUsage.inputTokens,
+            outputTokens: tokenUsage.outputTokens,
+            reasoningTokens: tokenUsage.reasoningTokens,
+            cachedTokens: tokenUsage.cachedTokens,
+            estimated: tokenUsage.estimated,
             filesChanged: changedFiles.length,
+            fileReads: context.relevantFiles.length,
+            fileWrites: changedFiles.length,
+            toolCalls: 8 + changedFiles.length,
+            retries,
+            autofixes,
+            previewRuns: 1,
             previewVerified: verification.verified,
+            breakdown: finalCredit.breakdown,
+            },
           });
           await send("usage_recorded", "Recorded credit usage", {
-            creditsUsed,
+            creditsUsed: finalCredit.credits,
             plan: usage.plan.name,
             monthly: usage.windows.MONTHLY,
             weekly: usage.windows.WEEKLY,
             fiveHour: usage.windows.FIVE_HOUR,
           });
-          await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode });
-          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory });
+          await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode, creditsUsed: finalCredit.credits });
+          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage });
           completed = true;
           controller.close();
         } catch (err) {

@@ -384,6 +384,32 @@ model CreditTransaction {
   @@index([type])
 }
 
+model ModelUsageConfig {
+  id                        String   @id @default(cuid())
+  provider                  String
+  model                     String
+  inputCreditMultiplier     Float    @default(1)
+  outputCreditMultiplier    Float    @default(2)
+  reasoningCreditMultiplier Float    @default(3)
+  cachedCreditMultiplier    Float    @default(0.25)
+  toolCallCreditCost        Float    @default(1)
+  previewCreditCost         Float    @default(2)
+  fileReadCreditCost        Float    @default(0.2)
+  fileWriteCreditCost       Float    @default(1)
+  memoryReadCreditCost      Float    @default(0.2)
+  memoryWriteCreditCost     Float    @default(0.5)
+  fallbackEstimateCredits   Int      @default(15)
+  retryMultiplier           Float    @default(1.25)
+  autofixMultiplier         Float    @default(1.5)
+  isActive                  Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  @@unique([provider, model])
+  @@index([provider, isActive])
+  @@index([model])
+}
+
 model ModelConfig {
   id              String        @id @default(cuid())
   userId          String

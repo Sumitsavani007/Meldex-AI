@@ -18,12 +18,37 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
-const defaultPlans = [
-  { id: "plan_free", name: "Free", slug: "free", description: "Starter access for trying Meldex.", priceMonthly: 0, priceYearly: 0, currency: "USD", monthlyCredits: 1000, weeklyCredits: 300, fiveHourCredits: 50, maxContextTokens: 128000, maxWorkspaceCount: 3, maxStorageMb: 500, maxParallelTasks: 1, priorityLevel: 1, allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"], featuresJson: ["Basic workspace", "AI chat", "Offline mode"], isActive: true, sortOrder: 10 },
-  { id: "plan_plus", name: "Meldex Plus", slug: "meldex-plus", description: "More credits and larger workspaces for active builders.", priceMonthly: 1900, priceYearly: 19000, currency: "USD", monthlyCredits: 10000, weeklyCredits: 3000, fiveHourCredits: 500, maxContextTokens: 500000, maxWorkspaceCount: 20, maxStorageMb: 10000, maxParallelTasks: 2, priorityLevel: 2, allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"], featuresJson: ["Priority workspace runs", "Extension tokens", "Memory"], isActive: true, sortOrder: 20 },
-  { id: "plan_pro", name: "Meldex Pro", slug: "meldex-pro", description: "Professional limits for serious product work.", priceMonthly: 4900, priceYearly: 49000, currency: "USD", monthlyCredits: 50000, weeklyCredits: 15000, fiveHourCredits: 2500, maxContextTokens: 1000000, maxWorkspaceCount: 100, maxStorageMb: 50000, maxParallelTasks: 4, priorityLevel: 3, allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"], featuresJson: ["Higher context", "More workspaces", "Priority model access"], isActive: true, sortOrder: 30 },
-  { id: "plan_pro_plus", name: "Meldex Pro+", slug: "meldex-pro-plus", description: "Highest limits for power users and teams.", priceMonthly: 9900, priceYearly: 99000, currency: "USD", monthlyCredits: 200000, weeklyCredits: 50000, fiveHourCredits: 10000, maxContextTokens: 2000000, maxWorkspaceCount: 500, maxStorageMb: 200000, maxParallelTasks: 8, priorityLevel: 4, allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"], featuresJson: ["Maximum credits", "Largest context", "Top priority"], isActive: true, sortOrder: 40 },
+const defaultAllowedModels = [
+  "qwen/qwen3-coder-30b-a3b-instruct",
+  "qwen/qwen3-coder:free",
 ];
+
+const defaultPlans = [
+  { id: "plan_free", name: "Free", slug: "free", description: "Starter access for trying Meldex.", priceMonthly: 0, priceYearly: 0, currency: "USD", monthlyCredits: 1000, weeklyCredits: 300, fiveHourCredits: 50, maxContextTokens: 128000, maxWorkspaceCount: 3, maxStorageMb: 500, maxParallelTasks: 1, priorityLevel: 1, allowedModelsJson: defaultAllowedModels, featuresJson: ["Basic workspace", "AI chat", "Offline mode"], isActive: true, sortOrder: 10 },
+  { id: "plan_plus", name: "Meldex Plus", slug: "meldex-plus", description: "More credits and larger workspaces for active builders.", priceMonthly: 1900, priceYearly: 19000, currency: "USD", monthlyCredits: 10000, weeklyCredits: 3000, fiveHourCredits: 500, maxContextTokens: 500000, maxWorkspaceCount: 20, maxStorageMb: 10000, maxParallelTasks: 2, priorityLevel: 2, allowedModelsJson: defaultAllowedModels, featuresJson: ["Priority workspace runs", "Extension tokens", "Memory"], isActive: true, sortOrder: 20 },
+  { id: "plan_pro", name: "Meldex Pro", slug: "meldex-pro", description: "Professional limits for serious product work.", priceMonthly: 4900, priceYearly: 49000, currency: "USD", monthlyCredits: 50000, weeklyCredits: 15000, fiveHourCredits: 2500, maxContextTokens: 1000000, maxWorkspaceCount: 100, maxStorageMb: 50000, maxParallelTasks: 4, priorityLevel: 3, allowedModelsJson: defaultAllowedModels, featuresJson: ["Higher context", "More workspaces", "Priority model access"], isActive: true, sortOrder: 30 },
+  { id: "plan_pro_plus", name: "Meldex Pro+", slug: "meldex-pro-plus", description: "Highest limits for power users and teams.", priceMonthly: 9900, priceYearly: 99000, currency: "USD", monthlyCredits: 200000, weeklyCredits: 50000, fiveHourCredits: 10000, maxContextTokens: 2000000, maxWorkspaceCount: 500, maxStorageMb: 200000, maxParallelTasks: 8, priorityLevel: 4, allowedModelsJson: defaultAllowedModels, featuresJson: ["Maximum credits", "Largest context", "Top priority"], isActive: true, sortOrder: 40 },
+];
+
+const defaultModelUsageConfig = {
+  id: "model_usage_openrouter_qwen3_coder",
+  provider: "openrouter",
+  model: "qwen/qwen3-coder-30b-a3b-instruct",
+  inputCreditMultiplier: 1,
+  outputCreditMultiplier: 2,
+  reasoningCreditMultiplier: 3,
+  cachedCreditMultiplier: 0.25,
+  toolCallCreditCost: 1,
+  previewCreditCost: 2,
+  fileReadCreditCost: 0.2,
+  fileWriteCreditCost: 1,
+  memoryReadCreditCost: 0.2,
+  memoryWriteCreditCost: 0.5,
+  fallbackEstimateCredits: 15,
+  retryMultiplier: 1.25,
+  autofixMultiplier: 1.5,
+  isActive: true,
+};
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -49,6 +74,13 @@ async function main() {
     });
   }
   console.log("✅  Default plans ensured.");
+
+  await prisma.modelUsageConfig.upsert({
+    where: { provider_model: { provider: defaultModelUsageConfig.provider, model: defaultModelUsageConfig.model } },
+    update: { isActive: true },
+    create: defaultModelUsageConfig,
+  });
+  console.log("✅  Default model usage pricing ensured.");
 
   // ── Owner / super-admin account ──────────────────────────────────────────
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } });

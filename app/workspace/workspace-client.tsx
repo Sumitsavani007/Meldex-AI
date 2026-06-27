@@ -882,6 +882,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     return !query || event.type.toLowerCase().includes(query) || event.message.toLowerCase().includes(query);
   });
   const eventTypes = new Set(conversationEvents.map((event) => event.type));
+  const latestUsageEvent = [...conversationEvents].reverse().find((event) => event.type === "usage_recorded");
+  const taskCreditsUsed = Number(latestUsageEvent?.payload?.creditsUsed || 0);
   const checklist = [
     ["Understanding request", eventTypes.has("intent_detected") || eventTypes.has("task_classified")],
     ["Reading workspace", Boolean(activeTask || streamEvents.length)],
@@ -1233,6 +1235,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                     </div>;
                   })}
                   <div className="flex justify-between pt-1 text-[#6B7280] dark:text-[#9CA3AF]"><span>Context</span><span>{usage.plan.maxContextTokens.toLocaleString()} tokens</span></div>
+                  {taskCreditsUsed > 0 && <div className="rounded-lg bg-[#F6F7FB] p-2 dark:bg-[#1A1E27]">Credits used this task: <span className="font-semibold">{taskCreditsUsed.toLocaleString()}</span></div>}
+                  {usage.windows.FIVE_HOUR.creditsLimit - usage.windows.FIVE_HOUR.creditsUsed <= Math.max(10, usage.windows.FIVE_HOUR.creditsLimit * 0.1) && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">You’re close to your 5-hour limit.</div>
+                  )}
                   {Object.values(usage.windows).some((window) => window.creditsUsed >= window.creditsLimit) && (
                     <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">Limit reached. Try Meldex Plus / Upgrade Plan.</div>
                   )}

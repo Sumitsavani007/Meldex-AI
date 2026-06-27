@@ -26,6 +26,22 @@ export type CompletionOptions = {
   timeoutMs?: number;
 };
 
+export type CompletionUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cachedTokens: number;
+  totalTokens: number;
+  estimated: boolean;
+};
+
+export type CompletionResult = {
+  content: string;
+  provider: ProviderType;
+  model: string;
+  usage: CompletionUsage;
+};
+
 export type ProviderType =
   | "local_ollama"
   | "openrouter"
@@ -53,7 +69,19 @@ export async function getProviderLabel(): Promise<string> {
 // Ollama
 // ---------------------------------------------------------------------------
 
-async function callOllama(options: CompletionOptions): Promise<string> {
+function estimateTokensFromMessages(messages: ChatMessage[], output = "") {
+  const input = messages.reduce((sum, message) => sum + Math.ceil(message.content.length / 4), 0);
+  return {
+    inputTokens: input,
+    outputTokens: Math.ceil(output.length / 4),
+    reasoningTokens: 0,
+    cachedTokens: 0,
+    totalTokens: input + Math.ceil(output.length / 4),
+    estimated: true,
+  };
+}
+
+async function callOllama(options: CompletionOptions): Promise<CompletionResult> {
   const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
   const model = options.model?.trim() || process.env.DEFAULT_MODEL || "qwen3-coder:30b";
   const timeout = options.timeoutMs ?? 90_000;
@@ -80,7 +108,7 @@ async function callOllama(options: CompletionOptions): Promise<string> {
   };
   const content = data.message?.content ?? data.response ?? "";
   if (!content.trim()) throw new ModelRouterError("Ollama returned an empty response.", "empty_response");
-  return content;
+  return { content, provider: "local_ollama", model, usage: estimateTokensFromMessages(options.messages, content) };
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +121,7 @@ async function callOpenAICompatible(
   model: string,
   options: CompletionOptions,
   extraHeaders?: Record<string, string>
-): Promise<string> {
+): Promise<CompletionResult> {
   const timeout = options.timeoutMs ?? 90_000;
 
   const headers: Record<string, string> = {
@@ -156,6 +184,13 @@ async function callOpenAICompatible(
   const data = (await response.json()) as {
     choices?: { message?: { content?: string } }[];
     error?: { message?: string; code?: string };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+      prompt_tokens_details?: { cached_tokens?: number };
+      completion_tokens_details?: { reasoning_tokens?: number };
+    };
   };
 
   // OpenRouter can return 200 with an error object
@@ -171,7 +206,15 @@ async function callOpenAICompatible(
 
   const content = data.choices?.[0]?.message?.content ?? "";
   if (!content.trim()) throw new ModelRouterError("Provider returned an empty response.", "empty_response", undefined, model, requestId, retryAfter);
-  return content;
+  const usage = data.usage ? {
+    inputTokens: Number(data.usage.prompt_tokens || 0),
+    outputTokens: Number(data.usage.completion_tokens || 0),
+    reasoningTokens: Number(data.usage.completion_tokens_details?.reasoning_tokens || 0),
+    cachedTokens: Number(data.usage.prompt_tokens_details?.cached_tokens || 0),
+    totalTokens: Number(data.usage.total_tokens || (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0)),
+    estimated: false,
+  } : estimateTokensFromMessages(options.messages, content);
+  return { content, provider: "openrouter", model, usage };
 }
 
 function affordableMaxTokens(reason: string, requested?: number) {
@@ -188,7 +231,7 @@ function affordableMaxTokens(reason: string, requested?: number) {
 // OpenRouter — reads model from runtime config (vault > env > default)
 // ---------------------------------------------------------------------------
 
-async function callOpenRouter(options: CompletionOptions): Promise<string> {
+async function callOpenRouter(options: CompletionOptions): Promise<CompletionResult> {
   const apiKey = await getConfig("OPENROUTER_API_KEY");
   if (!apiKey) {
     throw new ModelRouterError(
@@ -223,7 +266,7 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
       for (const fallbackModel of fallbackModels) {
         try {
           const result = await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
-          return `> Primary model (${primaryModel}) exceeded the current credit token budget. Using fallback: ${fallbackModel}\n\n${result}`;
+          return { ...result, content: `> Primary model (${primaryModel}) exceeded the current credit token budget. Using fallback: ${fallbackModel}\n\n${result.content}` };
         } catch {
           // try next fallback before attempting a smaller primary response
         }
@@ -247,7 +290,7 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
       try {
         const result = await callOpenAICompatible(baseUrl, apiKey, fallbackModel, options, extraHeaders);
         // Prepend a note that fallback was used
-        return `> ⚠️ Free model (${primaryModel}) is temporarily rate limited. Using fallback: ${fallbackModel}\n\n${result}`;
+        return { ...result, content: `> ⚠️ Free model (${primaryModel}) is temporarily rate limited. Using fallback: ${fallbackModel}\n\n${result.content}` };
       } catch {
         // try next fallback
       }
@@ -261,12 +304,13 @@ async function callOpenRouter(options: CompletionOptions): Promise<string> {
   }
 }
 
-async function callCustom(options: CompletionOptions): Promise<string> {
+async function callCustom(options: CompletionOptions): Promise<CompletionResult> {
   const baseUrl = process.env.CUSTOM_AI_BASE_URL;
   const model = options.model?.trim() || process.env.CUSTOM_AI_MODEL;
   if (!baseUrl) throw new ModelRouterError("CUSTOM_AI_BASE_URL is not set.", "missing_api_key");
   if (!model) throw new ModelRouterError("CUSTOM_AI_MODEL is not set.", "invalid_model");
-  return callOpenAICompatible(baseUrl, process.env.CUSTOM_AI_API_KEY, model, options);
+  const result = await callOpenAICompatible(baseUrl, process.env.CUSTOM_AI_API_KEY, model, options);
+  return { ...result, provider: "custom_openai_compatible", model };
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +343,7 @@ export class ModelRouterError extends Error {
  * Generate a chat completion using the active provider.
  * Throws `ModelRouterError` for all provider-level failures.
  */
-export async function generateChatCompletion(options: CompletionOptions): Promise<string> {
+export async function generateChatCompletionWithUsage(options: CompletionOptions): Promise<CompletionResult> {
   const provider = await getActiveProvider();
   try {
     if (provider === "openrouter") return await callOpenRouter(options);
@@ -316,4 +360,9 @@ export async function generateChatCompletion(options: CompletionOptions): Promis
     }
     throw new ModelRouterError(msg, "provider_error");
   }
+}
+
+export async function generateChatCompletion(options: CompletionOptions): Promise<string> {
+  const result = await generateChatCompletionWithUsage(options);
+  return result.content;
 }

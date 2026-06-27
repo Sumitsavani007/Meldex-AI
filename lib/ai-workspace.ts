@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
+import { generateChatCompletionWithUsage, ModelRouterError, type CompletionUsage } from "@/lib/model-router";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 
@@ -31,6 +31,10 @@ export type WorkspaceAgentResponse = {
   commands?: string[];
   summary?: string;
   warnings?: string[];
+  usage?: CompletionUsage;
+  provider?: string;
+  model?: string;
+  rawContent?: string;
 };
 
 export type WorkspaceMemorySnapshot = {
@@ -1034,7 +1038,7 @@ Coding Engine V2:
 ${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");
-  const raw = await generateChatCompletion({
+  const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
     maxTokens: 8192,
     timeoutMs: 120_000,
@@ -1043,7 +1047,13 @@ ${websiteDesignerRules}`;
       { role: "user", content: `Task:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context:\n${fileContext || "(empty workspace)"}` },
     ],
   });
-  return parseAgentJson(raw);
+  return {
+    ...parseAgentJson(completion.content),
+    usage: completion.usage,
+    provider: completion.provider,
+    model: completion.model,
+    rawContent: completion.content,
+  };
 }
 
 export function classifyWorkspaceProviderFailure(error: unknown, prompt = ""): WorkspaceProviderFailure {
