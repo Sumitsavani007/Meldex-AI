@@ -29,6 +29,14 @@ Nginx `/ide/` must retain:
 - `X-Forwarded-Host`
 - long read/send timeouts
 
+## Live QA
+
+- Public websocket handshake through `/ide/<workspaceId>/...`: HTTP `101 Switching Protocols`
+- `Sec-WebSocket-Accept` header forwarded: yes
+- Bad/missing IDE session remains protected: `401`
+- Nginx config test: passed
+- Nginx reload: completed
+
 ## Status
 
-READY FOR LIVE VERIFY
+READY

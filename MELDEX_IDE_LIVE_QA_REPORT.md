@@ -11,15 +11,18 @@ Date: 2026-06-27
 ## Live QA Result
 
 - Deployed commit: `4bfdb8d1463d3a8a6d2378487056f22486086405`
+- Latest critical-fix runtime commit: `c682243b0d9d6cc69659236c2cb10ae4af79af3b`
 - Login: verified with authenticated session.
 - `/workspace`: HTTP 200.
 - `/api/workspaces`: HTTP 200, workspace list returned 4 projects.
 - `/workspace/[projectId]`: HTTP 307 to `/workspace/[projectId]/ide`.
 - `/workspace/[projectId]/ide`: HTTP 200.
 - Meldex loading shell: `Opening Meldex IDE…` present.
+- Right-side Meldex AI panel: present.
 - `POST /api/workspaces/[id]/ide-session`: HTTP 200.
 - Proxied IDE session route: HTTP 200.
 - Proxied workbench route: HTTP 200.
+- Websocket handshake: HTTP 101 with `Sec-WebSocket-Accept`.
 - Bad IDE token: HTTP 401.
 - IDE container: running and bound to `127.0.0.1`.
 - Product metadata:

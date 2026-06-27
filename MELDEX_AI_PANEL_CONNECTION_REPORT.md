@@ -28,6 +28,15 @@ The panel uses the existing workspace backend:
 
 - Attach context button is disabled because workspace context is loaded automatically.
 
+## Live QA
+
+- IDE shell includes the right-side `Meldex AI` panel.
+- Panel shell loads on live `/workspace/[projectId]/ide`.
+- Panel uses real workspace API routes in source:
+  - `POST /api/workspaces/[id]/agent/stream`
+  - `GET /api/workspaces/[id]`
+- No hardcoded assistant response or dummy chat response is used.
+
 ## Status
 
-READY FOR LIVE VERIFY
+READY

@@ -14,6 +14,16 @@ Date: 2026-06-27
 
 The underlying runtime remains OpenVSCode Server, but user-facing Meldex shell and product metadata are patched to Meldex branding.
 
+## Live QA
+
+- Meldex shell contains `Meldex IDE` / `Meldex AI`.
+- Meldex shell has no `VS Code`, `Visual Studio Code`, `OpenVSCode`, `Code OSS`, or `Get Started with VS Code` text.
+- Running container product metadata:
+  - `nameShort`: `Meldex IDE`
+  - `nameLong`: `Meldex IDE`
+  - `applicationName`: `meldex-ide`
+- Remaining `Workbench` strings observed in proxied HTML are internal comments/performance marks, not visible UI copy.
+
 ## Status
 
-READY FOR LIVE VERIFY
+READY
