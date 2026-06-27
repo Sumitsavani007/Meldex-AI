@@ -5,13 +5,17 @@ import { redirect } from "next/navigation";
 import type { ElementType, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
+  BarChart3,
   CheckCircle2,
   Cloud,
   Code2,
   Copy,
   CreditCard,
   Database,
+  DollarSign,
+  Download,
   FileText,
   Globe,
   Key,
@@ -29,7 +33,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "billing" | "usage-pricing" | "users" | "audit" | "diagnostics";
+type TabId = "overview" | "analytics" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "billing" | "usage-pricing" | "users" | "audit" | "diagnostics";
 type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
@@ -152,6 +156,7 @@ interface ModelUsageConfigRow {
   fallbackEstimateCredits: number;
   retryMultiplier: number;
   autofixMultiplier: number;
+  estimatedCostPerCreditCents: number;
   isActive: boolean;
 }
 
@@ -207,6 +212,57 @@ interface PaymentEventRow {
   user?: { id: string; email: string; name?: string | null } | null;
 }
 
+interface AnalyticsData {
+  range: { key: string; start: string; end: string };
+  revenue: {
+    mrrCents: number;
+    arrCents: number;
+    grossRevenueCents: number;
+    failedPayments: number;
+    refundsCents: number;
+    revenueByPlan: Array<{ plan: string; users: number; revenueCents: number; mrrCents: number }>;
+    activeSubscriptions: number;
+    trialUsers: number;
+    freeUsers: number;
+    paidUsers: number;
+    churnedUsers: number;
+  };
+  usage: {
+    totalCreditsUsed: number;
+    inputTokens: number;
+    outputTokens: number;
+    averageCreditsPerTask: number;
+    retries: number;
+    autofixes: number;
+    previewRuns: number;
+    memoryReads: number;
+    memoryWrites: number;
+    modelUsage: Array<{ provider: string; model: string; credits: number; inputTokens: number; outputTokens: number; retries: number; autofixes: number; previewRuns: number; estimatedCostCents: number; configuredCost: boolean }>;
+    topUsers: Array<{ userId: string; email: string; name?: string | null; credits: number; transactions: number }>;
+  };
+  modelCost: {
+    estimatedProviderCostCents: number;
+    costConfigured: boolean;
+    revenueFromCreditsCents: number;
+    marginPercent: number | null;
+    highestCostModels: Array<{ provider: string; model: string; credits: number; estimatedCostCents: number; configuredCost: boolean }>;
+    topExpensiveUsers: Array<{ email: string; credits: number; transactions: number }>;
+  };
+  workspace: {
+    workspaceCount: number;
+    aiTaskCount: number;
+    failedTaskCount: number;
+    providerErrors: number;
+    previewRuns: number;
+    failedPreviews: number;
+    fileOperations: number;
+    storageBytes: number;
+    taskStatus: Array<{ status: string; count: number }>;
+  };
+  planPerformance: Array<{ plan: string; users: number; revenueCents: number; mrrCents: number; averageCreditsPerUser: number; upgradeRate: number; churnRate: number }>;
+  alerts: Array<{ severity: string; type: string; message: string }>;
+}
+
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
 const groups: Array<{ category: string; label: string; icon: ElementType }> = [
@@ -254,7 +310,7 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function getSection(): TabId {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("section") as TabId | null;
-  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "billing", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
+  return value && ["overview", "analytics", "ai", "vault", "integrations", "runtime", "plans", "billing", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
@@ -329,6 +385,31 @@ function formatMoney(cents = 0, currency = "USD") {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format((cents || 0) / 100);
 }
 
+function formatBytes(bytes = 0) {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function MetricCard({ label, value, icon: Icon, hint }: { label: string; value: ReactNode; icon: ElementType; hint?: string }) {
+  return (
+    <Panel className="p-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</p>
+        <Icon className="size-4 text-slate-400" />
+      </div>
+      <p className="mt-3 text-2xl font-semibold">{value}</p>
+      {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
+    </Panel>
+  );
+}
+
+function MiniBar({ value, max }: { value: number; max: number }) {
+  const width = max ? Math.min(100, Math.round((value / max) * 100)) : 0;
+  return <div className="h-2 rounded-full bg-slate-100 dark:bg-white/[0.08]"><div className="h-2 rounded-full bg-violet-600" style={{ width: `${width}%` }} /></div>;
+}
+
 export default function MasterAdminPage() {
   const { data: session, status: sessionStatus } = useSession();
   const role = session?.user?.role;
@@ -336,6 +417,8 @@ export default function MasterAdminPage() {
 
   const [tab, setTab] = useState<TabId>("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [analyticsRange, setAnalyticsRange] = useState("30d");
   const [settings, setSettings] = useState<SettingRow[]>([]);
   const [vaultOk, setVaultOk] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -356,7 +439,7 @@ export default function MasterAdminPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, billing: false, usagePricing: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, billing: false, usagePricing: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -396,6 +479,19 @@ export default function MasterAdminPage() {
       setLoading((prev) => ({ ...prev, settings: false }));
     }
   }, [pushToast]);
+
+  const fetchAnalytics = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, analytics: true }));
+    try {
+      const res = await fetch(`/api/admin/analytics?range=${encodeURIComponent(analyticsRange)}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("Analytics unavailable");
+      setAnalytics(await res.json());
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Analytics unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, analytics: false }));
+    }
+  }, [analyticsRange, pushToast]);
 
   const fetchUsers = useCallback(async () => {
     setLoading((prev) => ({ ...prev, users: true }));
@@ -488,11 +584,12 @@ export default function MasterAdminPage() {
 
   useEffect(() => {
     if (tab === "plans") fetchPlans();
+    if (tab === "analytics") fetchAnalytics();
     if (tab === "billing") fetchUpgradeRequests();
     if (tab === "usage-pricing") fetchUsagePricing();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -909,6 +1006,169 @@ export default function MasterAdminPage() {
         </>
       )}
 
+      {tab === "analytics" && (
+        <>
+          <SectionTitle
+            title="SaaS Analytics"
+            description="Revenue, subscriptions, credit usage, model cost estimates, workspace activity, alerts, and exports from live DB data."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <select value={analyticsRange} onChange={(event) => setAnalyticsRange(event.target.value)} className="h-9 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-white/[0.1] dark:bg-black/20">
+                  <option value="today">Today</option>
+                  <option value="7d">7 days</option>
+                  <option value="30d">30 days</option>
+                  <option value="month">This month</option>
+                </select>
+                <IconButton onClick={fetchAnalytics}><RefreshCw className={cx("size-4", loading.analytics && "animate-spin")} />Refresh</IconButton>
+              </div>
+            }
+          />
+          {!analytics ? (
+            <Panel className="p-8 text-sm text-slate-500">{loading.analytics ? <SpinnerText label="Loading analytics" /> : "Analytics data is not loaded yet."}</Panel>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <MetricCard label="MRR" value={formatMoney(analytics.revenue.mrrCents)} icon={DollarSign} hint="Active subscriptions" />
+                <MetricCard label="ARR" value={formatMoney(analytics.revenue.arrCents)} icon={BarChart3} hint="MRR x 12" />
+                <MetricCard label="Gross Revenue" value={formatMoney(analytics.revenue.grossRevenueCents)} icon={CreditCard} hint={`${analytics.revenue.failedPayments} failed payment(s)`} />
+                <MetricCard label="Paid Users" value={analytics.revenue.paidUsers.toLocaleString()} icon={Users} hint={`${analytics.revenue.freeUsers} free · ${analytics.revenue.trialUsers} trial`} />
+                <MetricCard label="Credits Used" value={analytics.usage.totalCreditsUsed.toLocaleString()} icon={Zap} hint={`${analytics.usage.averageCreditsPerTask} avg / task`} />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+                <Panel className="overflow-hidden">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                    <h3 className="text-sm font-semibold">Revenue By Plan</h3>
+                    <p className="text-xs text-slate-500">MRR, paid invoices, and current assigned users by plan.</p>
+                  </div>
+                  <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                    {analytics.revenue.revenueByPlan.map((row) => (
+                      <div key={row.plan} className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_140px_140px_100px] sm:items-center">
+                        <div>
+                          <p className="text-sm font-medium">{row.plan}</p>
+                          <MiniBar value={row.mrrCents} max={Math.max(...analytics.revenue.revenueByPlan.map((item) => item.mrrCents), 1)} />
+                        </div>
+                        <span className="text-sm text-slate-600 dark:text-slate-300">{formatMoney(row.mrrCents)} MRR</span>
+                        <span className="text-sm text-slate-600 dark:text-slate-300">{formatMoney(row.revenueCents)} paid</span>
+                        <span className="text-sm text-slate-500">{row.users} user(s)</span>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+
+                <Panel className="p-4">
+                  <h3 className="text-sm font-semibold">Model Cost Estimate</h3>
+                  <div className="mt-4 grid gap-3 text-sm">
+                    <div className="flex justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 dark:bg-white/[0.04]"><span>Provider cost</span><span>{analytics.modelCost.costConfigured ? formatMoney(analytics.modelCost.estimatedProviderCostCents) : "Not configured"}</span></div>
+                    <div className="flex justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 dark:bg-white/[0.04]"><span>Credit revenue</span><span>{formatMoney(analytics.modelCost.revenueFromCreditsCents)}</span></div>
+                    <div className="flex justify-between gap-3 rounded-md bg-slate-50 px-3 py-2 dark:bg-white/[0.04]"><span>Margin</span><span>{analytics.modelCost.marginPercent === null ? "Not configured" : `${analytics.modelCost.marginPercent}%`}</span></div>
+                  </div>
+                  {!analytics.modelCost.costConfigured && <p className="mt-3 text-xs text-amber-600 dark:text-amber-300">Set estimated cost per credit in Master → Usage Pricing to enable cost and margin estimates.</p>}
+                </Panel>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Panel className="overflow-hidden">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                    <h3 className="text-sm font-semibold">AI Usage By Model</h3>
+                    <p className="text-xs text-slate-500">Credits, tokens, retries, autofix, and preview usage.</p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/[0.08]">
+                        <tr><th className="px-4 py-3">Model</th><th className="px-4 py-3">Credits</th><th className="px-4 py-3">Tokens</th><th className="px-4 py-3">Retries</th><th className="px-4 py-3">Cost</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                        {analytics.usage.modelUsage.map((row) => (
+                          <tr key={`${row.provider}:${row.model}`}>
+                            <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs">{row.provider}:{row.model}</td>
+                            <td className="px-4 py-3">{row.credits.toLocaleString()}</td>
+                            <td className="px-4 py-3">{(row.inputTokens + row.outputTokens).toLocaleString()}</td>
+                            <td className="px-4 py-3">{row.retries} / {row.autofixes}</td>
+                            <td className="px-4 py-3">{row.configuredCost ? formatMoney(row.estimatedCostCents) : "-"}</td>
+                          </tr>
+                        ))}
+                        {!analytics.usage.modelUsage.length && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">No AI usage in this range.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </Panel>
+
+                <Panel className="overflow-hidden">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                    <h3 className="text-sm font-semibold">Top Users By Usage</h3>
+                    <p className="text-xs text-slate-500">Highest credit users in the selected range.</p>
+                  </div>
+                  <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                    {analytics.usage.topUsers.map((user) => (
+                      <div key={user.userId} className="grid gap-3 px-4 py-3 sm:grid-cols-[1fr_120px_100px] sm:items-center">
+                        <span className="truncate text-sm font-medium">{user.email}</span>
+                        <span className="text-sm text-slate-600 dark:text-slate-300">{user.credits.toLocaleString()} credits</span>
+                        <span className="text-xs text-slate-500">{user.transactions} tx</span>
+                      </div>
+                    ))}
+                    {!analytics.usage.topUsers.length && <div className="px-4 py-10 text-center text-sm text-slate-500">No usage users in this range.</div>}
+                  </div>
+                </Panel>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <MetricCard label="Workspaces" value={analytics.workspace.workspaceCount.toLocaleString()} icon={Database} hint={`${analytics.workspace.fileOperations} file record(s)`} />
+                <MetricCard label="AI Tasks" value={analytics.workspace.aiTaskCount.toLocaleString()} icon={Activity} hint={`${analytics.workspace.failedTaskCount} failed/canceled`} />
+                <MetricCard label="Preview Runs" value={analytics.workspace.previewRuns.toLocaleString()} icon={BarChart3} hint={`${analytics.workspace.failedPreviews} failed/unverified`} />
+                <MetricCard label="Storage" value={formatBytes(analytics.workspace.storageBytes)} icon={Server} hint="Workspace file records" />
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Panel className="overflow-hidden">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]"><h3 className="text-sm font-semibold">Plan Performance</h3></div>
+                  <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                    {analytics.planPerformance.map((plan) => (
+                      <div key={plan.plan} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_100px_100px_100px]">
+                        <span className="font-medium">{plan.plan}</span>
+                        <span>{plan.users} users</span>
+                        <span>{plan.upgradeRate}% share</span>
+                        <span>{plan.churnRate}% churn</span>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
+                <Panel className="overflow-hidden">
+                  <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]"><h3 className="text-sm font-semibold">Admin Alerts</h3></div>
+                  <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                    {analytics.alerts.map((alert) => (
+                      <div key={`${alert.type}:${alert.message}`} className="flex gap-3 px-4 py-3 text-sm">
+                        <AlertTriangle className={cx("mt-0.5 size-4", alert.severity === "high" ? "text-red-500" : alert.severity === "medium" ? "text-amber-500" : "text-sky-500")} />
+                        <div><p className="font-medium">{alert.type.replace(/_/g, " ")}</p><p className="text-slate-500">{alert.message}</p></div>
+                      </div>
+                    ))}
+                    {!analytics.alerts.length && <div className="px-4 py-10 text-center text-sm text-slate-500">No alerts for this range.</div>}
+                  </div>
+                </Panel>
+              </div>
+
+              <Panel className="p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">Exports</h3>
+                    <p className="text-xs text-slate-500">CSV exports use the selected date range.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      ["Revenue", "revenue"],
+                      ["Usage", "usage"],
+                      ["User Usage", "user-usage"],
+                      ["Credit Transactions", "credit-transactions"],
+                      ["Payment Events", "payment-events"],
+                    ].map(([label, key]) => <a key={key} href={`/api/admin/analytics?range=${analyticsRange}&export=${key}`} className="inline-flex h-9 items-center gap-2 rounded-md border border-slate-200 px-3 text-sm dark:border-white/[0.1]"><Download className="size-4" />{label}</a>)}
+                  </div>
+                </div>
+              </Panel>
+            </div>
+          )}
+        </>
+      )}
+
       {tab === "ai" && (
         <>
           <SectionTitle title="AI Models" description="Qwen3-Coder is the active coding brain. Runtime-editable model settings use vault first." action={<IconButton onClick={() => testConnection("openrouter")}><TestTube2 className="size-4" />Test model</IconButton>} />
@@ -1154,6 +1414,7 @@ export default function MasterAdminPage() {
                     fallbackEstimateCredits: 15,
                     retryMultiplier: 1.25,
                     autofixMultiplier: 1.5,
+                    estimatedCostPerCreditCents: 0,
                     isActive: true,
                   })}
                   className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
@@ -1211,6 +1472,7 @@ export default function MasterAdminPage() {
                       ["Fallback estimate credits", "fallbackEstimateCredits"],
                       ["Retry multiplier", "retryMultiplier"],
                       ["Autofix multiplier", "autofixMultiplier"],
+                      ["Estimated cost / credit (cents)", "estimatedCostPerCreditCents"],
                     ].map(([label, key]) => (
                       <label key={key} className="grid gap-1 text-sm">
                         <span className="font-medium">{label}</span>

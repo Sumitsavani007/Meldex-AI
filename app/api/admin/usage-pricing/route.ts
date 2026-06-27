@@ -25,6 +25,7 @@ const schema = z.object({
   fallbackEstimateCredits: z.coerce.number().int().min(1),
   retryMultiplier: z.coerce.number().min(0),
   autofixMultiplier: z.coerce.number().min(0),
+  estimatedCostPerCreditCents: z.coerce.number().min(0),
   isActive: z.boolean().default(true),
 });
 

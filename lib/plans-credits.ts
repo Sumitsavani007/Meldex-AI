@@ -217,6 +217,7 @@ export async function seedDefaultModelUsageConfigs({ overwrite = false } = {}) {
     fallbackEstimateCredits: 15,
     retryMultiplier: 1.25,
     autofixMultiplier: 1.5,
+    estimatedCostPerCreditCents: 0,
     isActive: true,
   };
   return prisma.modelUsageConfig.upsert({
