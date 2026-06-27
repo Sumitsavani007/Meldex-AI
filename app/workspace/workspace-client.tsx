@@ -224,7 +224,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const totalAdded = changed.reduce((sum, diff) => sum + diff.added, 0);
   const totalRemoved = changed.reduce((sum, diff) => sum + diff.removed, 0);
   const hasPreviewFile = files.some((file) => file.path === "index.html");
-  const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(String(state.project.updatedAt || ""))}` : "";
+  const previewVersion = [
+    state.project?.updatedAt,
+    state.preview?.lastCheckedAt,
+    state.preview?.httpStatus,
+    state.preview?.status,
+  ].filter(Boolean).join(":");
+  const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(previewVersion || String(Date.now()))}` : "";
   const previewDisplayUrl = state.preview?.url || (hasPreviewFile && state.project ? `/api/workspaces/${state.project.id}/preview` : "");
   const previewFullUrl = typeof window !== "undefined" && previewDisplayUrl ? `${window.location.origin}${previewDisplayUrl}` : previewDisplayUrl;
   const previewReady = Boolean(state.project && hasPreviewFile && previewDisplayUrl && !previewStopped);
