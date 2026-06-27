@@ -22,3 +22,9 @@ Date: 2026-06-27
 - `app/api/admin/plans/route.ts`
 - `app/api/admin/users/[id]/plan/route.ts`
 
+## Verification
+
+- Master navigation includes `Plans & Credits`.
+- Unauthenticated `/api/admin/plans` returns `401`.
+- Live database has Free, Meldex Plus, Meldex Pro, and Meldex Pro+.
+- AWS deployment completed on commit `b1154c910135e94632325f35ab39540a2f82da19`.

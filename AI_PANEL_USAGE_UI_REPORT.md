@@ -20,3 +20,8 @@ Date: 2026-06-27
 - `app/workspace/workspace-client.tsx`
 - `app/api/usage/route.ts`
 
+## Verification
+
+- `/api/usage` live smoke test returned current plan, 5-hour, weekly, monthly, and context limits.
+- Workspace build passed with the AI panel usage widget included.
+- Usage refresh is triggered after agent stream completion or failure.

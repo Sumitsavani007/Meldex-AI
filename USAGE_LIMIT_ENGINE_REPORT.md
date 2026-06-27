@@ -29,3 +29,11 @@ Date: 2026-06-27
 - `app/api/workspaces/[id]/agent/route.ts`
 - `app/api/usage/route.ts`
 
+## Verification
+
+- Authenticated `/api/usage` returned Free plan limits:
+  - 5-hour `0 / 50`
+  - weekly `0 / 300`
+  - monthly `0 / 1000`
+- Unauthenticated `/api/usage` returns `401`.
+- Production migration/build/restart passed.

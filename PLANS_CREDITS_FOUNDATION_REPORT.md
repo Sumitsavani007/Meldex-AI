@@ -17,6 +17,10 @@ Date: 2026-06-27
 - `npx prisma migrate deploy`: passed locally.
 - `npm run lint`: passed with existing warnings only.
 - `npm run build`: passed.
+- AWS `npx prisma migrate deploy`: passed and applied `20260627093000_plans_credits_foundation`.
+- AWS production build/restart: passed.
+- Live DB contains all four default plans with expected credit/context limits.
+- Production commit: `b1154c910135e94632325f35ab39540a2f82da19`.
 
 ## Files Changed
 
@@ -24,4 +28,3 @@ Date: 2026-06-27
 - `prisma/migrations/20260627093000_plans_credits_foundation/migration.sql`
 - `prisma/seed.ts`
 - `lib/plans-credits.ts`
-
