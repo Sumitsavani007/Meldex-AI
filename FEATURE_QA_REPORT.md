@@ -26,7 +26,14 @@ These warnings existed outside the feature-gate implementation and did not block
 
 ## Deployment Requirement
 
-Run production migration before using the Master Panel matrix live:
+Production deployment completed.
 
-`npx prisma migrate deploy`
-
+- GitHub/AWS commit: `44a2ff9ced5b609f8dd408ca4f9bcdbfbee68926`
+- Production migration `20260627140000_feature_gates` applied successfully.
+- Production `npx prisma migrate status`: database schema is up to date.
+- Production build passed.
+- PM2 app `meldex-ai` restarted and online.
+- Nginx config test passed and reloaded.
+- Live `/api/admin/features` returns `401` unauthenticated as expected.
+- Live `/api/workspaces` returns `401` unauthenticated as expected.
+- Live site returns `200`.
