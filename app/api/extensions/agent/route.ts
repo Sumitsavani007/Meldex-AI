@@ -1,6 +1,6 @@
 /**
  * POST /api/extensions/agent
- * Agent endpoint for the VS Code extension.
+ * Agent endpoint for the Meldex extension.
  * Returns a structured plan with file changes.
  */
 
@@ -26,7 +26,7 @@ const schema = z.object({
   }).optional(),
 });
 
-const AGENT_SYSTEM = `You are Meldex AI Agent powered by Qwen3-Coder — an expert coding assistant running inside VS Code.
+const AGENT_SYSTEM = `You are Meldex AI Agent powered by Qwen3-Coder — an expert coding assistant running inside Meldex IDE.
 You receive a task and workspace context, then return a structured JSON plan with file operations.
 
 IMPORTANT: Always respond with valid JSON in this exact format:

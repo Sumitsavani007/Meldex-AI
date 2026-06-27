@@ -1,7 +1,7 @@
 /**
  * GET /api/extensions/health
  *
- * Lightweight authenticated health endpoint for the VS Code extension.
+ * Lightweight authenticated health endpoint for the Meldex extension.
  * Verifies the bearer token and returns the current user plus backend/model status.
  */
 import { NextRequest, NextResponse } from "next/server";

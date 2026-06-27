@@ -55,6 +55,55 @@ async function docker(args: string[]) {
   return execFileAsync("docker", args, { timeout: 60_000, maxBuffer: 1024 * 1024 * 4 });
 }
 
+async function configureWorkspaceDefaults(workspacePath: string) {
+  const settingsPath = path.join(workspacePath, ".vscode", "settings.json");
+  let settings: Record<string, unknown> = {};
+  try {
+    settings = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    settings = {};
+  }
+  await mkdir(path.dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, JSON.stringify({
+    ...settings,
+    "telemetry.telemetryLevel": "off",
+    "workbench.startupEditor": "none",
+    "window.title": "Meldex IDE - ${activeFolderShort}${separator}${activeEditorShort}",
+    "workbench.editor.restoreViewState": true,
+    "workbench.colorTheme": settings["workbench.colorTheme"] || "Default Dark Modern",
+  }, null, 2));
+}
+
+async function applyMeldexBranding(containerName: string) {
+  const script = `
+node <<'NODE'
+const fs = require('fs');
+const candidates = [
+  '/home/.openvscode-server/product.json',
+  '/home/openvscode-server/.openvscode-server/product.json',
+];
+for (const file of candidates) {
+  try {
+    const product = JSON.parse(fs.readFileSync(file, 'utf8'));
+    Object.assign(product, {
+      nameShort: 'Meldex IDE',
+      nameLong: 'Meldex IDE',
+      applicationName: 'meldex-ide',
+      dataFolderName: '.meldex-ide',
+      serverApplicationName: 'meldex-ide',
+      serverDataFolderName: '.meldex-ide-server',
+      reportIssueUrl: 'https://meldex.newsyfly.com/settings',
+      urlProtocol: 'meldex-ide',
+      licenseName: 'Meldex',
+    });
+    fs.writeFileSync(file, JSON.stringify(product, null, 2));
+  } catch {}
+}
+NODE
+`;
+  await docker(["exec", containerName, "sh", "-lc", script]).catch(() => undefined);
+}
+
 async function containerIsRunning(name: string, workspaceId: string) {
   try {
     const { stdout } = await docker(["inspect", "-f", "{{.State.Running}} {{.State.Restarting}} {{json .Config.Cmd}}", name]);
@@ -65,6 +114,7 @@ async function containerIsRunning(name: string, workspaceId: string) {
 }
 
 async function ensureOpenVSCodeContainer(session: IdeSession) {
+  await configureWorkspaceDefaults(session.workspacePath);
   if (await containerIsRunning(session.containerName, session.workspaceId)) return;
   await docker(["rm", "-f", session.containerName]).catch(() => undefined);
   await mkdir(session.workspacePath, { recursive: true });
@@ -79,6 +129,7 @@ async function ensureOpenVSCodeContainer(session: IdeSession) {
     "gitpod/openvscode-server:latest",
     "--server-base-path", `/ide/${session.workspaceId}`,
   ]);
+  await applyMeldexBranding(session.containerName);
 }
 
 export async function ensureOpenVSCodeSession(input: { userId: string; project: WorkspaceProject }) {

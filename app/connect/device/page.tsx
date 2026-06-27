@@ -14,7 +14,7 @@ export default async function DeviceConnectPage({ searchParams }: { searchParams
       <main className="min-h-screen bg-ink text-white flex items-center justify-center px-4">
         <div className="w-full max-w-md rounded-lg border border-white/10 bg-white/[0.04] p-6">
           <h1 className="text-xl font-semibold">Connect Meldex AI</h1>
-          <p className="mt-2 text-sm text-slate-400">Sign in with Google, then approve the VS Code extension connection.</p>
+          <p className="mt-2 text-sm text-slate-400">Sign in with Google, then approve the Meldex extension connection.</p>
           <a className="mt-5 inline-flex w-full items-center justify-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-black" href={`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`}>
             Continue with Google
           </a>

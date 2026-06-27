@@ -25,7 +25,7 @@ export default function TokensPage() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [name, setName] = useState("VS Code Extension");
+  const [name, setName] = useState("Meldex Extension");
   const [expiresInDays, setExpiresInDays] = useState(365);
   const [scopes, setScopes] = useState<string[]>(ALL_SCOPES);
 
@@ -92,7 +92,7 @@ export default function TokensPage() {
   }
 
   return (
-    <UserPanelShell title="API Tokens" description="Create mdx_ tokens for VS Code extension, CLI, benchmark runs, and agent access." eyebrow="API Tokens">
+    <UserPanelShell title="API Tokens" description="Create mdx_ tokens for the Meldex extension, CLI, benchmark runs, and agent access." eyebrow="API Tokens">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <section className="min-w-0 space-y-5">
 
@@ -162,7 +162,7 @@ export default function TokensPage() {
             {[0, 1, 2].map((item) => <div key={item} className="h-14 animate-pulse rounded-xl bg-slate-100 dark:bg-white/[0.06]" />)}
           </div>
         ) : tokens.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-white/15 dark:bg-white/[0.04] dark:text-slate-400">No tokens yet. Create a token to connect VS Code or the CLI.</div>
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-500 dark:border-white/15 dark:bg-white/[0.04] dark:text-slate-400">No tokens yet. Create a token to connect Meldex or the CLI.</div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-white/10">
             <table className="w-full text-left text-sm">

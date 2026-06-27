@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   if (record.expiresAt < new Date()) return NextResponse.json({ error: "Code expired" }, { status: 410 });
   if (record.status !== "pending") return NextResponse.json({ error: "Code already used" }, { status: 409 });
 
-  const raw = await createExtensionApiToken(session.user.id, `VS Code Google Login ${new Date().toLocaleDateString()}`);
+  const raw = await createExtensionApiToken(session.user.id, `Meldex Google Login ${new Date().toLocaleDateString()}`);
   await prisma.extensionDeviceCode.update({
     where: { id: record.id },
     data: {

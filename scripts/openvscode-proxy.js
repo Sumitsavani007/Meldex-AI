@@ -128,4 +128,4 @@ server.on("upgrade", (req, socket, head) => {
   upstream.end();
 });
 
-server.listen(PORT, "127.0.0.1", () => console.log(`Meldex OpenVSCode proxy listening on 127.0.0.1:${PORT}`));
+server.listen(PORT, "127.0.0.1", () => console.log(`Meldex IDE proxy listening on 127.0.0.1:${PORT}`));

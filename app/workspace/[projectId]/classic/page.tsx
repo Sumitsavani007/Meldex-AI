@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
+import { WorkspaceClient } from "../../workspace-client";
 
 export default async function WorkspaceProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
-  redirect(`/workspace/${projectId}/ide`);
+  return <WorkspaceClient projectId={projectId} />;
 }

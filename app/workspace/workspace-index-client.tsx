@@ -49,27 +49,39 @@ function WorkspaceProjectCard({
   const files = project._count?.files ?? 0;
   const tasks = project._count?.tasks ?? 0;
   const previewReady = Boolean(project.lastPreviewUrl || project.previews?.[0]?.verified);
+  const previewUrl = project.lastPreviewUrl || (previewReady ? `/api/workspaces/${project.id}/preview` : "");
   return (
     <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md dark:border-white/10 dark:bg-[#111113] dark:hover:border-violet-400/25">
-      <div className="flex items-start justify-between gap-3">
+      <Link href={`/workspace/${project.id}/ide`} className="block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-violet-400">
+        <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{project.name}</h2>
           <p className="mt-1 text-xs text-zinc-500">Updated {new Date(project.updatedAt).toLocaleString()}</p>
         </div>
         <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{project.status}</span>
-      </div>
-      <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2 text-xs">
         <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Files</div><div className="font-semibold">{files}</div></div>
         <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Tasks</div><div className="font-semibold">{tasks}</div></div>
         <div className="rounded-xl bg-slate-50 p-2 dark:bg-white/5"><div className="text-zinc-500">Preview</div><div className="font-semibold">{previewReady ? "Ready" : "None"}</div></div>
-      </div>
+        </div>
+      </Link>
       <div className="mt-4 flex items-center gap-2">
-        <Link href={`/workspace/${project.id}`} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-violet-600/20">
-          Open <ExternalLink className="size-3.5" />
+        <Link href={`/workspace/${project.id}/ide`} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white shadow-sm shadow-violet-600/20">
+          Open IDE <ExternalLink className="size-3.5" />
         </Link>
-        <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-2 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Duplicate workspace is not available in V1" aria-label="Duplicate workspace disabled">
+        {previewUrl ? (
+          <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Open preview" aria-label="Open preview">
+            <ExternalLink className="size-3.5" />
+          </a>
+        ) : (
+          <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-2 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title="Preview is not available until the workspace generates files" aria-label="Preview disabled">
+            <ExternalLink className="size-3.5" />
+          </button>
+        )}
+        <Link href={`/workspace/${project.id}/classic`} className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Open classic workspace fallback" aria-label="Open classic workspace fallback">
           <Copy className="size-3.5" />
-        </button>
+        </Link>
         <button onClick={() => onArchive(project)} className="rounded-md border border-zinc-200 p-2 text-zinc-500 hover:bg-zinc-50 dark:border-white/10 dark:hover:bg-white/8" title="Archive workspace" aria-label="Archive workspace">
           <Archive className="size-3.5" />
         </button>
@@ -150,7 +162,7 @@ export function WorkspaceIndexClient() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create workspace");
       setStatusText("Workspace created");
-      router.push(`/workspace/${data.project.id}`);
+      router.push(`/workspace/${data.project.id}/ide`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Failed to create workspace");
     } finally {

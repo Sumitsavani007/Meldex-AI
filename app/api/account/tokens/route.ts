@@ -6,7 +6,7 @@ import { checkRateLimit } from "@/lib/security";
 import { createExtensionApiToken, maskExtensionToken, type ExtensionScope } from "@/lib/extension-auth";
 
 const createSchema = z.object({
-  name: z.string().min(1).max(80).default("VS Code Extension"),
+  name: z.string().min(1).max(80).default("Meldex Extension"),
   expiresInDays: z.number().int().min(1).max(365).default(365),
   scopes: z.array(z.enum(["chat", "agent", "model-health", "benchmark"])).default(["chat", "agent", "model-health", "benchmark"]),
 });

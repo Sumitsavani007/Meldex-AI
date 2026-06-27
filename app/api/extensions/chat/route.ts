@@ -1,6 +1,6 @@
 /**
  * POST /api/extensions/chat
- * Chat endpoint for the VS Code extension.
+ * Chat endpoint for the Meldex extension.
  * Uses Bearer JWT auth. Supports workspace context.
  */
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   const systemContext = contextParts.length > 0
-    ? `You are Meldex AI coding assistant inside VS Code.\n\n${contextParts.join("\n\n")}`
+    ? `You are Meldex AI coding assistant inside Meldex IDE.\n\n${contextParts.join("\n\n")}`
     : "You are Meldex AI, a helpful coding assistant.";
 
   const allMessages = [

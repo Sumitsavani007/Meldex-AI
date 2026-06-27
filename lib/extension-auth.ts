@@ -1,6 +1,6 @@
 /**
  * lib/extension-auth.ts
- * Auth for the VS Code extension — two methods:
+ * Auth for the Meldex extension — two methods:
  *   1. JWT  (legacy, kept for backward compat)
  *   2. Raw API token  mdx_<64 hex chars>  (new, preferred)
  */
@@ -117,7 +117,7 @@ export async function createExtensionApiToken(
       tokenPrefix: raw.slice(0, 4),
       tokenLast4: raw.slice(-4),
       scopesJson: { scopes },
-      name: name ?? "VS Code Extension",
+      name: name ?? "Meldex Extension",
       expiresAt,
     },
   });
