@@ -12,6 +12,7 @@ const settingsSections = [
   { href: "/settings/tokens", label: "API Tokens", description: "Create and revoke extension, CLI, and benchmark tokens.", icon: KeyRound },
   { href: "/settings/billing", label: "Billing", description: "Subscription, usage, invoices, and plan controls.", icon: CreditCard },
   { href: "/settings/usage", label: "Usage", description: "Credit transactions, model usage, and CSV export.", icon: BarChart3 },
+  { href: "/settings/notifications", label: "Notifications", description: "In-app alerts, email preferences, and security notices.", icon: Bell },
   { href: "/settings/models", label: "Models", description: "Provider configuration, model health, and defaults.", icon: Monitor },
   { href: "/settings/brain", label: "Brain", description: "AI routing preferences and provider diagnostics.", icon: Brush },
 ];
@@ -87,7 +88,7 @@ export default function SettingsPage() {
               {[
                 ["Google login", "Connected"],
                 ["Extension token", "Managed"],
-                ["Notifications", "Unavailable"],
+                ["Notifications", "Enabled"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm dark:bg-white/[0.04]">
                   <span className="text-slate-500 dark:text-slate-400">{label}</span>
@@ -103,7 +104,7 @@ export default function SettingsPage() {
               </span>
               <div>
                 <h2 className="text-sm font-semibold">Notifications</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Product alerts are not available in this release.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Billing, usage, workspace, and security alerts are active.</p>
               </div>
             </div>
           </PanelCard>

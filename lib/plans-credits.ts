@@ -2,6 +2,7 @@ import { CreditTransactionType, Prisma, UsageWindowType, UserPlanStatus, type Pl
 import { prisma } from "@/lib/prisma";
 import { getConfig } from "@/lib/runtime-config";
 import type { CompletionUsage } from "@/lib/model-router";
+import { createNotification } from "@/lib/notifications";
 
 export const DEFAULT_PLAN_SLUGS = ["free", "meldex-plus", "meldex-pro", "meldex-pro-plus"] as const;
 
@@ -687,7 +688,7 @@ export async function createUserNotification(input: {
   message: string;
   metadata?: Record<string, unknown>;
 }) {
-  return prisma.userNotification.create({
+  const legacy = await prisma.userNotification.create({
     data: {
       userId: input.userId,
       type: input.type,
@@ -696,6 +697,51 @@ export async function createUserNotification(input: {
       metadata: (input.metadata || {}) as Prisma.InputJsonValue,
     },
   });
+  await createNotification({
+    userId: input.userId,
+    type: normalizeNotificationType(input.type),
+    title: input.title,
+    message: input.message,
+    metadata: input.metadata,
+    dedupeWindowMinutes: 30,
+  }).catch(() => undefined);
+  return legacy;
+}
+
+function normalizeNotificationType(type: string) {
+  if (type === "credits_granted") return "admin_credit_grant";
+  if (type === "usage_reset") return "admin_credit_grant";
+  if (type === "plan_limit_reached") return "credits_exhausted";
+  if (type === "upgrade_requested") return "plan_changed";
+  return type;
+}
+
+async function notifyUsageThresholds(userId: string, windows: Array<{ windowType: UsageWindowType; creditsUsed: number; creditsLimit: number; resetAt: Date | null }>) {
+  for (const window of windows) {
+    if (!window.creditsLimit) continue;
+    const ratio = window.creditsUsed / window.creditsLimit;
+    const windowLabel = window.windowType === UsageWindowType.FIVE_HOUR ? "5-hour" : window.windowType === UsageWindowType.WEEKLY ? "weekly" : "monthly";
+    if (ratio >= 1) {
+      const type = window.windowType === UsageWindowType.FIVE_HOUR ? "five_hour_limit_reached" : window.windowType === UsageWindowType.WEEKLY ? "weekly_limit_reached" : "monthly_limit_reached";
+      await createNotification({
+        userId,
+        type,
+        actionUrl: "/settings/usage",
+        variables: { window: windowLabel, percentUsed: 100, resetAt: window.resetAt?.toISOString() || "" },
+        metadata: { windowType: window.windowType, creditsUsed: window.creditsUsed, creditsLimit: window.creditsLimit, resetAt: window.resetAt },
+        dedupeWindowMinutes: 60,
+      }).catch(() => undefined);
+    } else if (ratio >= 0.8) {
+      await createNotification({
+        userId,
+        type: "credits_low",
+        actionUrl: "/settings/usage",
+        variables: { window: windowLabel, percentUsed: Math.round(ratio * 100), resetAt: window.resetAt?.toISOString() || "" },
+        metadata: { windowType: window.windowType, creditsUsed: window.creditsUsed, creditsLimit: window.creditsLimit, resetAt: window.resetAt },
+        dedupeWindowMinutes: 60,
+      }).catch(() => undefined);
+    }
+  }
 }
 
 export async function recordCreditUsage(userId: string, credits: number, metadata: Record<string, unknown> = {}) {
@@ -717,6 +763,8 @@ export async function recordCreditUsage(userId: string, credits: number, metadat
       },
     }),
   ]);
+  const updated = await prisma.usageWindow.findMany({ where: { userId, id: { in: windows.map((window) => window.id) } } });
+  await notifyUsageThresholds(userId, updated);
   return getUserPlanLimits(userId);
 }
 
@@ -749,6 +797,8 @@ export async function recordAiCreditUsage(input: {
       },
     }),
   ]);
+  const updated = await prisma.usageWindow.findMany({ where: { userId: input.userId, id: { in: windows.map((window) => window.id) } } });
+  await notifyUsageThresholds(input.userId, updated);
   return getUserPlanLimits(input.userId);
 }
 

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/security";
 import { createExtensionApiToken, maskExtensionToken, type ExtensionScope } from "@/lib/extension-auth";
 import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
+import { createNotification } from "@/lib/notifications";
 
 const createSchema = z.object({
   name: z.string().min(1).max(80).default("Meldex Extension"),
@@ -91,6 +92,13 @@ export async function POST(req: NextRequest) {
       expiresAt,
       scopes: body.scopes as ExtensionScope[],
     });
+    await createNotification({
+      userId: session.user.id,
+      type: "token_created",
+      actionUrl: "/settings/tokens",
+      metadata: { name: body.name, scopes: body.scopes, expiresAt },
+      dedupeWindowMinutes: 0,
+    }).catch(() => undefined);
     const tokens = await prisma.extensionToken.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },

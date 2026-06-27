@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import {
-  Bell,
   Bot,
   Box,
   ChevronRight,
@@ -24,6 +23,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { useThemePreference } from "@/components/theme-provider";
+import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 export const userPanelNav = [
@@ -184,9 +184,7 @@ export function UserPanelShell({
               >
                 {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               </button>
-              <button disabled title="Notifications are not available in this release" className="grid size-10 cursor-not-allowed place-items-center rounded-xl border border-slate-200 bg-white text-slate-300 shadow-sm dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-600">
-                <Bell className="size-4" />
-              </button>
+              <NotificationBell />
               <Link href="/settings/profile" className="mx-focus grid size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20">
                 {initials}
               </Link>

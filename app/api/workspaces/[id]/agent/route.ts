@@ -22,6 +22,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,6 +40,7 @@ export async function POST(
 
   const { id } = await params;
   let taskId: string | null = null;
+  const projectId = id;
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
@@ -277,6 +279,14 @@ export async function POST(
       where: { id: project.id },
       data: { qualityScore, lastPreviewUrl: verification.url },
     });
+    await createNotification({
+      userId: session.user.id,
+      type: verification.verified ? "agent_task_completed" : "agent_task_failed",
+      actionUrl: `/workspace/${project.id}/ide`,
+      variables: { taskName: project.name },
+      metadata: { projectId: project.id, taskId: task.id, status: updatedTask.status, previewVerified: verification.verified },
+      dedupeWindowMinutes: 0,
+    }).catch(() => undefined);
     const memory = memoryGate.ok ? await updateWorkspaceMemorySnapshot({
       userId: session.user.id,
       projectId: project.id,
@@ -351,6 +361,14 @@ export async function POST(
       await prisma.workspaceTask.update({
         where: { id: taskId },
         data: { status: "FAILED", summary: err instanceof Error ? err.message : "Workspace task failed", completedAt: new Date() },
+      }).catch(() => undefined);
+      await createNotification({
+        userId: session.user.id,
+        type: "agent_task_failed",
+        actionUrl: `/workspace/${projectId}/ide`,
+        variables: { taskName: "Workspace task" },
+        metadata: { projectId, taskId, error: err instanceof Error ? err.message : "Workspace task failed" },
+        dedupeWindowMinutes: 0,
       }).catch(() => undefined);
     }
     const provider = providerErrorResponse(err);

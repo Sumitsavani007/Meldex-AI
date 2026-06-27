@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { createNotification } from "@/lib/notifications";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -334,6 +335,14 @@ export async function POST(
             include: { diffs: true, runs: true, previews: true, logs: true, events: { orderBy: { sequence: "asc" } } },
           });
           await prisma.workspaceProject.update({ where: { id: project.id }, data: { qualityScore, lastPreviewUrl: verification.url } });
+          await createNotification({
+            userId: session.user.id,
+            type: verification.verified ? "agent_task_completed" : "agent_task_failed",
+            actionUrl: `/workspace/${project.id}/ide`,
+            variables: { taskName: project.name },
+            metadata: { projectId: project.id, taskId: task.id, status: updatedTask.status, previewVerified: verification.verified },
+            dedupeWindowMinutes: 0,
+          }).catch(() => undefined);
           await send("finalized", "Finalized workspace task", {
             status: updatedTask.status,
             qualityScore,
@@ -425,6 +434,16 @@ export async function POST(
               where: { id: taskId },
               data: { status, summary: err instanceof Error ? err.message : "Workspace task failed", completedAt: new Date() },
             }).catch(() => undefined);
+            if (status === "FAILED") {
+              await createNotification({
+                userId: session.user.id,
+                type: "agent_task_failed",
+                actionUrl: `/workspace/${id}/ide`,
+                variables: { taskName: "Workspace task" },
+                metadata: { projectId: id, taskId, error: err instanceof Error ? err.message : "Workspace task failed" },
+                dedupeWindowMinutes: 0,
+              }).catch(() => undefined);
+            }
             await send(status === "CANCELED" ? "log" : "error", status === "CANCELED" ? "Task cancelled" : err instanceof Error ? err.message : "Workspace task failed").catch(() => undefined);
           }
           if (!completed) controller.close();

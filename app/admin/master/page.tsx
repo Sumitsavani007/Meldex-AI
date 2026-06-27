@@ -8,6 +8,7 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Bell,
   CheckCircle2,
   Cloud,
   Code2,
@@ -33,7 +34,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type TabId = "overview" | "analytics" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "billing" | "usage-pricing" | "users" | "audit" | "diagnostics";
+type TabId = "overview" | "analytics" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "billing" | "usage-pricing" | "notifications" | "users" | "audit" | "diagnostics";
 type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
@@ -223,6 +224,27 @@ interface FeatureFlagRow {
   planFeatures: Array<{ id: string; planId: string; featureId: string; enabled: boolean; limitInt?: number | null; plan: PlanRow }>;
 }
 
+interface NotificationTemplateRow {
+  id: string;
+  type: string;
+  channel: string;
+  subject?: string | null;
+  title: string;
+  body: string;
+  isEnabled: boolean;
+}
+
+interface EmailDeliveryLogRow {
+  id: string;
+  type: string;
+  toEmail?: string | null;
+  subject?: string | null;
+  status: string;
+  provider?: string | null;
+  error?: string | null;
+  createdAt: string;
+}
+
 interface AnalyticsData {
   range: { key: string; start: string; end: string };
   revenue: {
@@ -321,7 +343,7 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function getSection(): TabId {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("section") as TabId | null;
-  return value && ["overview", "analytics", "ai", "vault", "integrations", "runtime", "plans", "billing", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
+  return value && ["overview", "analytics", "ai", "vault", "integrations", "runtime", "plans", "billing", "usage-pricing", "notifications", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
@@ -442,6 +464,8 @@ export default function MasterAdminPage() {
   const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
   const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
   const [paymentEvents, setPaymentEvents] = useState<PaymentEventRow[]>([]);
+  const [notificationTemplates, setNotificationTemplates] = useState<NotificationTemplateRow[]>([]);
+  const [emailLogs, setEmailLogs] = useState<EmailDeliveryLogRow[]>([]);
   const [selectedUserPlan, setSelectedUserPlan] = useState<UserPlanDetail | null>(null);
   const [grantCredits, setGrantCredits] = useState("500");
   const [upgradeBonusCredits, setUpgradeBonusCredits] = useState("0");
@@ -451,7 +475,7 @@ export default function MasterAdminPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, features: false, billing: false, usagePricing: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, features: false, billing: false, usagePricing: false, notifications: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -583,6 +607,21 @@ export default function MasterAdminPage() {
     }
   }, [pushToast]);
 
+  const fetchNotifications = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, notifications: true }));
+    try {
+      const res = await fetch("/api/admin/notifications", { cache: "no-store" });
+      if (!res.ok) throw new Error("Notifications unavailable");
+      const data = await res.json();
+      setNotificationTemplates(data.templates ?? []);
+      setEmailLogs(data.logs ?? []);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Notifications unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, notifications: false }));
+    }
+  }, [pushToast]);
+
   const fetchAudit = useCallback(async () => {
     setLoading((prev) => ({ ...prev, audit: true }));
     try {
@@ -617,9 +656,10 @@ export default function MasterAdminPage() {
     if (tab === "analytics") fetchAnalytics();
     if (tab === "billing") fetchUpgradeRequests();
     if (tab === "usage-pricing") fetchUsagePricing();
+    if (tab === "notifications") fetchNotifications();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchFeatures, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchFeatures, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchNotifications, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -955,6 +995,63 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "Subscription cancel failed");
     } finally {
       setSaving((prev) => ({ ...prev, [`subscription-${subscriptionId}`]: false }));
+    }
+  }
+
+  async function saveNotificationTemplate(template: NotificationTemplateRow) {
+    const key = `notification-${template.id}`;
+    setSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "update_template", id: template.id, subject: template.subject || null, title: template.title, body: template.body, isEnabled: template.isEnabled }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Notification template saved.");
+      await fetchNotifications();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Template save failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function sendTestNotification(type: string) {
+    const key = `notification-test-${type}`;
+    setSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_test", type }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Test notification created.");
+      await fetchNotifications();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Test notification failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function resendEmailLog(logId: string) {
+    const key = `email-resend-${logId}`;
+    setSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_email", logId }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Email resend queued/logged.");
+      await fetchNotifications();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Email resend failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [key]: false }));
     }
   }
 
@@ -1768,6 +1865,99 @@ export default function MasterAdminPage() {
               ["Manual fallback", "Admins can still assign plans and grant credits without payment provider checkout."],
               ["Plan enforcement", "Active subscriptions use DB plan limits; expired users fall back through plan assignment rules."],
             ].map(([title, copy]) => <Panel key={title} className="p-4"><CreditCard className="mb-3 size-4 text-violet-600" /><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{copy}</p></Panel>)}
+          </div>
+        </>
+      )}
+
+      {tab === "notifications" && (
+        <>
+          <SectionTitle
+            title="Notifications"
+            description="Template control, delivery logs, and in-app alert QA."
+            action={<IconButton onClick={fetchNotifications}><RefreshCw className={cx("size-4", loading.notifications && "animate-spin")} />Refresh</IconButton>}
+          />
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold">Templates</h3>
+                <p className="text-xs text-slate-500">Edit title/body and enable or disable each notification channel.</p>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {notificationTemplates.map((template) => {
+                  const saveKey = `notification-${template.id}`;
+                  return (
+                    <div key={template.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[180px_minmax(0,1fr)]">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge tone={template.channel === "EMAIL" ? "blue" : "green"}>{template.channel}</Badge>
+                          <span className="font-mono text-xs">{template.type}</span>
+                        </div>
+                        <label className="mt-3 inline-flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={template.isEnabled}
+                            onChange={(event) => setNotificationTemplates((prev) => prev.map((item) => item.id === template.id ? { ...item, isEnabled: event.target.checked } : item))}
+                          />
+                          Enabled
+                        </label>
+                      </div>
+                      <div className="space-y-2">
+                        {template.channel === "EMAIL" && (
+                          <input
+                            value={template.subject || ""}
+                            onChange={(event) => setNotificationTemplates((prev) => prev.map((item) => item.id === template.id ? { ...item, subject: event.target.value } : item))}
+                            placeholder="Email subject"
+                            className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-white/[0.1] dark:bg-black/20"
+                          />
+                        )}
+                        <input
+                          value={template.title}
+                          onChange={(event) => setNotificationTemplates((prev) => prev.map((item) => item.id === template.id ? { ...item, title: event.target.value } : item))}
+                          placeholder="Title"
+                          className="h-9 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-white/[0.1] dark:bg-black/20"
+                        />
+                        <textarea
+                          value={template.body}
+                          onChange={(event) => setNotificationTemplates((prev) => prev.map((item) => item.id === template.id ? { ...item, body: event.target.value } : item))}
+                          rows={3}
+                          placeholder="Body"
+                          className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm dark:border-white/[0.1] dark:bg-black/20"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <IconButton onClick={() => saveNotificationTemplate(template)} disabled={saving[saveKey]}>{saving[saveKey] ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}Save</IconButton>
+                          <IconButton onClick={() => sendTestNotification(template.type)} disabled={saving[`notification-test-${template.type}`]}><TestTube2 className="size-4" />Test</IconButton>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!notificationTemplates.length && <div className="p-8 text-center text-sm text-slate-500">{loading.notifications ? "Loading templates..." : "No templates found."}</div>}
+              </div>
+            </Panel>
+
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="flex items-center gap-2 text-sm font-semibold"><Bell className="size-4" /> Email Delivery Logs</h3>
+                <p className="text-xs text-slate-500">Missing email providers are logged as pending instead of breaking user actions.</p>
+              </div>
+              <div className="max-h-[720px] divide-y divide-slate-200 overflow-y-auto dark:divide-white/[0.08]">
+                {emailLogs.map((log) => (
+                  <div key={log.id} className="p-4 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">{log.type}</span>
+                      <Badge tone={log.status === "FAILED" ? "red" : log.status === "SENT" ? "green" : "amber"}>{log.status}</Badge>
+                    </div>
+                    <p className="mt-1 truncate text-xs text-slate-500">{log.toEmail || "No recipient"} · {log.provider || "provider unknown"}</p>
+                    {log.error && <p className="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-500/10 dark:text-amber-200">{log.error}</p>}
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</span>
+                      <IconButton onClick={() => resendEmailLog(log.id)} disabled={saving[`email-resend-${log.id}`]}><RefreshCw className="size-4" />Resend</IconButton>
+                    </div>
+                  </div>
+                ))}
+                {!emailLogs.length && <div className="p-8 text-center text-sm text-slate-500">{loading.notifications ? "Loading logs..." : "No email logs yet."}</div>}
+              </div>
+            </Panel>
           </div>
         </>
       )}

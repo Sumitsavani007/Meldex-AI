@@ -4,6 +4,7 @@ import { checkRateLimit } from "@/lib/security";
 import { getOwnedWorkspaceProject, verifyStaticPreview } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -49,6 +50,15 @@ export async function POST(
       where: { id: project.id },
       data: { lastPreviewUrl: verification.url, qualityScore: verification.verified ? 88 : 45 },
     });
+    if (!verification.verified) {
+      await createNotification({
+        userId: session.user.id,
+        type: "preview_failed",
+        actionUrl: `/workspace/${project.id}/ide`,
+        metadata: { projectId: project.id, message: verification.message, httpStatus: verification.httpStatus },
+        dedupeWindowMinutes: 30,
+      }).catch(() => undefined);
+    }
     return NextResponse.json({ run, preview, verification }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Workspace run failed" }, { status: 400 });

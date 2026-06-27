@@ -26,6 +26,7 @@ import {
   Plug,
 } from "lucide-react";
 import { useThemePreference } from "@/components/theme-provider";
+import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
 
 type Project = {
@@ -286,6 +287,7 @@ export default function DashboardPage() {
               >
                 {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
               </button>
+              <NotificationBell />
               <Link href="/settings/profile" className="mx-focus hidden size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 sm:grid">
                 {(session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase()}
               </Link>

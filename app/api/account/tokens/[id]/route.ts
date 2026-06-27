@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 
 export async function DELETE(
   _req: NextRequest,
@@ -29,6 +30,13 @@ export async function DELETE(
     success: true,
     metadata: { name: token.name, maskedToken: `${token.tokenPrefix || "mdx_"}****${token.tokenLast4 || "????"}` },
   });
+  await createNotification({
+    userId: session.user.id,
+    type: "token_revoked",
+    actionUrl: "/settings/tokens",
+    metadata: { name: token.name, tokenId: id },
+    dedupeWindowMinutes: 0,
+  }).catch(() => undefined);
 
   return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
 }

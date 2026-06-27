@@ -6,6 +6,7 @@ import { createStoredZip } from "@/lib/simple-zip";
 import { getOwnedWorkspaceProject, resolveProjectFile } from "@/lib/ai-workspace";
 import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
+import { createNotification } from "@/lib/notifications";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,13 @@ export async function GET(
     if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const files = await collectFiles(project.storagePath);
     const zip = createStoredZip(files);
+    await createNotification({
+      userId: session.user.id,
+      type: "download_ready",
+      actionUrl: `/workspace/${project.id}/ide`,
+      metadata: { projectId: project.id, files: files.length },
+      dedupeWindowMinutes: 5,
+    }).catch(() => undefined);
     return new NextResponse(zip, {
       headers: {
         "Cache-Control": "no-store",
