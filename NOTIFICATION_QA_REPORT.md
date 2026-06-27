@@ -29,7 +29,14 @@ Unrelated existing warnings remain:
 
 ## Deployment
 
-Production deployment must run:
+Production deployed successfully.
 
-`npx prisma migrate deploy`
-
+- GitHub/AWS commit: `48773473375d29f297cb2c45eedca3ac9e4f37fc`
+- Production migration `20260627143000_notifications` applied successfully.
+- Production `npx prisma migrate status`: database schema is up to date.
+- Production build passed.
+- PM2 app `meldex-ai` restarted and online.
+- Nginx config test passed and reloaded.
+- Live site returned `200`.
+- Live `/api/notifications` returned `401` unauthenticated as expected.
+- Live `/api/admin/notifications` returned `401` unauthenticated as expected.
