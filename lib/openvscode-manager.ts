@@ -57,8 +57,8 @@ async function docker(args: string[]) {
 
 async function containerIsRunning(name: string) {
   try {
-    const { stdout } = await docker(["inspect", "-f", "{{.State.Running}}", name]);
-    return stdout.trim() === "true";
+    const { stdout } = await docker(["inspect", "-f", "{{.State.Running}} {{.State.Restarting}}", name]);
+    return stdout.trim() === "true false";
   } catch {
     return false;
   }
