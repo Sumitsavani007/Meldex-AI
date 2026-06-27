@@ -31,8 +31,13 @@ import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
 Support Gujarati, Hindi and English — always respond in the SAME LANGUAGE the user writes in.
-For Gujarati questions, answer in Gujarati (romanized or script).
+For Gujarati questions:
+- If the user writes Gujarati script, respond in fluent Gujarati script with correct spelling.
+- If the user writes romanized Gujarati, respond in natural romanized Gujarati.
+- Do not mix broken Gujarati, Hindi, and English unless the user does.
 Be direct: give the answer first, then explain if needed.
+For factual questions, try to answer directly from available knowledge/search context. Do not tell the user to Google it.
+If you are not sure, say that you could not verify it clearly and give what you can verify.
 Do NOT create files or run commands unless the user explicitly asks.`;
 
 const AGENT_SYSTEM_PROMPT = `You are Meldex AI Coding Agent.
@@ -43,6 +48,35 @@ Only perform file or system operations when explicitly requested.`;
 
 const MATH_SYSTEM_PROMPT = `You are Meldex AI. Solve the mathematical problem accurately.
 Show steps if needed. Support Gujarati, Hindi and English.`;
+
+function detectUserLanguage(text: string): "gu" | "hi" | "en" {
+  if (/[\u0A80-\u0AFF]/.test(text)) return "gu";
+  if (/[\u0900-\u097F]/.test(text)) return "hi";
+  if (/\b(kem|shu|su|chhe|che|chu|chhu|mane|tamne|ketla|vagya|kone|gayu|gayo|atyare|haal)\b/i.test(text)) return "gu";
+  if (/\b(kya|kaun|hai|hain|abhi|kitne|baje)\b/i.test(text)) return "hi";
+  return "en";
+}
+
+function answerCurrentTime(query: string) {
+  const now = new Date();
+  const time = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(now).toLowerCase();
+  const date = new Intl.DateTimeFormat("gu-IN", {
+    timeZone: "Asia/Kolkata",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(now);
+  const lang = detectUserLanguage(query);
+  if (lang === "gu") return `અત્યારે સમય **${time}** છે.\n\n${date}`;
+  if (lang === "hi") return `Abhi samay **${time}** hai.\n\n${date}`;
+  return `The current time is **${time}**.\n\n${date}`;
+}
 
 export async function POST(request: Request) {
   try {
@@ -214,8 +248,20 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── MATH / TIME BRAIN ────────────────────────────────────────────────────
-    if (brain.brain === "math" || brain.brain === "time") {
+    // ── TIME BRAIN ───────────────────────────────────────────────────────────
+    if (brain.brain === "time") {
+      const message = answerCurrentTime(lastUserMessage);
+      return NextResponse.json({
+        message,
+        brain: brain.brain,
+        brainLabel: brain.label,
+        provider,
+        providerLabel,
+      });
+    }
+
+    // ── MATH BRAIN ───────────────────────────────────────────────────────────
+    if (brain.brain === "math") {
       const messages = [
         { role: "system" as const, content: MATH_SYSTEM_PROMPT },
         ...userMessages,

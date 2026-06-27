@@ -75,6 +75,10 @@ const STRONG_SEARCH_PATTERNS: RegExp[] = [
 
   // Explicit search command
   /\b(meldex\s*search|search\s*kar|search\s*karo)\b/i,
+
+  // Song / artist factual lookup
+  /\b(song|gaano|gana|ગીત|ગાણું)\b.{0,60}\b(who|singer|artist|sang|gayu|gayo|gાયું|કોણ|kone|kon)\b/i,
+  /\b(who|singer|artist|sang|gayu|gayo|gાયું|કોણ|kone|kon)\b.{0,60}\b(song|gaano|gana|ગીત|ગાણું)\b/i,
 ];
 
 // ── WEAK search keywords — need score >= 2 to trigger ─────────────────────────
@@ -90,6 +94,7 @@ const WEAK_SEARCH_KEYWORDS: string[] = [
   "live", "breaking", "winner",
   "samachar", "khabaro", "bhav", "havaman", "chuntani",
   "kon che", "kone chhe", "kone che", "koun che",
+  "song", "singer", "artist", "gayu", "gayo", "gaano", "gana",
   "atyare", "atayre", "haalma", "haal ma",
   "mukhyamantri", "no cm", "no pm", "na mukhyamantri",
   "no result", "live score",
@@ -243,4 +248,3 @@ export function intentLabel(type: IntentType): string {
     case "general_chat": return "Chat";
   }
 }
-

@@ -21,7 +21,7 @@ export interface KnowledgeFact {
   /** Hindi answer (romanized) */
   answerHi?: string;
   /** Category for potential UI display */
-  category: "geography" | "history" | "general" | "india";
+  category: "geography" | "history" | "general" | "india" | "music";
   /** Known keywords that appear in the question (used by isKnowledgeQuery) */
   keywords: string[];
 }
@@ -183,6 +183,19 @@ export const KNOWLEDGE_BASE: KnowledgeFact[] = [
   },
 
   // ── Rann of Kutch ──────────────────────────────────────────────────────────
+  {
+    patterns: [
+      /\bdope\s*shope\b.*\b(song|g[aã]n[ao]?|gana|singer|artist|gayu|gayo|kone|kon|who)\b/i,
+      /\b(song|g[aã]n[ao]?|gana|singer|artist|gayu|gayo|kone|kon|who)\b.*\bdope\s*shope\b/i,
+      /દોપે\s*શોપે.*(ગાયું|ગાયુ|કોણ|સિંગર|ગાયક)/i,
+    ],
+    answer: `"Dope Shope" is by **Yo Yo Honey Singh and Deep Money**. It is from the album **International Villager**.`,
+    answerGu: `"Dope Shope" ગીત **Yo Yo Honey Singh અને Deep Money** એ ગાયું છે. આ ગીત **International Villager** albumનું છે.`,
+    answerHi: `"Dope Shope" gaana **Yo Yo Honey Singh aur Deep Money** ne gaya hai. Yeh **International Villager** album ka gaana hai.`,
+    category: "music",
+    keywords: ["dope shope", "dope", "shope", "honey singh", "deep money", "દોપે", "શોપે"],
+  },
+
   {
     patterns: [
       /rann\s*(of)?\s*kutch/i,
