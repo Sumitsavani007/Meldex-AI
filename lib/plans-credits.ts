@@ -24,7 +24,7 @@ export const DEFAULT_PLANS = [
     weeklyCredits: 300,
     fiveHourCredits: 50,
     maxContextTokens: 128000,
-    maxWorkspaceCount: 3,
+    maxWorkspaceCount: 25,
     maxStorageMb: 500,
     maxParallelTasks: 1,
     priorityLevel: 1,
