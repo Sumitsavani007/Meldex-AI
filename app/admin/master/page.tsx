@@ -296,10 +296,35 @@ interface AnalyticsData {
   alerts: Array<{ severity: string; type: string; message: string }>;
 }
 
+interface AiInfrastructureData {
+  providers: Array<{
+    id: string;
+    provider: string;
+    name: string;
+    defaultModel: string;
+    priority: number;
+    isEnabled: boolean;
+    isFallbackEnabled: boolean;
+    maxContextTokens: number;
+    costMultiplier: number;
+    retryCount: number;
+    timeoutMs: number;
+    healthStatus: string;
+    healthScore: number;
+    lastError?: string | null;
+  }>;
+  queue: Array<{ id: string; taskType: string; status: string; priority: number; etaSeconds?: number | null; user?: { email?: string | null; name?: string | null } | null; createdAt: string }>;
+  health: Array<{ id: string; provider: string; model?: string | null; status: string; latencyMs?: number | null; errorCode?: string | null; createdAt: string }>;
+  rateLimits: Array<{ id: string; key: string; description?: string | null; requestsPerMinute: number; requestsPerHour: number; requestsPerDay: number; isEnabled: boolean }>;
+  abuse: Array<{ id: string; type: string; severity: string; reason: string; blockedUntil?: string | null; user?: { email?: string | null; name?: string | null } | null; createdAt: string }>;
+  apiKeys: Array<{ id: string; name: string; keyPrefix: string; keyLast4: string; revokedAt?: string | null; user?: { email?: string | null; name?: string | null } | null; createdAt: string }>;
+}
+
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
 const groups: Array<{ category: string; label: string; icon: ElementType }> = [
   { category: "openrouter", label: "OpenRouter", icon: Zap },
+  { category: "ai-provider", label: "AI Provider Keys", icon: Key },
   { category: "qwen", label: "Qwen3-Coder", icon: Code2 },
   { category: "search", label: "Search Providers", icon: Search },
   { category: "r2", label: "Cloudflare R2", icon: Cloud },
@@ -322,9 +347,19 @@ const integrations = [
 ];
 
 const aiKeys = [
+  "OPENROUTER_API_KEY",
   "OPENROUTER_MODEL",
   "OPENROUTER_FALLBACK_MODEL",
   "OPENROUTER_BASE_URL",
+  "OPENAI_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GEMINI_API_KEY",
+  "DEEPSEEK_API_KEY",
+  "GROQ_API_KEY",
+  "TOGETHER_API_KEY",
+  "CUSTOM_AI_API_KEY",
+  "CUSTOM_AI_BASE_URL",
+  "CUSTOM_AI_MODEL",
   "MELDEX_BRAIN_PROVIDER",
   "QWEN_TEMPERATURE",
   "QWEN_MAX_TOKENS",
@@ -451,6 +486,7 @@ export default function MasterAdminPage() {
   const [tab, setTab] = useState<TabId>("overview");
   const [overview, setOverview] = useState<Overview | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [aiInfra, setAiInfra] = useState<AiInfrastructureData | null>(null);
   const [analyticsRange, setAnalyticsRange] = useState("30d");
   const [settings, setSettings] = useState<SettingRow[]>([]);
   const [vaultOk, setVaultOk] = useState(false);
@@ -475,7 +511,7 @@ export default function MasterAdminPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, features: false, billing: false, usagePricing: false, notifications: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, analytics: false, aiInfra: false, settings: true, users: false, audit: false, plans: false, features: false, billing: false, usagePricing: false, notifications: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -528,6 +564,19 @@ export default function MasterAdminPage() {
       setLoading((prev) => ({ ...prev, analytics: false }));
     }
   }, [analyticsRange, pushToast]);
+
+  const fetchAiInfrastructure = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, aiInfra: true }));
+    try {
+      const res = await fetch("/api/admin/ai-infrastructure", { cache: "no-store" });
+      if (!res.ok) throw new Error("AI infrastructure unavailable");
+      setAiInfra(await res.json());
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "AI infrastructure unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, aiInfra: false }));
+    }
+  }, [pushToast]);
 
   const fetchUsers = useCallback(async () => {
     setLoading((prev) => ({ ...prev, users: true }));
@@ -653,13 +702,14 @@ export default function MasterAdminPage() {
       fetchPlans();
       fetchFeatures();
     }
+    if (tab === "ai") fetchAiInfrastructure();
     if (tab === "analytics") fetchAnalytics();
     if (tab === "billing") fetchUpgradeRequests();
     if (tab === "usage-pricing") fetchUsagePricing();
     if (tab === "notifications") fetchNotifications();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchFeatures, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchNotifications, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchFeatures, fetchAiInfrastructure, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchNotifications, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -722,6 +772,21 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "Test failed");
     } finally {
       setTesting((prev) => ({ ...prev, [id]: false }));
+    }
+  }
+
+  async function updateAiInfrastructure(payload: Record<string, unknown>) {
+    try {
+      const res = await fetch("/api/admin/ai-infrastructure", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "AI infrastructure updated.");
+      await fetchAiInfrastructure();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "AI infrastructure update failed");
     }
   }
 
@@ -1336,8 +1401,115 @@ export default function MasterAdminPage() {
 
       {tab === "ai" && (
         <>
-          <SectionTitle title="AI Models" description="Qwen3-Coder is the active coding brain. Runtime-editable model settings use vault first." action={<IconButton onClick={() => testConnection("openrouter")}><TestTube2 className="size-4" />Test model</IconButton>} />
+          <SectionTitle
+            title="AI Infrastructure"
+            description="Providers, routing, fallback, queue, health, rate limits, abuse protection, API keys, and runtime model settings."
+            action={
+              <div className="flex flex-wrap gap-2">
+                <IconButton onClick={fetchAiInfrastructure}><RefreshCw className={cx("size-4", loading.aiInfra && "animate-spin")} />Refresh infra</IconButton>
+                <IconButton onClick={() => updateAiInfrastructure({ action: "reset_defaults" })}><RotateCcw className="size-4" />Seed defaults</IconButton>
+                <IconButton onClick={() => testConnection("openrouter")}><TestTube2 className="size-4" />Test model</IconButton>
+              </div>
+            }
+          />
           <Panel>{renderSettingRows(settings.filter((row) => aiKeys.includes(row.key)))}</Panel>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold">Providers & Models</h3>
+                <p className="text-xs text-slate-500">Routing order is priority + health. Disabled providers are skipped before every AI request.</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/[0.08]">
+                    <tr><th className="px-4 py-3">Provider</th><th className="px-4 py-3">Model</th><th className="px-4 py-3">Priority</th><th className="px-4 py-3">Health</th><th className="px-4 py-3">Fallback</th><th className="px-4 py-3">Action</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                    {aiInfra?.providers.map((provider) => (
+                      <tr key={provider.id}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{provider.name}</div>
+                          <div className="text-xs text-slate-500">{provider.provider}</div>
+                        </td>
+                        <td className="max-w-[260px] truncate px-4 py-3 font-mono text-xs">{provider.defaultModel}</td>
+                        <td className="px-4 py-3">{provider.priority}</td>
+                        <td className="px-4 py-3"><Badge tone={provider.healthStatus === "healthy" ? "green" : provider.healthStatus === "unhealthy" ? "red" : "amber"}>{provider.healthStatus} · {provider.healthScore}</Badge></td>
+                        <td className="px-4 py-3">{provider.isFallbackEnabled ? "On" : "Off"}</td>
+                        <td className="px-4 py-3">
+                          <IconButton onClick={() => updateAiInfrastructure({ action: "update_provider", id: provider.id, isEnabled: !provider.isEnabled })}>
+                            {provider.isEnabled ? "Disable" : "Enable"}
+                          </IconButton>
+                        </td>
+                      </tr>
+                    ))}
+                    {!aiInfra?.providers.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">{loading.aiInfra ? "Loading providers..." : "No providers configured."}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold">Queue</h3>
+                <p className="text-xs text-slate-500">Newest AI requests, priority, ETA, and manual controls.</p>
+              </div>
+              <div className="max-h-[420px] divide-y divide-slate-200 overflow-auto dark:divide-white/[0.08]">
+                {aiInfra?.queue.map((item) => (
+                  <div key={item.id} className="grid gap-2 px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium">{item.taskType}</span>
+                      <Badge tone={item.status === "SUCCEEDED" ? "green" : item.status === "FAILED" || item.status === "CANCELED" ? "red" : item.status === "RUNNING" ? "blue" : "neutral"}>{item.status}</Badge>
+                    </div>
+                    <p className="text-xs text-slate-500">{item.user?.email || "Unknown user"} · priority {item.priority} · ETA {item.etaSeconds ?? 0}s</p>
+                    <div className="flex flex-wrap gap-2">
+                      <IconButton onClick={() => updateAiInfrastructure({ action: item.status === "PAUSED" ? "resume_queue_item" : "pause_queue_item", id: item.id })}>{item.status === "PAUSED" ? "Resume" : "Pause"}</IconButton>
+                      <IconButton onClick={() => updateAiInfrastructure({ action: "cancel_queue_item", id: item.id })}>Cancel</IconButton>
+                    </div>
+                  </div>
+                ))}
+                {!aiInfra?.queue.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.aiInfra ? "Loading queue..." : "Queue is empty."}</div>}
+              </div>
+            </Panel>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]"><h3 className="text-sm font-semibold">Rate Limits</h3></div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {aiInfra?.rateLimits.map((rule) => (
+                  <div key={rule.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-3"><span className="font-medium">{rule.key}</span><Badge tone={rule.isEnabled ? "green" : "neutral"}>{rule.isEnabled ? "enabled" : "disabled"}</Badge></div>
+                    <p className="mt-1 text-xs text-slate-500">{rule.requestsPerMinute}/min · {rule.requestsPerHour}/hour · {rule.requestsPerDay}/day</p>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]"><h3 className="text-sm font-semibold">Provider Health Events</h3></div>
+              <div className="max-h-[360px] divide-y divide-slate-200 overflow-auto dark:divide-white/[0.08]">
+                {aiInfra?.health.slice(0, 12).map((event) => (
+                  <div key={event.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-3"><span className="truncate font-medium">{event.provider}</span><Badge tone={event.status === "healthy" ? "green" : "amber"}>{event.status}</Badge></div>
+                    <p className="mt-1 truncate text-xs text-slate-500">{event.model || "-"} · {event.latencyMs ?? "-"}ms · {event.errorCode || "ok"}</p>
+                  </div>
+                ))}
+                {!aiInfra?.health.length && <div className="px-4 py-10 text-center text-sm text-slate-500">No health events yet.</div>}
+              </div>
+            </Panel>
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]"><h3 className="text-sm font-semibold">Abuse & API Keys</h3></div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                <div className="px-4 py-3 text-sm"><span className="font-medium">Abuse events</span><p className="mt-1 text-xs text-slate-500">{aiInfra?.abuse.length ?? 0} recent event(s)</p></div>
+                <div className="px-4 py-3 text-sm"><span className="font-medium">User API keys</span><p className="mt-1 text-xs text-slate-500">{aiInfra?.apiKeys.length ?? 0} key(s), raw values never visible</p></div>
+                {aiInfra?.abuse.slice(0, 5).map((event) => (
+                  <div key={event.id} className="px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between gap-3"><span className="truncate">{event.type}</span><Badge tone={event.severity === "HIGH" || event.severity === "CRITICAL" ? "red" : "amber"}>{event.severity}</Badge></div>
+                    <p className="mt-1 text-xs text-slate-500">{event.user?.email || "Unknown"} · {event.reason}</p>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </div>
         </>
       )}
 

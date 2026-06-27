@@ -23,6 +23,7 @@ import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
+import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +45,10 @@ export async function POST(
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
+    const abuseCheck = await detectAbuse({ userId: session.user.id, prompt: body.prompt, action: "agent_runs" });
+    if (!abuseCheck.ok) return NextResponse.json(abuseCheck, { status: 429, headers: { "Cache-Control": "no-store" } });
+    const dynamicRateLimit = await checkDynamicRateLimit(session.user.id, "agent_runs");
+    if (!dynamicRateLimit.ok) return NextResponse.json(dynamicRateLimit, { status: 429, headers: { "Cache-Control": "no-store" } });
     const project = await getOwnedWorkspaceProject(session.user.id, id);
     const agentGate = await canUseFeature(session.user.id, "agent_runs");
     if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
@@ -136,7 +141,7 @@ export async function POST(
     const retries = 0;
     let autofixes = 0;
     try {
-      response = await askWorkspaceAgent(body.prompt, context);
+      response = await askWorkspaceAgent(body.prompt, context, "", { userId: session.user.id, taskType: "workspace_agent" });
     } catch (providerError) {
       providerFailure = classifyWorkspaceProviderFailure(providerError, body.prompt);
       await prisma.workspaceLog.create({

@@ -1001,7 +1001,7 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
   return { plan: ["Read model response"], files: [], commands: [], summary: raw };
 }
 
-export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>, orchestrationInstruction = "") {
+export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>, orchestrationInstruction = "", runtime?: { userId?: string; taskType?: string }) {
   const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
 Website Designer Agent V2:
 - Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
@@ -1042,6 +1042,8 @@ ${websiteDesignerRules}`;
     temperature: 0.2,
     maxTokens: 8192,
     timeoutMs: 120_000,
+    userId: runtime?.userId,
+    taskType: runtime?.taskType || "workspace_agent",
     messages: [
       { role: "system", content: [system, orchestrationInstruction].filter(Boolean).join("\n\n") },
       { role: "user", content: `Task:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context:\n${fileContext || "(empty workspace)"}` },

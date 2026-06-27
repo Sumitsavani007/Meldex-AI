@@ -26,6 +26,7 @@ import { lookupFact } from "@/lib/knowledge-brain";
 import { resolveConversationContext, buildConversationContext } from "@/lib/conversation-brain";
 import { ensureConversation, saveMessage } from "@/lib/chat-persistence";
 import { calculateCredits, canUseFeature, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest } from "@/lib/plans-credits";
+import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
 
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
@@ -73,6 +74,15 @@ export async function POST(request: Request) {
     const userMessages = body.messages.filter((m) => m.role !== "system");
     const lastUserMessage =
       userMessages.filter((m) => m.role === "user").at(-1)?.content ?? "";
+
+    const abuseCheck = await detectAbuse({ userId, prompt: lastUserMessage, action: "chat" });
+    if (!abuseCheck.ok) {
+      return NextResponse.json(abuseCheck, { status: 429, headers: { "Cache-Control": "no-store" } });
+    }
+    const dynamicRateLimit = await checkDynamicRateLimit(userId, "chat");
+    if (!dynamicRateLimit.ok) {
+      return NextResponse.json(dynamicRateLimit, { status: 429, headers: { "Cache-Control": "no-store" } });
+    }
 
     // Resolve provider once — uses runtime config (vault > env)
     const provider = await getActiveProvider();
@@ -210,7 +220,7 @@ export async function POST(request: Request) {
         { role: "system" as const, content: MATH_SYSTEM_PROMPT },
         ...userMessages,
       ];
-      const message = await generateChatCompletion({ messages, model: body.model });
+      const message = await generateChatCompletion({ messages, model: body.model, userId, taskType: "chat_math" });
       return NextResponse.json({
         message,
         brain: brain.brain,
@@ -287,7 +297,7 @@ export async function POST(request: Request) {
         { role: "system" as const, content: sysPrompt },
         ...userMessages,
       ];
-      const message = await generateChatCompletion({ messages, model: body.model });
+      const message = await generateChatCompletion({ messages, model: body.model, userId, taskType: "chat_agent" });
       return NextResponse.json({
         message,
         brain: "agent",
@@ -309,7 +319,7 @@ export async function POST(request: Request) {
       { role: "system" as const, content: sysPromptParts.join("\n\n") },
       ...userMessages,
     ];
-    const message = await generateChatCompletion({ messages, model: body.model });
+    const message = await generateChatCompletion({ messages, model: body.model, userId, taskType: "chat" });
 
     // Persist assistant reply
     if (persistConvId.id) {

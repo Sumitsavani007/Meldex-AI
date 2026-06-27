@@ -42,7 +42,27 @@ enum ModelProvider {
   DEEPSEEK
   ANTHROPIC
   OPENROUTER
+  GOOGLE_GEMINI
+  GROQ
+  TOGETHER
+  LOCAL
   CUSTOM_OPENAI_COMPATIBLE
+}
+
+enum QueueStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+  PAUSED
+}
+
+enum AbuseSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 enum BillingStatus {
@@ -159,6 +179,9 @@ model User {
   featureOverrides UserFeatureOverride[]
   notifications Notification[]
   notificationPreferences NotificationPreference[]
+  aiQueueItems AiRequestQueue[]
+  abuseEvents AbuseEvent[]
+  userApiKeys UserApiKey[]
 }
 
 model Account {
@@ -523,6 +546,130 @@ model ModelUsageConfig {
   @@unique([provider, model])
   @@index([provider, isActive])
   @@index([model])
+}
+
+model AiProviderConfig {
+  id                  String        @id @default(cuid())
+  provider            ModelProvider
+  name                String
+  baseUrl             String?
+  apiKeySettingKey    String?
+  defaultModel        String
+  fallbackModelsJson  Json?
+  priority            Int           @default(100)
+  isEnabled           Boolean       @default(true)
+  isFallbackEnabled   Boolean       @default(true)
+  maxContextTokens    Int           @default(128000)
+  costMultiplier      Float         @default(1)
+  retryCount          Int           @default(1)
+  timeoutMs           Int           @default(90000)
+  rateLimitPerMinute  Int           @default(60)
+  rateLimitPerHour    Int           @default(1000)
+  healthStatus        String        @default("unknown")
+  healthScore         Int           @default(100)
+  lastHealthCheckAt   DateTime?
+  lastError           String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  healthEvents        ProviderHealthEvent[]
+  queueItems          AiRequestQueue[]
+
+  @@unique([provider, defaultModel])
+  @@index([provider, isEnabled])
+  @@index([priority])
+  @@index([healthStatus])
+}
+
+model ProviderHealthEvent {
+  id             String           @id @default(cuid())
+  providerConfigId String?
+  provider       ModelProvider
+  model          String?
+  status         String
+  statusCode     Int?
+  latencyMs      Int?
+  errorCode      String?
+  errorMessage   String?
+  requestId      String?
+  createdAt      DateTime         @default(now())
+  providerConfig AiProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+
+  @@index([provider, createdAt])
+  @@index([status])
+  @@index([providerConfigId])
+}
+
+model AiRequestQueue {
+  id               String           @id @default(cuid())
+  userId           String
+  providerConfigId String?
+  taskType         String
+  status           QueueStatus      @default(QUEUED)
+  priority         Int              @default(100)
+  etaSeconds       Int?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  canceledAt       DateTime?
+  metadataJson     Json?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerConfig   AiProviderConfig? @relation(fields: [providerConfigId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, priority, createdAt])
+  @@index([providerConfigId])
+}
+
+model RateLimitRule {
+  id               String   @id @default(cuid())
+  key              String   @unique
+  description      String?
+  requestsPerMinute Int     @default(60)
+  requestsPerHour  Int      @default(1000)
+  requestsPerDay   Int      @default(10000)
+  burst            Int      @default(10)
+  isEnabled        Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([isEnabled])
+}
+
+model AbuseEvent {
+  id           String        @id @default(cuid())
+  userId       String?
+  type         String
+  severity     AbuseSeverity @default(LOW)
+  reason       String
+  blockedUntil DateTime?
+  metadataJson Json?
+  createdAt    DateTime      @default(now())
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, severity])
+  @@index([blockedUntil])
+}
+
+model UserApiKey {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  keyHash      String
+  keyPrefix    String
+  keyLast4     String
+  scopesJson   Json?
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([keyHash])
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
 }
 
 model UpgradeRequest {
