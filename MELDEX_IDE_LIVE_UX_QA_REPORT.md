@@ -22,5 +22,27 @@ After AWS deployment:
 
 ## Current Status
 
-- Local implementation is ready for AWS deploy.
-- Live verification will be recorded after deployment.
+- GitHub/AWS commit deployed: `43238f82e812090bef075ec2aec83a3dbd237aa1`.
+- AWS deploy path: `/home/ubuntu/meldex-ai`.
+- `npx prisma generate`: passed.
+- `npx prisma migrate deploy`: passed, no pending migrations.
+- `npm run build`: passed with existing warnings only.
+- `pm2 restart meldex-ai --update-env`: passed.
+- `nginx -t` and reload: passed.
+
+## Live Verification Result
+
+- Authenticated new workspace created for UX hygiene QA.
+- Internal files were created intentionally for verification:
+  `.vscode/settings.json`, `.meldex-ide-server/data/User/settings.json`, and root `settings.json`.
+- Workspace file API tree returned only user project files:
+  `index.html`, `style.css`.
+- Forbidden visible files/folders: none.
+- IDE route source contains: `Code`, `Preview`, `Split`, `Terminal`, `CHAT`, `CHANGES`, `ACTIVITY`, `MEMORY`, `RULES`, `Meldex AI`.
+- IDE route source forbidden branding scan: none for `OpenVSCode`, `VS Code`, `Ask @vscode`, `Editing evolved`.
+- Workspace ZIP contains only `index.html`, `style.css`.
+- ZIP forbidden/internal files: none.
+
+## Remaining
+
+- Browser screenshot tooling is unavailable in this environment, so pixel-level visual QA should still be confirmed manually in the live browser.
