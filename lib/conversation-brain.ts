@@ -31,6 +31,8 @@ const FOLLOWUP_PATTERNS: RegExp[] = [
   /^(pase|najik|nazdik)\s*(ryu|gayo|gayi|aavyo|aavi)/i,                 // "near [previous place]"
   /^(ema|tema|jema)\b/i,                                                 // Gujarati "in it/them"
   /^(enu|tenu|teni|eni)\s*(vat|kaam|khabar)/i,                          // "its talk/work/news"
+  /^(em|e[mn]?a?|m)\s*(nai|nahi|nathi|na)\b/i,                           // "not that / no, about him/her"
+  /\b(rajkaran|politics|post|portfolio|pad|mantri)\s*(ma|par|shu|kya|kay)\b/i,
   /^(vat|vato)\s*(karu|karo|kari)\s*(chhu?|chu?)/i,                     // "talking about it"
   /\b(eni|teni|tena|ena)\s*(vat|khabar|details|info)\b/i,               // mid-sentence ref
   /^(upar|neeche|pachi|pachhi|tya|tyaa)\b/i,                            // "about/above/there"

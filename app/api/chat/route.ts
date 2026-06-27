@@ -212,7 +212,7 @@ export async function POST(request: Request) {
 
     // ── KNOWLEDGE BRAIN ──────────────────────────────────────────────────────
     if (brain.brain === "knowledge") {
-      const factResult = lookupFact(lastUserMessage);
+      const factResult = lookupFact(effectiveMessage);
       if (factResult.found) {
         return NextResponse.json({
           message: factResult.answer,

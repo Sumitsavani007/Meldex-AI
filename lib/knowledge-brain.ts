@@ -21,7 +21,7 @@ export interface KnowledgeFact {
   /** Hindi answer (romanized) */
   answerHi?: string;
   /** Category for potential UI display */
-  category: "geography" | "history" | "general" | "india" | "music";
+  category: "geography" | "history" | "general" | "india" | "music" | "politics" | "sports";
   /** Known keywords that appear in the question (used by isKnowledgeQuery) */
   keywords: string[];
 }
@@ -42,6 +42,48 @@ export type KnowledgeLookup = KnowledgeResult | KnowledgeMiss;
 // ── Knowledge Base ────────────────────────────────────────────────────────────
 
 export const KNOWLEDGE_BASE: KnowledgeFact[] = [
+  // ── Gujarat politics ──────────────────────────────────────────────────────
+  {
+    patterns: [
+      /harsh\s*sangh(a)?vi\b.*\b(kon|who|shu|post|rajkaran|politics|minister|deputy|home|portfolio)\b/i,
+      /\b(kon|who|shu|post|rajkaran|politics|minister|deputy|home|portfolio)\b.*harsh\s*sangh(a)?vi\b/i,
+      /હર્ષ\s*સંઘવી.*(કોણ|પોસ્ટ|રાજકારણ|મંત્રી|ગૃહ|નાયબ)/i,
+    ],
+    answer: "**Harsh Sanghavi** is a BJP politician from Gujarat and the **Deputy Chief Minister of Gujarat**. He represents the Majura Assembly constituency and holds important portfolios including **Home**.",
+    answerGu: "**હર્ષ સંઘવી** ગુજરાતના BJP નેતા છે અને હાલમાં **ગુજરાતના નાયબ મુખ્યમંત્રી** છે. તેઓ Majura વિધાનસભા બેઠકનું પ્રતિનિધિત્વ કરે છે અને **Home/Gruh વિભાગ** સહિત મહત્વનાં portfolios સંભાળે છે.",
+    answerHi: "**Harsh Sanghavi** Gujarat ke BJP neta aur **Deputy Chief Minister of Gujarat** hain. Woh Majura Assembly constituency se MLA hain aur **Home** jaise important portfolios sambhalte hain.",
+    category: "politics",
+    keywords: ["harsh sanghvi", "harsh sanghavi", "હર્ષ", "સંઘવી", "sanghvi", "sanghavi"],
+  },
+
+  // ── Cricket ───────────────────────────────────────────────────────────────
+  {
+    patterns: [
+      /virat\s*kohli\b.*\b(kon|who|shu|cricketer|captain|batsman)\b/i,
+      /\b(kon|who|shu|cricketer|captain|batsman)\b.*virat\s*kohli\b/i,
+      /વિરાટ\s*કોહલી.*(કોણ|ક્રિકેટ|ખેલાડી|કેપ્ટન)/i,
+    ],
+    answer: "**Virat Kohli** is an Indian cricketer and one of the greatest modern batters. He is a former captain of the Indian national team and plays for Royal Challengers Bengaluru in the IPL.",
+    answerGu: "**વિરાટ કોહલી** ભારતના પ્રસિદ્ધ ક્રિકેટર અને આધુનિક યુગના શ્રેષ્ઠ batsmen પૈકી એક છે. તેઓ ભારતીય ટીમના ભૂતપૂર્વ captain છે અને IPLમાં Royal Challengers Bengaluru માટે રમે છે.",
+    answerHi: "**Virat Kohli** Bharat ke prasiddh cricketer aur modern era ke greatest batters mein se ek hain. Woh Indian team ke former captain hain aur IPL mein Royal Challengers Bengaluru ke liye khelte hain.",
+    category: "sports",
+    keywords: ["virat kohli", "વિરાટ", "કોહલી", "kohli"],
+  },
+
+  {
+    patterns: [
+      /virat\s*kohli\b.*\b(ipl|runs?|run|total|ketla|ketlaa|ketli|marya|scored)\b/i,
+      /\b(ipl|runs?|run|total|ketla|ketlaa|ketli|marya|scored)\b.*virat\s*kohli\b/i,
+      /\b(ene|ena|teni|tena|e)\b.*\b(ipl|runs?|run|total|ketla|ketlaa|marya)\b/i,
+      /વિરાટ\s*કોહલી.*(આઈપીએલ|IPL|રન|કુલ)/i,
+    ],
+    answer: "Virat Kohli has scored about **9,300+ runs in the IPL** after the 2026 season. His total is commonly listed around **9,336 IPL runs**, depending on the stats source/update timing.",
+    answerGu: "વિરાટ કોહલીએ 2026 season પછી IPLમાં આશરે **9,300+ runs** બનાવ્યા છે. સામાન્ય રીતે તેમનો કુલ આંકડો લગભગ **9,336 IPL runs** તરીકે દર્શાય છે, source/update પ્રમાણે થોડો ફેર પડી શકે.",
+    answerHi: "Virat Kohli ne 2026 season ke baad IPL mein lagbhag **9,300+ runs** banaye hain. Commonly total around **9,336 IPL runs** list hota hai, source/update ke hisaab se thoda fark ho sakta hai.",
+    category: "sports",
+    keywords: ["virat kohli", "kohli", "ipl", "runs", "run", "વિરાટ", "કોહલી"],
+  },
+
   // ── Botad ──────────────────────────────────────────────────────────────────
   {
     patterns: [
@@ -214,7 +256,7 @@ export const KNOWLEDGE_BASE: KnowledgeFact[] = [
 function detectLanguage(text: string): "gu" | "hi" | "en" {
   if (/[\u0A80-\u0AFF]/.test(text)) return "gu";
   if (/[\u0900-\u097F]/.test(text)) return "hi";
-  if (/\b(che|chu|chhu|chhe|mane|tamne|shu|kya\s*che|kon\s*che|jillo|taluko|vistaar|rajdhani|shahar)\b/i.test(text)) return "gu";
+  if (/\b(che|chu|chhu|chhe|mane|tamne|shu|su|kya\s*che|kon\s*che|kone|ene|ena|em|nai|nathi|atyar|atyare|ketla|ketli|marya|gayo|gayu|run|rajkaran|jillo|taluko|vistaar|rajdhani|shahar)\b/i.test(text)) return "gu";
   if (/\b(kya|kaun|hai|hain|mein|ka|ki|ke)\b/i.test(text)) return "hi";
   return "en";
 }
