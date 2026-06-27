@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   ArrowUpRight,
   CheckCircle2,
   ChevronRight,
-  Clock3,
   Copy,
   FileJson,
   FileSpreadsheet,
@@ -16,15 +14,19 @@ import {
   FileText,
   Folder,
   FolderOpen,
-  Loader2,
+  Globe2,
+  History,
+  Mic,
+  MoreHorizontal,
   Play,
+  Plus,
   RefreshCw,
   RotateCcw,
+  Settings,
   Sparkles,
   Square,
-  TerminalSquare,
+  Upload,
 } from "lucide-react";
-import { UserPanelSidebar } from "@/components/user-panel-sidebar";
 
 type TreeNode = {
   name: string;
@@ -99,16 +101,6 @@ type WorkspaceMemory = {
   updatedAt: string;
 };
 
-type WorkspaceTab = "Overview" | "Files" | "Changes" | "Logs" | "Memory" | "Settings";
-
-const examples = [
-  "Create a landing page",
-  "Build a SaaS dashboard",
-  "Make a portfolio site",
-  "Add pricing page",
-  "Create contact form",
-];
-
 function flatten(nodes: TreeNode[]): TreeNode[] {
   return nodes.flatMap((node) => [node, ...(node.children ? flatten(node.children) : [])]);
 }
@@ -166,56 +158,20 @@ function FileNode({ node, active, onOpen }: { node: TreeNode; active: string; on
   );
 }
 
-function Timeline({ task, loading, events = [] }: { task?: Task; loading: boolean; events?: StreamEvent[] }) {
-  const plan = Array.isArray(task?.planJson) ? task?.planJson || [] : [];
-  const persisted = task?.events || [];
-  const visibleEvents = [...persisted, ...events]
-    .sort((a, b) => a.sequence - b.sequence)
-    .filter((event, index, list) => list.findIndex((item) => item.type === event.type && item.message === event.message) === index)
-    .map((event) => event.message);
-  const fallbackEvents = [
-    loading ? "Thinking" : "Understood request",
-    ...plan,
-    ...(task?.diffs?.map((diff) => `${diff.operation === "create" ? "Created" : diff.operation === "delete" ? "Deleted" : "Edited"} ${diff.path}`) || []),
-    task?.previewUrl ? "Started preview" : "",
-    task?.status === "SUCCEEDED" ? "Verified website" : task?.status === "FAILED" ? "Task failed" : "",
-  ].filter(Boolean);
-  const timelineEvents = visibleEvents.length ? visibleEvents : fallbackEvents;
-  return (
-    <div className="space-y-2">
-      {timelineEvents.length ? timelineEvents.map((event, index) => (
-        <div key={`${event}-${index}`} className="flex items-start gap-2 text-sm">
-          <span className={`mt-0.5 flex size-5 items-center justify-center rounded-full ${loading && index === 0 ? "bg-blue-500/10 text-blue-600" : "bg-emerald-500/10 text-emerald-600"}`}>
-            {loading && index === 0 ? <Loader2 className="size-3 animate-spin" /> : <CheckCircle2 className="size-3" />}
-          </span>
-          <span className="text-zinc-700 dark:text-zinc-300">{event}</span>
-        </div>
-      )) : (
-        <div className="flex items-center gap-2 text-sm text-zinc-500"><Sparkles className="size-4" /> Ready for a build command.</div>
-      )}
-    </div>
-  );
-}
-
 export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const { status } = useSession({ required: true });
   const router = useRouter();
   const [state, setState] = useState<WorkspaceState>({ project: null, projects: [], tree: [], tasks: [], preview: null, memory: null });
   const [prompt, setPrompt] = useState("Create a simple landing page");
   const [selectedFile, setSelectedFile] = useState("");
-  const [fileContent, setFileContent] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Ready");
-  const [mobileTab, setMobileTab] = useState<"chat" | "files" | "preview" | "logs">("chat");
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("Overview");
-  const [logsOpen, setLogsOpen] = useState(false);
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
   const [queuedPrompt, setQueuedPrompt] = useState("");
   const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
   const [previewStopped, setPreviewStopped] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
-  const [memoryDraft, setMemoryDraft] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
@@ -256,7 +212,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       : previewStatus === "Stopped"
         ? "bg-slate-100 text-slate-600 dark:bg-white/8 dark:text-slate-300"
         : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200";
-  const lastVerified = state.preview?.lastCheckedAt || (state.preview?.verified ? state.project?.updatedAt : "");
 
   async function loadWorkspace(id = projectId) {
     if (status !== "authenticated") return;
@@ -282,7 +237,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       preview: data.preview || null,
       memory: data.memory || null,
     });
-    setMemoryDraft(data.memory?.projectSummary || "");
     if (data.preview?.verified) setPreviewStopped(false);
   }
 
@@ -412,7 +366,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       return;
     }
     setSelectedFile(filePath);
-    setFileContent(data.content || "");
   }
 
   async function refreshPreview() {
@@ -427,40 +380,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setPreviewAction("idle");
   }
 
-  async function stopPreview() {
-    if (!state.project) return;
-    setPreviewAction("stopping");
-    const response = await fetch(`/api/workspaces/${state.project.id}/preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "stop" }),
-    });
-    const data = await response.json();
-    setMessage(response.ok ? "Preview stopped" : data.error || "Unable to stop preview");
-    if (response.ok) setPreviewStopped(true);
-    await loadWorkspace(state.project.id);
-    setPreviewAction("idle");
-  }
-
-  async function rollback() {
-    if (!state.project || !activeTask) return;
-    const response = await fetch(`/api/workspaces/${state.project.id}/rollback`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ taskId: activeTask.id }),
-    });
-    const data = await response.json();
-    setMessage(response.ok ? "Rollback complete" : data.error || "Rollback failed");
-    await loadWorkspace(state.project.id);
-  }
-
-  async function shareWorkspace() {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    if (!url) return;
-    await navigator.clipboard?.writeText(url);
-    setMessage("Workspace link copied");
-  }
-
   async function copyPreviewUrl() {
     if (!previewFullUrl) return;
     await navigator.clipboard?.writeText(previewFullUrl);
@@ -469,362 +388,146 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setTimeout(() => setCopiedPreview(false), 1800);
   }
 
-  async function saveMemorySummary() {
-    if (!state.project) return;
-    const response = await fetch(`/api/workspaces/${state.project.id}/memory`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: "projectSummary", value: memoryDraft }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || "Memory save failed");
-      return;
-    }
-    setState((current) => ({ ...current, memory: data.memory }));
-    setMessage("Workspace memory saved");
-  }
 
-  async function clearMemory() {
-    if (!state.project || !window.confirm("Clear workspace memory?")) return;
-    const response = await fetch(`/api/workspaces/${state.project.id}/memory`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clear: true }),
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setMessage(data.error || "Memory clear failed");
-      return;
-    }
-    setState((current) => ({ ...current, memory: data.memory }));
-    setMemoryDraft("");
-    setMessage("Workspace memory cleared");
-  }
-
-  const showFilesPanel = activeTab === "Overview" || activeTab === "Files";
-  const showChangesPanel = activeTab === "Overview" || activeTab === "Changes";
-  const showLogsPanel = activeTab === "Logs";
-  const showMemoryPanel = activeTab === "Memory";
-  const showSettingsPanel = activeTab === "Settings";
+  const ideFolders = ["app", "api", "components", "hooks", "providers", "lib", "utils", "styles", "public", "tests"];
+  const rootFiles = ["package.json", "next.config.ts", "README.md", "tsconfig.json", ".env", ".gitignore"];
+  const actualFilePaths = new Set(files.map((file) => file.path));
+  const generatedFiles = files.filter((file) => !rootFiles.includes(file.name));
+  const checklist = [
+    ["Planning", true],
+    ["Analysis", Boolean(activeTask || streamEvents.length)],
+    ["Components", changed.length > 0 || files.length > 0],
+    ["UI", Boolean(state.preview?.verified)],
+    ["Testing", previewStatus === "Verified"],
+  ] as const;
+  const conversationEvents = [...(activeTask?.events || []), ...streamEvents]
+    .sort((a, b) => a.sequence - b.sequence)
+    .filter((event, index, list) => list.findIndex((item) => item.type === event.type && item.message === event.message) === index);
 
   return (
-    <div className="min-h-screen bg-[#f7f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
-      <div className="flex h-screen overflow-hidden">
-        <UserPanelSidebar />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <header className="shrink-0 border-b border-slate-200 bg-white/92 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/92 lg:px-6">
-            <div className="flex items-center justify-between gap-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <Link href="/workspace" className="hover:text-violet-600">Workspaces</Link>
-                  <ChevronRight className="size-3" />
-                  <span className="truncate">{state.project?.name || "Workspace"}</span>
-                  <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">{loading ? "Running" : message}</span>
-                </div>
-                <h1 className="mt-1 truncate text-lg font-semibold">{state.project?.name || "Workspace Overview"}</h1>
+    <div className="h-screen overflow-hidden bg-[#f6f7fb] font-sans text-[13px] text-[#111827] antialiased transition-colors dark:bg-[#0B0D12] dark:text-white">
+      <main className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(620px,1fr)_360px]">
+        <aside className="hidden min-h-0 border-r border-[#E5E7EB] bg-white/92 shadow-[8px_0_40px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/95 lg:flex lg:flex-col">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]">
+            <div className="flex items-center gap-2">
+              <div className="grid size-7 place-items-center rounded-lg bg-[#6D4AFF] text-white shadow-lg shadow-violet-500/20">
+                <Sparkles className="size-4" />
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="mx-focus inline-flex h-9 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 disabled:opacity-45">
-                  {loading ? <Square className="size-4" /> : <Play className="size-4" />} {loading ? "Stop" : "Run"}
-                </button>
-                <button onClick={shareWorkspace} className="mx-focus h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]">Share</button>
-                <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04]" title="Refresh">
-                  <RefreshCw className="size-4" />
-                </button>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Explorer</div>
+                <div className="text-sm font-semibold">Meldex</div>
               </div>
             </div>
-            <nav className="mt-3 flex items-center gap-5 text-sm">
-              {(["Overview", "Files", "Changes", "Logs", "Memory", "Settings"] as WorkspaceTab[]).map((tab) => (
-                <button key={tab} onClick={() => {
-                  setActiveTab(tab);
-                  if (tab === "Logs") setLogsOpen(true);
-                }} title={tab} className={`pb-2 font-medium ${activeTab === tab ? "border-b-2 border-violet-600 text-violet-600" : "text-slate-500 hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"}`}>
-                  {tab}
-                </button>
-              ))}
-            </nav>
-          </header>
-
-      <div className="grid grid-cols-4 border-b border-zinc-200 bg-white text-xs dark:border-white/10 dark:bg-black lg:hidden">
-        {(["chat", "files", "preview", "logs"] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setMobileTab(tab)}
-            className={`py-3 capitalize ${mobileTab === tab ? "text-zinc-950 dark:text-white" : "text-zinc-500"}`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {mobileTab === "files" && (
-        <section className="h-[calc(100vh-104px)] overflow-y-auto bg-white p-3 dark:bg-black lg:hidden">
-          {files.length ? state.tree.map((node) => <FileNode key={node.path} node={node} active={selectedFile} onOpen={openFile} />) : (
-            <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-xs text-zinc-500 dark:border-white/10">Files will appear live as Meldex creates them.</div>
-          )}
-          {selectedFile && <pre className="mt-3 max-h-[360px] overflow-auto rounded-lg border border-zinc-200 p-3 text-xs dark:border-white/10">{fileContent}</pre>}
-        </section>
-      )}
-
-      {mobileTab === "preview" && (
-        <section className="h-[calc(100vh-104px)] overflow-y-auto bg-zinc-50 p-3 dark:bg-black lg:hidden">
-          <div className="mb-3 flex items-center justify-between">
-            <span className="text-sm font-semibold">Live preview</span>
-            <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10" aria-label="Refresh preview"><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
-          </div>
-          <div className="aspect-[4/3] rounded-lg border border-zinc-200 bg-white dark:border-white/10">
-            {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-lg bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center text-sm text-zinc-500">Preview appears after files are created.</div>}
-          </div>
-          <div className="mt-3 rounded-lg border border-zinc-200 bg-white p-3 text-xs dark:border-white/10 dark:bg-zinc-950">{state.preview?.message || "No preview verification yet."}</div>
-        </section>
-      )}
-
-      {mobileTab === "logs" && (
-        <section className="h-[calc(100vh-104px)] overflow-y-auto bg-zinc-950 p-3 font-mono text-xs text-zinc-300 lg:hidden">
-          {[...(activeTask?.events || []), ...streamEvents].length
-            ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
-            : <div>[idle] Workspace ready</div>}
-          {activeTask?.logs?.map((log) => <div key={log.id}>[{log.event}] {log.message}</div>)}
-          {activeTask?.runs?.map((run) => <div key={run.id}>[{run.status}] {run.command} {run.stdout || run.stderr || ""}</div>)}
-        </section>
-      )}
-
-      <main className={`${mobileTab === "chat" ? "grid" : "hidden"} min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid ${showFilesPanel && showChangesPanel ? "lg:grid-cols-[280px_minmax(520px,1fr)_300px]" : showFilesPanel ? "lg:grid-cols-[300px_minmax(520px,1fr)]" : showChangesPanel ? "lg:grid-cols-[minmax(520px,1fr)_340px]" : "lg:grid-cols-1"}`}>
-        {showFilesPanel && <aside className="hidden min-h-0 border-r border-slate-200 bg-white dark:border-white/10 dark:bg-[#111113] lg:flex lg:flex-col">
-          <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
-            <div>
-              <div className="text-xs font-semibold text-slate-500">Files</div>
-              <div className="mt-1 truncate text-sm font-medium">{state.project?.name || "No workspace yet"}</div>
-            </div>
-            <button disabled title="File actions are handled by the agent" className="text-slate-400">...</button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-2">
-            {files.length ? state.tree.map((node) => <FileNode key={node.path} node={node} active={selectedFile} onOpen={openFile} />) : (
-              <div className="rounded-lg border border-dashed border-zinc-200 p-4 text-xs text-zinc-500 dark:border-white/10">Files will appear live as Meldex creates them.</div>
-            )}
-          </div>
-        </aside>}
-
-        <section className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-white/10 dark:bg-black">
-          {!showLogsPanel && !showSettingsPanel && !showMemoryPanel && <div className="border-b border-slate-200 p-3 dark:border-white/10">
-            <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-violet-600" /> Agent prompt</div>
-            <div className="mt-2 flex gap-2">
-              <textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if ((event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) {
-                    event.preventDefault();
-                    if (!loading && prompt.trim()) void runAgent();
-                  }
-                }}
-                rows={3}
-                className="min-h-16 flex-1 resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none transition focus:border-violet-300 dark:border-white/10 dark:bg-white/5"
-                placeholder="Create a website"
-                aria-label="Workspace prompt"
-              />
-              <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="flex w-20 items-center justify-center rounded-xl bg-violet-600 text-sm font-semibold text-white disabled:opacity-50" aria-label={loading ? "Stop task" : "Send prompt"}>
-                {loading ? <Square className="size-4" /> : <Play className="size-4" />}
-              </button>
-            </div>
-            {queuedPrompt && <div className="mt-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">Queued · will run next: {queuedPrompt}</div>}
-            <div className="mt-2 flex flex-wrap gap-2">
-              {examples.map((example) => (
-                <button key={example} onClick={() => setPrompt(example)} className="rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8">{example}</button>
-              ))}
-            </div>
-          </div>}
-
-          <div className={`grid min-h-0 flex-1 ${logsOpen || showLogsPanel ? "grid-rows-[minmax(240px,1fr)_190px]" : "grid-rows-[minmax(240px,1fr)_44px]"}`}>
-            <div className="min-h-0 overflow-y-auto p-3">
-              {showMemoryPanel ? (
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h2 className="text-sm font-semibold">Project Memory</h2>
-                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Safe summaries, decisions, style, known issues, and recent tasks. Secrets are redacted.</p>
-                      </div>
-                      <button onClick={clearMemory} disabled={!state.memory} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-500/20 dark:text-red-300">Clear</button>
-                    </div>
-                    <label className="mt-4 block text-xs font-semibold text-slate-500">Project summary</label>
-                    <textarea value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} rows={4} className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-violet-300 dark:border-white/10 dark:bg-white/5" placeholder="What should Meldex remember about this workspace?" />
-                    <button onClick={saveMemorySummary} disabled={!state.project} className="mt-3 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Save memory</button>
-                  </div>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {[
-                      ["Recent decisions", state.memory?.recentDecisions || []],
-                      ["Active style", [...(state.memory?.designStyle || []), ...(state.memory?.codingStyle || [])]],
-                      ["Known issues", state.memory?.knownIssues || []],
-                      ["Successful fixes", state.memory?.successfulFixes || []],
-                      ["Last successful commands", state.memory?.lastSuccessfulCommands || []],
-                      ["Architecture", state.memory?.architecture || []],
-                    ].map(([title, items]) => (
-                      <div key={title as string} className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
-                        <h3 className="text-sm font-semibold">{title as string}</h3>
-                        <div className="mt-3 space-y-2">
-                          {(items as string[]).length ? (items as string[]).slice(0, 6).map((item, index) => (
-                            <div key={`${item}-${index}`} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-white/[0.04] dark:text-slate-300">{item}</div>
-                          )) : <p className="text-xs text-slate-500">No memory saved yet.</p>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
-                    <h3 className="text-sm font-semibold">Recent tasks</h3>
-                    <div className="mt-3 divide-y divide-slate-100 dark:divide-white/10">
-                      {state.memory?.recentTasks?.length ? state.memory.recentTasks.slice(0, 6).map((task) => (
-                        <div key={`${task.createdAt}-${task.prompt}`} className="py-3 text-sm">
-                          <div className="font-medium">{task.prompt}</div>
-                          <div className="mt-1 text-xs text-slate-500">{task.status} · score {task.qualityScore} · {task.filesChanged.join(", ") || "no files"}</div>
-                          <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{task.summary}</p>
-                        </div>
-                      )) : <p className="text-xs text-slate-500">Run a task and Meldex will remember useful context here.</p>}
-                    </div>
-                  </div>
-                </div>
-              ) : showSettingsPanel ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
-                  <h2 className="text-sm font-semibold">Workspace Settings</h2>
-                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Workspace settings are managed automatically in this release.</p>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <button disabled title="Rename workspace is not available in this release" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 text-sm text-slate-400 dark:border-white/10">Rename unavailable</button>
-                    <button disabled title="Visibility controls are not available in this release" className="h-10 cursor-not-allowed rounded-lg border border-slate-200 text-sm text-slate-400 dark:border-white/10">Visibility unavailable</button>
-                  </div>
-                </div>
-              ) : showLogsPanel ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#111113]">
-                  <h2 className="mb-3 text-sm font-semibold">Logs</h2>
-                  <div className="h-[420px] overflow-y-auto rounded-xl bg-slate-950 p-3 font-mono text-xs leading-6 text-zinc-300">
-                    {[...(activeTask?.events || []), ...streamEvents].length
-                      ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
-                      : <div>[idle] Workspace ready</div>}
-                    {activeTask?.logs?.map((log) => <div key={log.id}>[{log.event}] {log.message}</div>)}
-                    {activeTask?.runs?.map((run) => <div key={run.id}>[{run.status}] {run.command} {run.stdout || run.stderr || ""}</div>)}
-                  </div>
-                </div>
-              ) : (
-              <>
-              <div className="mb-3 rounded-2xl border border-slate-200 p-3 dark:border-white/10">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">Agent timeline</h2>
-                  <span className="rounded-full bg-zinc-100 px-2 py-1 text-xs text-zinc-500 dark:bg-white/8">{activeTask?.status || "Idle"}</span>
-                </div>
-                <Timeline task={activeTask} loading={loading} events={streamEvents} />
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 dark:border-white/10">
-                <div className="flex items-center justify-between border-b border-slate-200 px-3 py-2 dark:border-white/10">
-                  <span className="text-sm font-semibold">{selectedFile || "File preview"}</span>
-                  {selectedFile && <span className="text-xs text-zinc-500">Read-only</span>}
-                </div>
-                <pre className="max-h-[360px] overflow-auto p-3 text-xs leading-5 text-zinc-700 dark:text-zinc-300">{selectedFile ? fileContent : "Select a file to preview content and diff."}</pre>
-              </div>
-              </>
-              )}
-            </div>
-
-            <div className="border-t border-slate-200 bg-white p-3 text-slate-900 dark:border-white/10 dark:bg-zinc-950 dark:text-zinc-100">
-              <button onClick={() => setLogsOpen((value) => !value)} className="flex w-full items-center gap-2 text-left text-xs font-semibold" aria-expanded={logsOpen}>
-                <TerminalSquare className="size-3.5" /> Logs / terminal / build output
-              </button>
-              {(logsOpen || showLogsPanel) && !showSettingsPanel && (
-                <div className="mt-2 h-32 overflow-y-auto rounded-xl bg-slate-950 p-2 font-mono text-[11px] leading-5 text-zinc-300">
-                  {[...(activeTask?.events || []), ...streamEvents].length
-                    ? [...(activeTask?.events || []), ...streamEvents].sort((a, b) => a.sequence - b.sequence).map((event) => <div key={`${event.sequence}-${event.type}`}>[{event.type}] {event.message}</div>)
-                    : <div>[idle] Workspace ready</div>}
-                  {activeTask?.logs?.map((log) => <div key={log.id}>[{log.event}] {log.message}</div>)}
-                  {activeTask?.runs?.map((run) => <div key={run.id}>[{run.status}] {run.command} {run.stdout || run.stderr || ""}</div>)}
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-
-        {showChangesPanel && <aside className="hidden min-h-0 flex-col bg-[#f7f7fb] dark:bg-[#111113] lg:flex">
-          <div className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-white/10">
-            <h2 className="text-sm font-semibold">Changes</h2>
-            <div className="flex items-center gap-1">
-              <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8" title={state.project ? "Refresh preview" : "Create a workspace first"}><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
-              {previewReady ? (
-                <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/8" title="Open preview in new tab"><ArrowUpRight className="size-3.5" /></a>
-              ) : (
-                <button disabled className="cursor-not-allowed rounded-md border border-zinc-200 p-1.5 text-zinc-300 dark:border-white/10 dark:text-zinc-600" title={previewStopped ? "Preview is stopped" : "Preview is not ready"}><ArrowUpRight className="size-3.5" /></button>
-              )}
-              <button onClick={copyPreviewUrl} disabled={!previewReady} className="rounded-md border border-zinc-200 p-1.5 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8" title={previewReady ? "Copy preview URL" : "Preview URL unavailable"}>{copiedPreview ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}</button>
-              <button onClick={stopPreview} disabled={!previewReady || previewAction !== "idle"} className="rounded-md border border-zinc-200 p-1.5 text-zinc-500 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/8" title={previewReady ? "Stop preview" : "Preview is not running"}><Square className="size-3.5" /></button>
-            </div>
-          </div>
-          <div className="border-b border-slate-200 p-3 dark:border-white/10">
-            <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-zinc-500">Preview URL</span>
-              <span className={`rounded-full px-2 py-0.5 font-medium ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span>
-            </div>
-            <div className="mt-1 truncate rounded-md bg-white px-2 py-1 text-xs text-zinc-500 dark:bg-white/5">{previewFullUrl || "No preview yet"}</div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-zinc-500">
-              <div className="rounded-md bg-white px-2 py-1 dark:bg-white/5">State: <span className="font-medium text-zinc-700 dark:text-zinc-200">{previewStatus}</span></div>
-              <div className="rounded-md bg-white px-2 py-1 dark:bg-white/5">Last verified: <span className="font-medium text-zinc-700 dark:text-zinc-200">{lastVerified ? new Date(lastVerified).toLocaleTimeString() : "Never"}</span></div>
-            </div>
-            <button onClick={() => { setActiveTab("Logs"); setLogsOpen(true); }} className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-white dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/8">
-              View preview logs
+            <button className="grid size-8 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Explorer actions">
+              <MoreHorizontal className="size-4" />
             </button>
           </div>
-          <div className="aspect-[4/3] border-b border-slate-200 bg-white dark:border-white/10">
-            {previewReady ? (
-              <iframe key={previewUrl} src={previewUrl} className="h-full w-full bg-white" sandbox="allow-scripts allow-forms" />
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-zinc-500">
-                <span>{previewStopped ? "Preview is stopped." : "Preview appears after files are created."}</span>
-                {state.project && <button onClick={refreshPreview} disabled={previewAction !== "idle"} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/8">Start preview</button>}
-              </div>
-            )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+            <button className="mb-2 flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-semibold uppercase tracking-[0.03em] hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]">
+              <ChevronRight className="size-3.5 rotate-90 text-[#6B7280] dark:text-[#9CA3AF]" />
+              MELDEX-WORKSPACE
+            </button>
+
+            <div className="space-y-0.5">
+              {ideFolders.map((folder, index) => {
+                const matches = files.filter((file) => file.path.startsWith(`${folder}/`));
+                const open = ["app", "components", "styles"].includes(folder) || matches.length > 0;
+                return (
+                  <div key={folder}>
+                    <button className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#374151] transition hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]">
+                      <ChevronRight className={`size-3.5 text-[#6B7280] transition ${open ? "rotate-90" : ""}`} />
+                      <span className="grid size-5 place-items-center rounded-md bg-amber-100 text-amber-600 dark:bg-amber-400/12 dark:text-amber-300">
+                        {open ? <FolderOpen className="size-3.5" /> : <Folder className="size-3.5" />}
+                      </span>
+                      <span className="truncate">{folder}</span>
+                    </button>
+                    {open && (
+                      <div className="ml-6 border-l border-[#E5E7EB] pl-2 dark:border-[#22252D]">
+                        {(matches.length ? matches : index < 5 ? [{ path: `${folder}/index.ts`, name: "index.ts", type: "file" as const }] : []).slice(0, 5).map((node) => {
+                          const fileIcon = fileIconFor(node.name);
+                          const Icon = fileIcon.Icon;
+                          return (
+                            <button key={node.path} onClick={() => actualFilePaths.has(node.path) && openFile(node.path)} className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition ${selectedFile === node.path ? "bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/18 dark:text-white" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"}`}>
+                              <Icon className={`size-3.5 ${fileIcon.color}`} />
+                              <span className="truncate">{node.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 border-t border-[#E5E7EB] pt-3 dark:border-[#22252D]">
+              {rootFiles.map((name) => {
+                const actual = files.find((file) => file.name === name || file.path === name);
+                const fileIcon = fileIconFor(name);
+                const Icon = fileIcon.Icon;
+                return (
+                  <button key={name} onClick={() => actual && openFile(actual.path)} className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition ${selectedFile === actual?.path ? "bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/18 dark:text-white" : "text-[#374151] hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"}`}>
+                    <Icon className={`size-4 ${fileIcon.color}`} />
+                    <span className="truncate">{name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            <div className="mb-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-semibold">Quality score</span>
-                <span className="text-lg font-semibold">{activeTask?.qualityScore || state.project?.qualityScore || 0}</span>
-              </div>
-              <div className="mt-2 h-2 rounded-full bg-zinc-100 dark:bg-white/10"><div className="h-2 rounded-full bg-emerald-500" style={{ width: `${activeTask?.qualityScore || state.project?.qualityScore || 0}%` }} /></div>
-            </div>
+          <div className="shrink-0 border-t border-[#E5E7EB] dark:border-[#22252D]">
+            <button className="flex h-10 w-full items-center gap-2 px-4 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-[#374151] hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"><ChevronRight className="size-3.5" /> Outline</button>
+            <button className="flex h-10 w-full items-center gap-2 border-t border-[#E5E7EB] px-4 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-[#374151] hover:bg-[#F6F7FB] dark:border-[#22252D] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"><ChevronRight className="size-3.5" /> Timeline</button>
+          </div>
+        </aside>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-semibold">Changed files</span>
-                <span className="text-xs text-zinc-500">+{totalAdded} -{totalRemoved}</span>
-              </div>
-              {changed.length ? changed.map((diff) => (
-                <button key={`${diff.path}-${diff.operation}`} onClick={() => openFile(diff.path)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-zinc-100 dark:hover:bg-white/8">
-                  <FileCode2 className="size-3.5 text-zinc-500" />
-                  <span className="min-w-0 flex-1 truncate">{diff.path}</span>
-                  <span className="text-emerald-600">+{diff.added}</span>
-                  <span className="text-red-500">-{diff.removed}</span>
-                </button>
-              )) : <p className="text-xs text-zinc-500">No changes yet.</p>}
-              <div className="mt-3 grid grid-cols-4 gap-1">
-                <button onClick={() => changed[0] && openFile(changed[0].path)} disabled={!changed.length} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400">Review</button>
-                <button disabled title="Workspace changes are applied automatically after verification" className="cursor-not-allowed rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-400 dark:border-white/10 dark:text-zinc-600">Apply</button>
-                <button onClick={rollback} disabled={!activeTask} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400">Reject</button>
-                <button onClick={rollback} disabled={!activeTask} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs text-zinc-600 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-zinc-400" title="Rollback latest task"><RotateCcw className="mx-auto size-3.5" /></button>
-              </div>
+        <section className="flex min-h-0 flex-col bg-[#F6F7FB] dark:bg-[#0B0D12]">
+          <div className="flex h-12 shrink-0 items-center border-b border-[#E5E7EB] bg-white/74 px-4 backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/70">
+            <div className="flex h-9 items-center overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm dark:border-[#22252D] dark:bg-[#111318]">
+              <button className="flex h-full items-center gap-2 border-r border-[#E5E7EB] px-3 text-sm font-semibold dark:border-[#22252D]"><Globe2 className="size-4 text-[#6D4AFF]" /> Preview</button>
+              <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid h-full w-9 place-items-center text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
             </div>
+            <button className="ml-2 grid size-9 place-items-center rounded-xl text-[#6B7280] hover:bg-white dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="New preview"><Plus className="size-4" /></button>
+          </div>
 
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 dark:border-white/10 dark:bg-black">
-              <div className="mb-2 flex items-center gap-2 text-sm font-semibold"><Clock3 className="size-4" /> Task history</div>
-              {state.tasks.slice(0, 8).map((task) => (
-                <div key={task.id} className="border-t border-zinc-100 py-2 text-xs first:border-t-0 dark:border-white/10">
-                  <div className="truncate font-medium">{task.prompt}</div>
-                  <div className="mt-1 text-zinc-500">{task.status} · {new Date(task.createdAt).toLocaleString()}</div>
-                </div>
-              ))}
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
+            <button disabled className="grid size-8 place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4 rotate-180" /></button>
+            <button disabled className="grid size-8 place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4" /></button>
+            <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
+            <div className="mx-2 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] px-3 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#0B0D12] dark:text-[#9CA3AF]"><Globe2 className="size-3.5" /><span className="truncate">{previewFullUrl || "https://meldex.workspace/preview"}</span></div>
+            <select className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>
+            <select className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Responsive</option><option>1440px</option><option>1920px</option></select>
+            <span className="rounded-lg border border-[#E5E7EB] bg-white px-2 py-1.5 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]">100%</span>
+            {previewReady ? <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><ArrowUpRight className="size-4" /></a> : <button disabled className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] text-[#9CA3AF] dark:border-[#22252D]"><ArrowUpRight className="size-4" /></button>}
+            <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><RotateCcw className="size-4" /></button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto p-5">
+            <div className="mx-auto flex h-full min-h-[620px] max-w-[1180px] flex-col rounded-xl border border-[#E5E7EB] bg-white shadow-[0_24px_90px_rgba(15,23,42,0.10)] dark:border-[#22252D] dark:bg-[#111318] dark:shadow-[0_24px_90px_rgba(0,0,0,0.38)]">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]"><div className="flex items-center gap-2 text-sm font-semibold"><Globe2 className="size-4 text-[#6D4AFF]" /> Live Preview</div><div className="flex items-center gap-2 text-[12px]"><span className={`rounded-full px-2 py-1 ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span><button onClick={copyPreviewUrl} disabled={!previewReady} className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]">{copiedPreview ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}</button></div></div>
+              <div className="min-h-0 flex-1 bg-white dark:bg-black">
+                {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-b-xl bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,0.18),transparent_36%),linear-gradient(180deg,#0B0D12,#111318)] p-10 text-white"><div className="max-w-2xl text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#7C5CFF] shadow-xl shadow-violet-500/25"><Sparkles className="size-6" /></div><p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-200">The Ultimate AI Coding Platform</p><h2 className="text-5xl font-bold tracking-tight">Build Anything<br />with <span className="text-[#7C5CFF]">AI Power</span></h2><p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#D1D5DB]">Meldex AI combines agents, preview, memory, and code generation into one production workspace.</p><button onClick={() => void runAgent()} className="mt-8 rounded-xl bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25"><Play className="mr-2 inline size-4" /> Start Building</button></div></div>}
+              </div>
             </div>
           </div>
-        </aside>}
+          <div className="flex h-7 shrink-0 items-center justify-between border-t border-[#E5E7EB] bg-white px-4 text-[11px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><span>{state.project?.name || "MELDEX-WORKSPACE"}</span><span>{message}</span></div>
+        </section>
+
+        <aside className="flex min-h-0 flex-col border-l border-[#E5E7EB] bg-white/94 shadow-[-8px_0_44px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/96">
+          <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-5 dark:border-[#22252D]"><div className="text-sm font-semibold uppercase tracking-[0.08em]">Codex</div><div className="flex items-center gap-1 text-[#6B7280] dark:text-[#9CA3AF]"><button onClick={() => setPrompt("")} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="New chat"><Plus className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="History"><History className="size-4" /></button><button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Refresh"><RefreshCw className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Settings"><Settings className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="More"><MoreHorizontal className="size-4" /></button></div></div>
+          <div className="flex h-11 shrink-0 items-center gap-5 border-b border-[#E5E7EB] px-5 text-[12px] font-semibold uppercase tracking-[0.08em] dark:border-[#22252D]"><button className="h-full border-b-2 border-[#6D4AFF] text-[#111827] dark:border-[#7C5CFF] dark:text-white">Chat</button><button onClick={() => setMessage("Rules are managed by workspace memory")} className="h-full text-[#6B7280] hover:text-[#111827] dark:text-[#9CA3AF] dark:hover:text-white">Rules</button></div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            <div className="ml-auto max-w-[310px] rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] p-4 text-sm leading-6 shadow-sm dark:border-[#22252D] dark:bg-[#1A1E27]/62">{activeTask?.prompt || prompt || "Create a responsive landing page for Meldex AI with a hero section, features section, and modern dark theme."}</div>
+            <div className="mt-7 flex items-center gap-3 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-full bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/15 dark:text-[#A996FF]"><Sparkles className="size-4" /></span>Codex</div>
+            <div className="mt-4 space-y-3">{checklist.map(([label, done], index) => (<div key={label} className="flex items-center gap-3 text-sm"><span className={`grid size-5 place-items-center rounded-full ${done ? "text-emerald-500" : index === checklist.findIndex(([, state]) => !state) ? "text-white ring-1 ring-[#6B7280]" : "text-[#6B7280] ring-1 ring-[#374151]"}`}>{done ? <CheckCircle2 className="size-4" /> : <span className="size-2 rounded-full bg-current" />}</span><span className={done ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-[#9CA3AF]"}>{label}</span></div>))}</div>
+            <div className="mt-7 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/40"><div className="mb-3 flex items-center justify-between text-sm font-semibold"><span>{generatedFiles.length || changed.length || files.length} files</span><span className="text-[11px] font-medium text-[#6B7280] dark:text-[#9CA3AF]">+{totalAdded} -{totalRemoved}</span></div><div className="max-h-52 space-y-2 overflow-y-auto pr-1">{(changed.length ? changed.map((diff) => ({ path: diff.path, name: diff.path.split("/").pop() || diff.path, added: diff.added })) : files.slice(0, 10).map((file) => ({ path: file.path, name: file.name, added: 0 }))).map((file) => (<button key={file.path} onClick={() => openFile(file.path)} className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><span className="text-emerald-500">+</span><span className="min-w-0 flex-1 truncate">{file.path}</span>{file.added ? <span className="text-[11px] text-emerald-500">+{file.added}</span> : null}</button>))}</div></div>
+            <div className="mt-5 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/40"><div className="mb-3 text-sm font-semibold">Activity</div><div className="max-h-44 space-y-2 overflow-y-auto text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">{conversationEvents.length ? conversationEvents.slice(-9).map((event) => <div key={`${event.sequence}-${event.type}`} className="truncate">{event.message}</div>) : <div>Ready to build.</div>}</div></div>
+          </div>
+          <div className="shrink-0 border-t border-[#E5E7EB] p-4 dark:border-[#22252D]"><div className="rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] p-3 shadow-sm transition focus-within:border-[#6D4AFF] dark:border-[#22252D] dark:bg-[#0B0D12] dark:focus-within:border-[#7C5CFF]"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask Codex anything..." /><div className="mt-3 flex items-center justify-between text-[12px] text-[#6B7280] dark:text-[#9CA3AF]"><div className="flex items-center gap-3"><button className="flex items-center gap-1 hover:text-[#6D4AFF]"><Upload className="size-3.5" /> Add context</button><button className="hover:text-[#6D4AFF]"><Mic className="size-3.5" /></button></div><button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="grid size-9 place-items-center rounded-lg bg-[#6D4AFF] text-white shadow-lg shadow-violet-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-45">{loading ? <Square className="size-4" /> : <Play className="size-4" />}</button></div></div></div>
+        </aside>
       </main>
-        </div>
-      </div>
     </div>
   );
+
 }
