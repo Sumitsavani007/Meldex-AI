@@ -38,7 +38,7 @@ function appUrl() {
 }
 
 export async function getPaymentConfig(): Promise<PaymentConfig> {
-  const provider = ((await getConfig("PAYMENT_PROVIDER", "manual")) || "manual").toLowerCase();
+  const configuredProvider = ((await getConfig("PAYMENT_PROVIDER", "")) || "").toLowerCase();
   const mode = ((await getConfig("PAYMENT_MODE", "test")) || "test").toLowerCase();
   const currency = ((await getConfig("PAYMENT_CURRENCY", "USD")) || "USD").toUpperCase();
   const successUrl = await getConfig("PAYMENT_SUCCESS_URL", `${appUrl()}/settings/billing?checkout=success`);
@@ -46,15 +46,24 @@ export async function getPaymentConfig(): Promise<PaymentConfig> {
   const stripeSecret = await getConfig("STRIPE_SECRET_KEY");
   const razorpayKey = await getConfig("RAZORPAY_KEY_ID");
   const razorpaySecret = await getConfig("RAZORPAY_KEY_SECRET");
+  const stripeConfigured = Boolean(stripeSecret);
+  const razorpayConfigured = Boolean(razorpayKey && razorpaySecret);
+  const provider = configuredProvider === "stripe" || configuredProvider === "razorpay"
+    ? configuredProvider
+    : razorpayConfigured
+      ? "razorpay"
+      : stripeConfigured
+        ? "stripe"
+        : "manual";
   return {
-    provider: provider === "stripe" || provider === "razorpay" ? provider : "manual",
+    provider,
     mode: mode === "live" ? "live" : "test",
     currency,
     successUrl: successUrl || `${appUrl()}/settings/billing?checkout=success`,
     cancelUrl: cancelUrl || `${appUrl()}/settings/billing?checkout=cancel`,
     taxGstPercent: Number(await getConfig("PAYMENT_TAX_GST_PERCENT", "0")) || 0,
-    stripeConfigured: Boolean(stripeSecret),
-    razorpayConfigured: Boolean(razorpayKey && razorpaySecret),
+    stripeConfigured,
+    razorpayConfigured,
   };
 }
 
@@ -77,10 +86,10 @@ export async function createCheckoutSession(input: { userId: string; email?: str
     prisma.plan.findUnique({ where: { id: input.planId } }),
   ]);
   if (!plan || !plan.isActive) throw new Error("Plan unavailable");
-  if (!plan.paymentEnabled) throw new Error("Payments are not enabled for this plan yet.");
   if (config.provider === "manual") throw new Error("Payments are not enabled yet. Request a manual upgrade.");
 
   const providerPlanId = planProviderId(plan, config.provider, input.billingCycle);
+  if (!plan.paymentEnabled && !providerPlanId) throw new Error("Payments are not enabled for this plan yet.");
   if (!providerPlanId) throw new Error(`${config.provider === "stripe" ? "Stripe price" : "Razorpay plan"} is not configured for this billing cycle.`);
 
   if (config.provider === "stripe") {

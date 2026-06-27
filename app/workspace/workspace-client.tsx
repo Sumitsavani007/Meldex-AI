@@ -1185,76 +1185,76 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           <div className="flex h-7 shrink-0 items-center justify-between border-t border-[#E5E7EB] bg-white px-4 text-[11px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><span>{state.project?.name || "MELDEX-WORKSPACE"} · {selectedFile || "no file selected"}</span><span>{fileDirty ? "Unsaved changes" : message}</span></div>
         </section>
 
-        <aside className={`relative min-h-0 flex-col border-l border-[#E5E7EB] bg-white/94 shadow-[-8px_0_44px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#0B0D12]/96 ${rightCollapsed || previewFullscreen || editorFullscreen ? "hidden" : "flex"}`}>
+        <aside className={`relative min-h-0 flex-col border-l border-[#22252D] bg-[#0B0D12]/98 text-[#F9FAFB] shadow-[-10px_0_55px_rgba(0,0,0,0.32)] backdrop-blur-xl ${rightCollapsed || previewFullscreen || editorFullscreen ? "hidden" : "flex"}`}>
           <div onMouseDown={(event) => startResize("right", event)} className="absolute left-[-3px] top-0 z-20 hidden h-full w-1 cursor-col-resize bg-transparent transition hover:bg-[#6D4AFF]/70 lg:block" />
-          <div className="flex h-[52px] shrink-0 items-center justify-between border-b border-[#E5E7EB] px-5 dark:border-[#22252D]">
+          <div className="flex h-[54px] shrink-0 items-center justify-between border-b border-[#22252D] px-5">
             <div className="flex h-full items-center gap-5 text-[12px] font-semibold uppercase tracking-[0.04em]">
-              {(["CHAT", "CHANGES", "MELDEX AI"] as const).map((label) => {
-                const mapped = label === "MELDEX AI" ? "CHAT" : label === "CHANGES" ? "CHANGES" : "ACTIVITY";
+              {(["CHAT", "AGENT", "MELDEX AI"] as const).map((label) => {
+                const mapped = label === "MELDEX AI" ? "CHAT" : label === "AGENT" ? "ACTIVITY" : "CHANGES";
                 const active = label === "MELDEX AI" ? activeRightTab === "CHAT" : activeRightTab === mapped;
                 return (
                   <button
                     key={label}
                     onClick={() => setActiveRightTab(mapped as RightTab)}
-                    className={`relative h-full transition ${active ? "text-[#111827] dark:text-white" : "text-[#6B7280] hover:text-[#111827] dark:text-[#9CA3AF] dark:hover:text-white"}`}
+                    className={`relative h-full transition ${active ? "text-white" : "text-[#8B93A3] hover:text-white"}`}
                   >
                     {label}
-                    {active && <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-[#7C5CFF]" />}
+                    {active && <span className="absolute inset-x-[-4px] bottom-0 h-0.5 rounded-full bg-[#7C5CFF] shadow-[0_0_14px_rgba(124,92,255,0.9)]" />}
                   </button>
                 );
               })}
             </div>
-            <div className="relative flex items-center gap-1 text-[#6B7280] dark:text-[#9CA3AF]">
-              <button onClick={() => setPrompt("")} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="New Meldex AI prompt"><Plus className="size-4" /></button>
-              <button onClick={() => setActiveRightTab("ACTIVITY")} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="History and activity"><History className="size-4" /></button>
-              <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Refresh Meldex AI"><RefreshCw className="size-4" /></button>
-              <button onClick={() => setAiSettingsOpen(true)} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Meldex AI settings"><Settings className="size-4" /></button>
-              <button onClick={() => setAiMenuOpen((open) => !open)} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="More actions"><MoreHorizontal className="size-4" /></button>
+            <div className="relative flex items-center gap-1 text-[#A5ADBA]">
+              <button onClick={() => setPrompt("")} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#1A1E27] hover:text-white" title="New Meldex AI prompt"><Plus className="size-4" /></button>
+              <button onClick={() => setActiveRightTab("ACTIVITY")} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#1A1E27] hover:text-white" title="History and activity"><History className="size-4" /></button>
+              <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#1A1E27] hover:text-white" title="Refresh Meldex AI"><RefreshCw className="size-4" /></button>
+              <button onClick={() => setAiSettingsOpen(true)} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#1A1E27] hover:text-white" title="Meldex AI settings"><Settings className="size-4" /></button>
+              <button onClick={() => setAiMenuOpen((open) => !open)} className="grid size-8 place-items-center rounded-lg transition hover:bg-[#1A1E27] hover:text-white" title="More actions"><MoreHorizontal className="size-4" /></button>
               {aiMenuOpen && (
-                <div className="absolute right-0 top-10 z-30 w-52 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white/95 p-1.5 text-sm shadow-2xl backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/95">
-                  <div className="px-3 py-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">{session?.user?.email || "Personal account"}</div>
-                  <button onClick={() => { setAiMenuOpen(false); setAiSettingsOpen(true); }} className="flex w-full items-center gap-2 rounded-lg bg-[#7C5CFF]/10 px-3 py-2 text-left text-[#6D4AFF] dark:text-violet-200"><Settings className="size-4" /> Meldex settings</button>
-                  <button onClick={() => { setAiMenuOpen(false); setActiveRightTab("RULES"); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Sparkles className="size-4" /> Workspace rules</button>
-                  <button onClick={() => { setAiMenuOpen(false); setActiveRightTab("MEMORY"); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><UserRound className="size-4" /> Memory</button>
+                <div className="absolute right-0 top-10 z-30 w-56 overflow-hidden rounded-xl border border-[#242833] bg-[#111318]/98 p-1.5 text-sm text-[#E5E7EB] shadow-2xl shadow-black/45 backdrop-blur-xl">
+                  <div className="px-3 py-2 text-xs text-[#A5ADBA]">{session?.user?.email || "Personal account"}</div>
+                  <button onClick={() => { setAiMenuOpen(false); setAiSettingsOpen(true); }} className="flex w-full items-center gap-2 rounded-lg bg-[#7C5CFF]/25 px-3 py-2 text-left text-white"><Settings className="size-4" /> Meldex settings</button>
+                  <button onClick={() => { setAiMenuOpen(false); setActiveRightTab("RULES"); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#1A1E27]"><Sparkles className="size-4" /> Workspace rules</button>
+                  <button onClick={() => { setAiMenuOpen(false); setActiveRightTab("MEMORY"); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#1A1E27]"><UserRound className="size-4" /> Memory</button>
                 </div>
               )}
             </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 [scrollbar-color:#2A2E39_transparent]">
             {activeRightTab === "CHAT" && <>
               <div className="mb-4 flex items-center gap-3">
-                <button onClick={() => router.push("/workspace")} className="grid size-8 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title="Back to workspaces"><ArrowLeft className="size-4" /></button>
+                <button onClick={() => router.push("/workspace")} className="grid size-8 place-items-center rounded-lg text-[#D1D5DB] transition hover:bg-[#1A1E27] hover:text-white" title="Back to workspaces"><ArrowLeft className="size-4" /></button>
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-semibold text-[#111827] dark:text-white">{activeTask?.prompt || prompt || "Run Meldex AI"}</div>
-                  <div className="mt-1 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">{loading ? "Working" : message}</div>
+                  <div className="truncate text-[15px] font-semibold text-white">{activeTask?.prompt || prompt || "Run Meldex AI"}</div>
+                  <div className="mt-1 text-[12px] text-[#9CA3AF]">{loading ? "Working" : message}</div>
                 </div>
               </div>
               {files.length > 0 && (
-                <button onClick={() => setActiveRightTab("CHANGES")} className="mb-5 flex items-center gap-2 rounded-lg px-1 text-[13px] text-[#6B7280] transition hover:text-[#111827] dark:text-[#D1D5DB] dark:hover:text-white">
+                <button onClick={() => setActiveRightTab("CHANGES")} className="mb-5 flex items-center gap-2 rounded-lg px-1 text-[13px] text-[#D1D5DB] transition hover:text-white">
                   <FileText className="size-4" />
                   Read {Math.min(files.length, 4)} file{Math.min(files.length, 4) === 1 ? "" : "s"}
                   <ChevronRight className="size-3.5" />
                 </button>
               )}
-              <div className="space-y-4 text-[14px] leading-7 text-[#111827] dark:text-[#F9FAFB]">
+              <div className="space-y-4 text-[14px] leading-7 text-[#F9FAFB]">
                 <p>{loading ? "I'll update the workspace and verify the result in preview." : activeTask?.summary || "Tell Meldex AI what to build or change next."}</p>
-                {currentPromptDiffs.length > 0 && <p className="flex items-center gap-2 text-[#6B7280] dark:text-[#D1D5DB]"><Edit3 className="size-4" /> Edited {currentPromptDiffs.length} file{currentPromptDiffs.length === 1 ? "" : "s"}</p>}
+                {currentPromptDiffs.length > 0 && <p className="flex items-center gap-2 text-[#D1D5DB]"><Edit3 className="size-4" /> Edited {currentPromptDiffs.length} file{currentPromptDiffs.length === 1 ? "" : "s"}</p>}
                 {loading && <p className="flex items-center gap-2">Thinking <span className="size-2 animate-pulse rounded-full bg-[#7C5CFF]" /></p>}
               </div>
               {currentPromptDiffs.length > 0 && (
-                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white/80 shadow-sm dark:border-[#22252D] dark:bg-[#111318]/85">
-                  <div className="flex items-center justify-between border-b border-[#E5E7EB] px-4 py-3 dark:border-[#22252D]">
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 overflow-hidden rounded-2xl border border-[#22252D] bg-[#111318]/86 shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
+                  <div className="flex items-center justify-between border-b border-[#22252D] px-4 py-3">
                     <div className="text-[14px] font-medium">{currentPromptDiffs.length} file{currentPromptDiffs.length === 1 ? "" : "s"} changed <span className="ml-2 text-emerald-500">+{currentPromptDiffs.reduce((sum, file) => sum + file.added, 0)}</span> <span className="text-red-400">-{currentPromptDiffs.reduce((sum, file) => sum + file.removed, 0)}</span></div>
-                    <button onClick={() => setActiveRightTab("CHANGES")} className="rounded-full border border-[#E5E7EB] px-3 py-1.5 text-[13px] transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:hover:bg-[#1A1E27]">Review</button>
+                    <button onClick={() => setActiveRightTab("CHANGES")} className="rounded-full border border-[#2A2E39] px-3 py-1.5 text-[13px] transition hover:bg-[#1A1E27]">Review</button>
                   </div>
-                  <div className="divide-y divide-[#E5E7EB] dark:divide-[#22252D]">
+                  <div className="divide-y divide-[#22252D]">
                     {currentPromptDiffs.slice(0, 5).map((diff) => (
                       <div key={diff.path} className="group flex items-center gap-2 px-4 py-3 text-[13px]">
-                        <FileCode2 className="size-4 shrink-0 text-[#6B7280] dark:text-[#D1D5DB]" />
+                        <FileCode2 className="size-4 shrink-0 text-[#D1D5DB]" />
                         <button onClick={() => openFile(diff.path)} className="min-w-0 flex-1 truncate text-left hover:text-[#6D4AFF]">{diff.path}</button>
                         <span className="text-emerald-500">+{diff.added}</span>
                         <span className="text-red-400">-{diff.removed}</span>
-                        <button onClick={() => { void navigator.clipboard?.writeText(diff.path); setMessage("Path copied"); }} className="grid size-7 place-items-center rounded-lg opacity-70 transition hover:bg-[#F6F7FB] group-hover:opacity-100 dark:hover:bg-[#1A1E27]" title="Copy path"><Copy className="size-3.5" /></button>
+                        <button onClick={() => { void navigator.clipboard?.writeText(diff.path); setMessage("Path copied"); }} className="grid size-7 place-items-center rounded-lg opacity-70 transition hover:bg-[#1A1E27] group-hover:opacity-100" title="Copy path"><Copy className="size-3.5" /></button>
                         <button disabled title="Revert individual file is not available until diff review is opened" className="grid size-7 cursor-not-allowed place-items-center rounded-lg opacity-35"><RotateCcw className="size-3.5" /></button>
                       </div>
                     ))}
@@ -1262,18 +1262,18 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </motion.div>
               )}
               {queuedPrompt && (
-                <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white/70 p-4 text-[13px] dark:border-[#22252D] dark:bg-[#111318]/70">
+                <div className="mt-4 rounded-2xl border border-[#22252D] bg-[#111318]/70 p-4 text-[13px]">
                   <div className="mb-2 font-medium">Queue</div>
-                  <div className="rounded-xl bg-[#F6F7FB] p-3 text-[#6B7280] dark:bg-[#1A1E27] dark:text-[#D1D5DB]">{queuedPrompt}</div>
+                  <div className="rounded-xl bg-[#1A1E27] p-3 text-[#D1D5DB]">{queuedPrompt}</div>
                 </div>
               )}
             </>}
-            {activeRightTab === "RULES" && <div className="space-y-3 text-sm"><div className="rounded-xl border border-[#E5E7EB] p-4 dark:border-[#22252D]"><div className="font-semibold">Workspace Rules</div><p className="mt-2 text-[#6B7280] dark:text-[#9CA3AF]">Rules are loaded from memory and orchestration. Raw secrets are never shown.</p></div>{(state.memory?.codingStyle || []).concat(state.memory?.designStyle || []).slice(0, 8).map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 dark:bg-[#1A1E27]">{item}</div>)}</div>}
+            {activeRightTab === "RULES" && <div className="space-y-3 text-sm"><div className="rounded-xl border border-[#22252D] p-4"><div className="font-semibold">Workspace Rules</div><p className="mt-2 text-[#9CA3AF]">Rules are loaded from memory and orchestration. Raw secrets are never shown.</p></div>{(state.memory?.codingStyle || []).concat(state.memory?.designStyle || []).slice(0, 8).map((item) => <div key={item} className="rounded-lg bg-[#1A1E27] p-3">{item}</div>)}</div>}
             {activeRightTab === "CHANGES" && (
               <div className="space-y-2">
                 {(changed.length ? changed.map((diff) => ({ path: diff.path, added: diff.added, removed: diff.removed })) : files.map((file) => ({ path: file.path, added: 0, removed: 0 }))).length ? (changed.length ? changed.map((diff) => ({ path: diff.path, added: diff.added, removed: diff.removed })) : files.map((file) => ({ path: file.path, added: 0, removed: 0 }))).map((file) => (
-                  <div key={file.path} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]">
-                    <FileText className="size-4 shrink-0 text-[#6B7280]" />
+                  <div key={file.path} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[#1A1E27]">
+                    <FileText className="size-4 shrink-0 text-[#A5ADBA]" />
                     <button onClick={() => openFile(file.path)} className="min-w-0 flex-1 truncate text-left text-sm">
                       {file.path}
                     </button>
@@ -1284,57 +1284,57 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                         void navigator.clipboard?.writeText(file.path);
                         setMessage("Path copied");
                       }}
-                      className="grid size-7 place-items-center rounded-lg text-[#6B7280] hover:bg-white/70 dark:text-[#9CA3AF] dark:hover:bg-white/10"
+                      className="grid size-7 place-items-center rounded-lg text-[#9CA3AF] hover:bg-white/10"
                       title="Copy file path"
                     >
                       <Copy className="size-3.5" />
                     </button>
                   </div>
-                )) : <div className="text-[#6B7280]">No changes yet.</div>}
+                )) : <div className="text-[#9CA3AF]">No changes yet.</div>}
                 <div className="grid grid-cols-3 gap-2 pt-2">
-                  <button disabled title="Apply is automatic after generation in this release" className="rounded-lg border border-[#E5E7EB] py-2 text-xs opacity-45 dark:border-[#22252D]">Apply</button>
-                  <button disabled title="Reject requires a selected diff snapshot" className="rounded-lg border border-[#E5E7EB] py-2 text-xs opacity-45 dark:border-[#22252D]">Reject</button>
-                  <button disabled title="Rollback requires selecting a task snapshot" className="rounded-lg border border-[#E5E7EB] py-2 text-xs opacity-45 dark:border-[#22252D]">Rollback</button>
+                  <button disabled title="Apply is automatic after generation in this release" className="rounded-lg border border-[#22252D] py-2 text-xs opacity-45">Apply</button>
+                  <button disabled title="Reject requires a selected diff snapshot" className="rounded-lg border border-[#22252D] py-2 text-xs opacity-45">Reject</button>
+                  <button disabled title="Rollback requires selecting a task snapshot" className="rounded-lg border border-[#22252D] py-2 text-xs opacity-45">Rollback</button>
                 </div>
               </div>
             )}
             {activeRightTab === "ACTIVITY" && <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Filter events" /></div>
-                <button onClick={() => void navigator.clipboard?.writeText(filteredActivityEvents.map((event) => `${event.type}: ${event.message}`).join("\n"))} disabled={!filteredActivityEvents.length} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs disabled:opacity-45 dark:border-[#22252D]">Copy</button>
+                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#22252D] px-2"><Search className="size-3.5" /><input value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Filter events" /></div>
+                <button onClick={() => void navigator.clipboard?.writeText(filteredActivityEvents.map((event) => `${event.type}: ${event.message}`).join("\n"))} disabled={!filteredActivityEvents.length} className="rounded-lg border border-[#22252D] px-3 py-2 text-xs disabled:opacity-45">Copy</button>
               </div>
-              {filteredActivityEvents.length ? filteredActivityEvents.map((event) => <div key={`${event.sequence}-${event.type}`} className="rounded-lg border border-[#E5E7EB] p-3 text-xs dark:border-[#22252D]"><div className="font-semibold">{event.type.replaceAll("_", " ")}</div><div className="mt-1 text-[#6B7280] dark:text-[#9CA3AF]">{event.message}</div></div>) : <div className="text-[#6B7280]">Activity appears during generation.</div>}
+              {filteredActivityEvents.length ? filteredActivityEvents.map((event) => <div key={`${event.sequence}-${event.type}`} className="rounded-lg border border-[#22252D] p-3 text-xs"><div className="font-semibold">{event.type.replaceAll("_", " ")}</div><div className="mt-1 text-[#9CA3AF]">{event.message}</div></div>) : <div className="text-[#9CA3AF]">Activity appears during generation.</div>}
             </div>}
-            {activeRightTab === "MEMORY" && <div className="space-y-3"><div className="flex h-8 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Search memory" /></div><button onClick={async () => { if (!state.project || !window.confirm("Clear workspace memory?")) return; const response = await fetch(`/api/workspaces/${state.project.id}/memory`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) }); setMessage(response.ok ? "Memory cleared" : "Memory clear failed"); await loadWorkspace(state.project.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 dark:border-red-500/30">Clear memory</button>{memoryItems.length ? memoryItems.map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 text-xs dark:bg-[#1A1E27]">{item}</div>) : <div className="text-[#6B7280]">No matching memory.</div>}</div>}
+            {activeRightTab === "MEMORY" && <div className="space-y-3"><div className="flex h-8 items-center gap-2 rounded-lg border border-[#22252D] px-2"><Search className="size-3.5" /><input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Search memory" /></div><button onClick={async () => { if (!state.project || !window.confirm("Clear workspace memory?")) return; const response = await fetch(`/api/workspaces/${state.project.id}/memory`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) }); setMessage(response.ok ? "Memory cleared" : "Memory clear failed"); await loadWorkspace(state.project.id); }} className="rounded-lg border border-red-500/30 px-3 py-2 text-xs text-red-300">Clear memory</button>{memoryItems.length ? memoryItems.map((item) => <div key={item} className="rounded-lg bg-[#1A1E27] p-3 text-xs">{item}</div>) : <div className="text-[#9CA3AF]">No matching memory.</div>}</div>}
           </div>
-          <div className="shrink-0 border-t border-[#E5E7EB] p-4 dark:border-[#22252D]">
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white/90 p-3 shadow-sm transition focus-within:border-[#7C5CFF] dark:border-[#22252D] dark:bg-[#111318]/90">
+          <div className="shrink-0 border-t border-[#22252D] p-4">
+            <div className="rounded-2xl border border-[#22252D] bg-[#111318]/92 p-3 shadow-[0_14px_34px_rgba(0,0,0,0.28)] transition focus-within:border-[#7C5CFF]">
               <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((sendShortcut === "Enter" && event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-[14px] leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask for follow-up changes..." />
               <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
                 <div className="flex min-w-0 items-center gap-2">
                   <button disabled title="Attach context is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg opacity-45"><Plus className="size-4" /></button>
-                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#E5E7EB] px-3 text-amber-700 dark:border-[#2A2E39] dark:text-amber-300" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
-                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#E5E7EB] px-3 dark:border-[#2A2E39]" onClick={() => void loadUsage()} title="Refresh model and usage state"><RefreshCw className="size-3.5" /> {usage?.plan.slug || "5.5"}</button>
+                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#2A2E39] px-3 text-amber-300" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
+                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#2A2E39] px-3 text-[#D1D5DB]" onClick={() => void loadUsage()} title="Refresh model and usage state"><RefreshCw className="size-3.5" /> {usage?.plan.slug || "5.5"}</button>
                 </div>
                 <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="grid size-9 shrink-0 place-items-center rounded-full bg-[#F9FAFB] text-[#111827] shadow-sm transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-45 dark:bg-white dark:text-[#0B0D12]">{loading ? <Square className="size-4 fill-current" /> : <Play className="size-4" />}</button>
               </div>
             </div>
-            <div className="mt-3 flex items-center justify-between text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
-              <button onClick={() => setWorkMode(workMode === "local" ? "cloud" : "local")} className="flex items-center gap-1 transition hover:text-[#111827] dark:hover:text-white"><Globe2 className="size-3.5" /> Work {workMode === "local" ? "locally" : "in cloud"} <ChevronRight className={`size-3 transition ${workMode === "cloud" ? "rotate-90" : ""}`} /></button>
+            <div className="mt-3 flex items-center justify-between text-[12px] text-[#9CA3AF]">
+              <button onClick={() => setWorkMode(workMode === "local" ? "cloud" : "local")} className="flex items-center gap-1 transition hover:text-white"><Globe2 className="size-3.5" /> Work {workMode === "local" ? "locally" : "in cloud"} <ChevronRight className={`size-3 transition ${workMode === "cloud" ? "rotate-90" : ""}`} /></button>
               <div className="flex items-center gap-3"><button disabled title="Team controls are not available in this release" className="opacity-45"><UserRound className="size-4" /></button><button onClick={() => setAiSettingsOpen(true)} title="Notifications and settings"><Bell className="size-4" /></button></div>
             </div>
           </div>
           <AnimatePresence>
             {aiSettingsOpen && (
-              <motion.div initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 28 }} transition={{ duration: 0.18 }} className="absolute inset-0 z-40 flex flex-col border-l border-[#E5E7EB] bg-white/98 backdrop-blur-xl dark:border-[#22252D] dark:bg-[#0B0D12]/98">
-                <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-6 dark:border-[#22252D]">
+              <motion.div initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 28 }} transition={{ duration: 0.18 }} className="absolute inset-0 z-40 flex flex-col border-l border-[#22252D] bg-[#0B0D12]/98 text-white shadow-[-24px_0_80px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+                <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#22252D] px-6">
                   <h2 className="text-xl font-semibold">Meldex settings</h2>
-                  <button onClick={() => setAiSettingsOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title="Close settings"><X className="size-5" /></button>
+                  <button onClick={() => setAiSettingsOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#D1D5DB] transition hover:bg-[#1A1E27] hover:text-white" title="Close settings"><X className="size-5" /></button>
                 </div>
                 <div className="grid min-h-0 flex-1 grid-cols-[148px_minmax(0,1fr)]">
-                  <nav className="border-r border-[#E5E7EB] p-3 dark:border-[#22252D]">
+                  <nav className="border-r border-[#22252D] p-3">
                     {["General", "Configuration", "Personalization", "Usage & billing", "Hooks", "Plugins", "Chat Settings"].map((item) => (
-                      <button key={item} onClick={() => setAiSettingsTab(item)} className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-[13px] transition ${aiSettingsTab === item ? "bg-[#7C5CFF]/15 text-[#6D4AFF] dark:bg-[#7C5CFF]/25 dark:text-white" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"}`}>{item}</button>
+                      <button key={item} onClick={() => setAiSettingsTab(item)} className={`mb-1 block w-full rounded-lg px-3 py-2 text-left text-[13px] transition ${aiSettingsTab === item ? "bg-[#7C5CFF]/25 text-white" : "text-[#D1D5DB] hover:bg-[#1A1E27]"}`}>{item}</button>
                     ))}
                   </nav>
                   <div className="overflow-y-auto p-6">
@@ -1342,26 +1342,26 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                     <div className="space-y-7 text-sm">
                       <label className="block">
                         <span className="font-semibold">Language</span>
-                        <span className="mt-1 block text-[13px] text-[#6B7280] dark:text-[#9CA3AF]">Language for the app UI</span>
-                        <select className="mt-3 h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Auto detect</option><option>English</option><option>Gujarati friendly</option></select>
+                        <span className="mt-1 block text-[13px] text-[#9CA3AF]">Language for the app UI</span>
+                        <select className="mt-3 h-10 w-full rounded-lg border border-[#2A2E39] bg-[#111318] px-3 outline-none"><option>Auto detect</option><option>English</option><option>Gujarati friendly</option></select>
                       </label>
                       <label className="block">
                         <span className="font-semibold">Speed</span>
-                        <span className="mt-1 block text-[13px] text-[#6B7280] dark:text-[#9CA3AF]">Choose how quickly Meldex AI runs across chats and agent tasks</span>
-                        <select className="mt-3 h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Standard</option><option>Fast</option><option>Careful</option></select>
+                        <span className="mt-1 block text-[13px] text-[#9CA3AF]">Choose how quickly Meldex AI runs across chats and agent tasks</span>
+                        <select className="mt-3 h-10 w-full rounded-lg border border-[#2A2E39] bg-[#111318] px-3 outline-none"><option>Standard</option><option>Fast</option><option>Careful</option></select>
                       </label>
                       <div>
                         <div className="font-semibold">Code review</div>
-                        <div className="mt-1 text-[13px] leading-5 text-[#6B7280] dark:text-[#9CA3AF]">Start review in the current workspace when possible or launch a separate review chat</div>
-                        <div className="mt-3 grid grid-cols-2 rounded-lg border border-[#E5E7EB] p-1 dark:border-[#22252D]"><button className="rounded-md bg-[#7C5CFF] px-3 py-2 text-white">Inline</button><button className="rounded-md px-3 py-2 text-[#6B7280] dark:text-[#D1D5DB]">Detached</button></div>
+                        <div className="mt-1 text-[13px] leading-5 text-[#9CA3AF]">Start review in the current workspace when possible or launch a separate review chat</div>
+                        <div className="mt-3 grid grid-cols-2 rounded-lg border border-[#2A2E39] p-1"><button className="rounded-md bg-[#7C5CFF] px-3 py-2 text-white">Inline</button><button className="rounded-md px-3 py-2 text-[#D1D5DB]">Detached</button></div>
                       </div>
                       <label className="block">
                         <span className="font-semibold">Composer</span>
-                        <span className="mt-1 block text-[13px] text-[#6B7280] dark:text-[#9CA3AF]">Send shortcut</span>
-                        <select value={sendShortcut} onChange={(event) => setSendShortcut(event.target.value)} className="mt-3 h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Enter</option><option>⌘ Enter</option></select>
+                        <span className="mt-1 block text-[13px] text-[#9CA3AF]">Send shortcut</span>
+                        <select value={sendShortcut} onChange={(event) => setSendShortcut(event.target.value)} className="mt-3 h-10 w-full rounded-lg border border-[#2A2E39] bg-[#111318] px-3 outline-none"><option>Enter</option><option>⌘ Enter</option></select>
                       </label>
                     </div>
-                    <div className="mt-12 flex items-center justify-end gap-3"><button onClick={() => setSendShortcut("Enter")} className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Reset to defaults</button><button onClick={() => { setAiSettingsOpen(false); setMessage("Meldex AI settings saved"); }} className="rounded-lg bg-[#7C5CFF] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20">Save changes</button></div>
+                    <div className="mt-12 flex items-center justify-end gap-3"><button onClick={() => setSendShortcut("Enter")} className="text-sm text-[#9CA3AF]">Reset to defaults</button><button onClick={() => { setAiSettingsOpen(false); setMessage("Meldex AI settings saved"); }} className="rounded-lg bg-[#7C5CFF] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20">Save changes</button></div>
                   </div>
                 </div>
               </motion.div>

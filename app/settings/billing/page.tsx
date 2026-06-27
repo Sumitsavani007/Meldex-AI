@@ -271,7 +271,12 @@ export default function BillingPage() {
                 : paymentConfig?.provider === "razorpay"
                   ? Boolean(billingCycle === "YEARLY" ? plan.razorpayPlanIdYearly : plan.razorpayPlanIdMonthly)
                   : false;
-              const canCheckout = Boolean(paymentConfig?.enabled && plan.paymentEnabled && providerPlanConfigured && isHigher && !isCurrent);
+              const canCheckout = Boolean(paymentConfig?.enabled && isHigher && !isCurrent);
+              const checkoutHint = paymentConfig?.enabled
+                ? providerPlanConfigured
+                  ? `${paymentConfig.provider === "stripe" ? "Stripe" : "Razorpay"} checkout ready.`
+                  : `${paymentConfig.provider === "stripe" ? "Stripe price" : "Razorpay plan"} mapping will be validated at checkout.`
+                : "Manual admin upgrade only.";
               const actionLabel = isCurrent
                 ? "Current Plan"
                 : pending
@@ -295,14 +300,14 @@ export default function BillingPage() {
                   </div>
                   <SoftButton
                     disabled={isCurrent || !isHigher || Boolean(pending) || requestingPlan === plan.id || checkoutPlan === plan.id}
-                    title={isCurrent ? "This is your current plan" : pending ? "Upgrade request is pending" : !isHigher ? "Select a higher plan" : canCheckout ? "Go to payment checkout" : "Payments are not enabled for this provider/plan cycle. Request admin upgrade."}
+                    title={isCurrent ? "This is your current plan" : pending ? "Upgrade request is pending" : !isHigher ? "Select a higher plan" : canCheckout ? checkoutHint : "Payments are not enabled. Request admin upgrade."}
                     variant={isCurrent || pending ? "secondary" : "primary"}
                     className="mt-5 w-full"
                     onClick={() => canCheckout ? startCheckout(plan.id) : requestUpgrade(plan.id)}
                   >
                     {actionLabel}
                   </SoftButton>
-                  {!isCurrent && !canCheckout && !pending && <p className="mt-2 text-center text-[11px] text-slate-500">Payment coming soon for this option.</p>}
+                  {!isCurrent && !pending && <p className="mt-2 text-center text-[11px] text-slate-500">{checkoutHint}</p>}
                   <div className="mt-5 space-y-3">
                     {features.map((feature) => (
                       <div key={feature} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
