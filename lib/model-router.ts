@@ -9,6 +9,9 @@
  */
 
 import { getConfig } from "@/lib/runtime-config";
+import { ModelProvider, QueueStatus } from "@prisma/client";
+import { enqueueAiRequest, finishQueuedRequest, getProviderApiKey, recordProviderHealth, resolveProviderOrder, startQueuedRequest } from "@/lib/ai-infrastructure";
+import { logAuditEvent } from "@/lib/audit";
 
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
@@ -24,6 +27,8 @@ export type CompletionOptions = {
   maxTokens?: number;
   /** Timeout in milliseconds. Default: 90 000 */
   timeoutMs?: number;
+  userId?: string;
+  taskType?: string;
 };
 
 export type CompletionUsage = {
@@ -45,6 +50,13 @@ export type CompletionResult = {
 export type ProviderType =
   | "local_ollama"
   | "openrouter"
+  | "openai"
+  | "anthropic"
+  | "google_gemini"
+  | "deepseek"
+  | "groq"
+  | "together"
+  | "local"
   | "custom_openai_compatible";
 
 // ---------------------------------------------------------------------------
@@ -54,6 +66,13 @@ export type ProviderType =
 export async function getActiveProvider(): Promise<ProviderType> {
   const raw = ((await getConfig("MELDEX_BRAIN_PROVIDER")) ?? "local_ollama").toLowerCase();
   if (raw === "openrouter") return "openrouter";
+  if (raw === "openai") return "openai";
+  if (raw === "anthropic") return "anthropic";
+  if (raw === "google_gemini" || raw === "gemini") return "google_gemini";
+  if (raw === "deepseek") return "deepseek";
+  if (raw === "groq") return "groq";
+  if (raw === "together") return "together";
+  if (raw === "local") return "local";
   if (raw === "custom_openai_compatible" || raw === "custom") return "custom_openai_compatible";
   return "local_ollama";
 }
@@ -61,6 +80,12 @@ export async function getActiveProvider(): Promise<ProviderType> {
 export async function getProviderLabel(): Promise<string> {
   const p = await getActiveProvider();
   if (p === "openrouter") return "Cloud Test Brain (OpenRouter)";
+  if (p === "openai") return "OpenAI";
+  if (p === "anthropic") return "Anthropic";
+  if (p === "google_gemini") return "Google Gemini";
+  if (p === "deepseek") return "DeepSeek";
+  if (p === "groq") return "Groq";
+  if (p === "together") return "Together";
   if (p === "custom_openai_compatible") return "Custom API";
   return "Local Brain (Ollama)";
 }
@@ -217,6 +242,62 @@ async function callOpenAICompatible(
   return { content, provider: "openrouter", model, usage };
 }
 
+async function callAnthropicNative(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  options: CompletionOptions
+): Promise<CompletionResult> {
+  const timeout = options.timeoutMs ?? 90_000;
+  const system = options.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+  const messages = options.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content }));
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      system: system || undefined,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+    signal: AbortSignal.timeout(timeout),
+  });
+
+  const requestId = response.headers.get("request-id") ?? response.headers.get("x-request-id");
+  const retryAfter = response.headers.get("retry-after");
+  if (response.status === 401) throw new ModelRouterError("Invalid or missing Anthropic API key.", "missing_api_key", 401, model, requestId, retryAfter);
+  if (response.status === 403) throw new ModelRouterError(`No access to model "${model}".`, "forbidden", 403, model, requestId, retryAfter);
+  if (response.status === 429) throw new ModelRouterError("Rate limit exceeded.", "rate_limit", 429, model, requestId, retryAfter);
+  if (response.status === 404) throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404, model, requestId, retryAfter);
+  if (!response.ok) throw new ModelRouterError(`Anthropic returned ${response.status}.`, "provider_error", response.status, model, requestId, retryAfter);
+
+  const data = (await response.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+    error?: { message?: string };
+  };
+  if (data.error?.message) throw new ModelRouterError(data.error.message, "provider_error", undefined, model, requestId, retryAfter);
+  const content = data.content?.map((part) => part.text || "").join("").trim() || "";
+  if (!content) throw new ModelRouterError("Anthropic returned an empty response.", "empty_response", undefined, model, requestId, retryAfter);
+  const usage = data.usage ? {
+    inputTokens: Number(data.usage.input_tokens || 0),
+    outputTokens: Number(data.usage.output_tokens || 0),
+    reasoningTokens: 0,
+    cachedTokens: Number(data.usage.cache_read_input_tokens || 0),
+    totalTokens: Number(data.usage.input_tokens || 0) + Number(data.usage.output_tokens || 0),
+    estimated: false,
+  } : estimateTokensFromMessages(options.messages, content);
+  return { content, provider: "anthropic", model, usage };
+}
+
 function affordableMaxTokens(reason: string, requested?: number) {
   const match = reason.match(/can only afford\s+(\d+)/i);
   if (!match) return null;
@@ -313,6 +394,43 @@ async function callCustom(options: CompletionOptions): Promise<CompletionResult>
   return { ...result, provider: "custom_openai_compatible", model };
 }
 
+function providerTypeFromDb(provider: ModelProvider): ProviderType {
+  if (provider === ModelProvider.OPENROUTER) return "openrouter";
+  if (provider === ModelProvider.OPENAI) return "openai";
+  if (provider === ModelProvider.ANTHROPIC) return "anthropic";
+  if (provider === ModelProvider.GOOGLE_GEMINI) return "google_gemini";
+  if (provider === ModelProvider.DEEPSEEK) return "deepseek";
+  if (provider === ModelProvider.GROQ) return "groq";
+  if (provider === ModelProvider.TOGETHER) return "together";
+  if (provider === ModelProvider.CUSTOM_OPENAI_COMPATIBLE) return "custom_openai_compatible";
+  if (provider === ModelProvider.LOCAL) return "local";
+  return "local_ollama";
+}
+
+async function callConfiguredProvider(config: Awaited<ReturnType<typeof resolveProviderOrder>>[number], options: CompletionOptions): Promise<CompletionResult> {
+  const provider = providerTypeFromDb(config.provider);
+  const model = config.selectedModel || config.defaultModel;
+  const timeoutMs = options.timeoutMs ?? config.timeoutMs;
+  if (config.provider === ModelProvider.OLLAMA || config.provider === ModelProvider.LOCAL) {
+    return callOllama({ ...options, model, timeoutMs });
+  }
+  const apiKey = await getProviderApiKey(config.apiKeySettingKey);
+  if (!apiKey && config.provider !== ModelProvider.CUSTOM_OPENAI_COMPATIBLE) {
+    throw new ModelRouterError(`${config.name} API key is not configured.`, "missing_api_key", 503, model);
+  }
+  if (!config.baseUrl) throw new ModelRouterError(`${config.name} base URL is not configured.`, "missing_api_key", 503, model);
+  if (config.provider === ModelProvider.ANTHROPIC) {
+    if (!apiKey) throw new ModelRouterError(`${config.name} API key is not configured.`, "missing_api_key", 503, model);
+    return callAnthropicNative(config.baseUrl, apiKey, model, { ...options, timeoutMs });
+  }
+  const extraHeaders = config.provider === ModelProvider.OPENROUTER ? {
+    "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://meldex.newsyfly.com",
+    "X-Title": "Meldex AI",
+  } : undefined;
+  const result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs }, extraHeaders);
+  return { ...result, provider, model };
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -344,19 +462,55 @@ export class ModelRouterError extends Error {
  * Throws `ModelRouterError` for all provider-level failures.
  */
 export async function generateChatCompletionWithUsage(options: CompletionOptions): Promise<CompletionResult> {
+  const queue = options.userId ? await enqueueAiRequest({ userId: options.userId, taskType: options.taskType || "chat_completion", metadata: { model: options.model } }) : null;
+  if (queue) await startQueuedRequest(queue.id);
+  const providers = await resolveProviderOrder(options.model);
+  const errors: string[] = [];
+  for (const providerConfig of providers) {
+    const started = Date.now();
+    try {
+      const result = await callConfiguredProvider(providerConfig, options);
+      await recordProviderHealth({
+        providerConfigId: providerConfig.id,
+        provider: providerConfig.provider,
+        model: result.model,
+        ok: true,
+        latencyMs: Date.now() - started,
+      }).catch(() => undefined);
+      if (queue) await finishQueuedRequest(queue.id, QueueStatus.SUCCEEDED, { provider: result.provider, model: result.model }).catch(() => undefined);
+      if (options.userId) await logAuditEvent({ userId: options.userId, action: "AI_REQUEST", resource: result.provider, success: true, metadata: { model: result.model, usage: result.usage } }).catch(() => undefined);
+      return result;
+    } catch (err) {
+      const routerError = err instanceof ModelRouterError ? err : new ModelRouterError(err instanceof Error ? err.message : String(err), "provider_error");
+      errors.push(`${providerConfig.name}: ${routerError.code}`);
+      await recordProviderHealth({
+        providerConfigId: providerConfig.id,
+        provider: providerConfig.provider,
+        model: providerConfig.selectedModel || providerConfig.defaultModel,
+        ok: false,
+        latencyMs: Date.now() - started,
+        statusCode: routerError.httpStatus,
+        errorCode: routerError.code,
+        errorMessage: routerError.message,
+        requestId: routerError.requestId,
+      }).catch(() => undefined);
+      if (!providerConfig.isFallbackEnabled) break;
+    }
+  }
   const provider = await getActiveProvider();
   try {
-    if (provider === "openrouter") return await callOpenRouter(options);
-    if (provider === "custom_openai_compatible") return await callCustom(options);
-    return await callOllama(options);
+    if (!providers.length) {
+      if (provider === "openrouter") return await callOpenRouter(options);
+      if (provider === "custom_openai_compatible") return await callCustom(options);
+      return await callOllama(options);
+    }
+    throw new ModelRouterError(`All configured providers failed: ${errors.join(" → ") || "no provider available"}`, "provider_error", 502);
   } catch (err) {
+    if (queue) await finishQueuedRequest(queue.id, QueueStatus.FAILED, { errors }).catch(() => undefined);
     if (err instanceof ModelRouterError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("fetch") || msg.includes("ECONNREFUSED") || msg.includes("TimeoutError")) {
-      throw new ModelRouterError(
-        `Network failure reaching ${provider} provider. ${msg}`,
-        "network_failure"
-      );
+      throw new ModelRouterError(`Network failure reaching ${provider} provider. ${msg}`, "network_failure");
     }
     throw new ModelRouterError(msg, "provider_error");
   }

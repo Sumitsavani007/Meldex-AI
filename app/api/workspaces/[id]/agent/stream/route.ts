@@ -5,6 +5,7 @@ import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
+import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -58,6 +59,10 @@ export async function POST(
 
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
+    const abuseCheck = await detectAbuse({ userId: session.user.id, prompt: body.data.prompt, action: "agent_runs" });
+    if (!abuseCheck.ok) return NextResponse.json(abuseCheck, { status: 429, headers: { "Cache-Control": "no-store" } });
+    const dynamicRateLimit = await checkDynamicRateLimit(session.user.id, "agent_runs");
+    if (!dynamicRateLimit.ok) return NextResponse.json(dynamicRateLimit, { status: 429, headers: { "Cache-Control": "no-store" } });
     const project = await getOwnedWorkspaceProject(session.user.id, id);
     const agentGate = await canUseFeature(session.user.id, "agent_runs");
     if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
@@ -190,7 +195,7 @@ export async function POST(
               classification: orchestration.classification,
               confidence: orchestration.confidence.score,
             });
-            response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction);
+            response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
           } catch (providerError) {
             providerFailure = classifyWorkspaceProviderFailure(providerError, body.data.prompt);
             await send("error", providerFailure.userMessage, { providerFailure });
@@ -227,7 +232,7 @@ export async function POST(
             retries += 1;
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
             const fixPrompt = `${body.data.prompt}\n\nTARGETED FIX REQUIRED:\n${reviewer.findings.join("\n")}\nReturn complete corrected index.html, style.css, script.js, and README.md only.`;
-            const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction);
+            const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_autofix" });
             files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
             if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
               autofixes += 1;
