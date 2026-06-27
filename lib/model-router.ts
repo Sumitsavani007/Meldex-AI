@@ -242,6 +242,62 @@ async function callOpenAICompatible(
   return { content, provider: "openrouter", model, usage };
 }
 
+async function callAnthropicNative(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  options: CompletionOptions
+): Promise<CompletionResult> {
+  const timeout = options.timeoutMs ?? 90_000;
+  const system = options.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n\n");
+  const messages = options.messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content }));
+
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      system: system || undefined,
+      messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+    }),
+    signal: AbortSignal.timeout(timeout),
+  });
+
+  const requestId = response.headers.get("request-id") ?? response.headers.get("x-request-id");
+  const retryAfter = response.headers.get("retry-after");
+  if (response.status === 401) throw new ModelRouterError("Invalid or missing Anthropic API key.", "missing_api_key", 401, model, requestId, retryAfter);
+  if (response.status === 403) throw new ModelRouterError(`No access to model "${model}".`, "forbidden", 403, model, requestId, retryAfter);
+  if (response.status === 429) throw new ModelRouterError("Rate limit exceeded.", "rate_limit", 429, model, requestId, retryAfter);
+  if (response.status === 404) throw new ModelRouterError(`Model "${model}" not found.`, "invalid_model", 404, model, requestId, retryAfter);
+  if (!response.ok) throw new ModelRouterError(`Anthropic returned ${response.status}.`, "provider_error", response.status, model, requestId, retryAfter);
+
+  const data = (await response.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+    usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number };
+    error?: { message?: string };
+  };
+  if (data.error?.message) throw new ModelRouterError(data.error.message, "provider_error", undefined, model, requestId, retryAfter);
+  const content = data.content?.map((part) => part.text || "").join("").trim() || "";
+  if (!content) throw new ModelRouterError("Anthropic returned an empty response.", "empty_response", undefined, model, requestId, retryAfter);
+  const usage = data.usage ? {
+    inputTokens: Number(data.usage.input_tokens || 0),
+    outputTokens: Number(data.usage.output_tokens || 0),
+    reasoningTokens: 0,
+    cachedTokens: Number(data.usage.cache_read_input_tokens || 0),
+    totalTokens: Number(data.usage.input_tokens || 0) + Number(data.usage.output_tokens || 0),
+    estimated: false,
+  } : estimateTokensFromMessages(options.messages, content);
+  return { content, provider: "anthropic", model, usage };
+}
+
 function affordableMaxTokens(reason: string, requested?: number) {
   const match = reason.match(/can only afford\s+(\d+)/i);
   if (!match) return null;
@@ -363,6 +419,10 @@ async function callConfiguredProvider(config: Awaited<ReturnType<typeof resolveP
     throw new ModelRouterError(`${config.name} API key is not configured.`, "missing_api_key", 503, model);
   }
   if (!config.baseUrl) throw new ModelRouterError(`${config.name} base URL is not configured.`, "missing_api_key", 503, model);
+  if (config.provider === ModelProvider.ANTHROPIC) {
+    if (!apiKey) throw new ModelRouterError(`${config.name} API key is not configured.`, "missing_api_key", 503, model);
+    return callAnthropicNative(config.baseUrl, apiKey, model, { ...options, timeoutMs });
+  }
   const extraHeaders = config.provider === ModelProvider.OPENROUTER ? {
     "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://meldex.newsyfly.com",
     "X-Title": "Meldex AI",
