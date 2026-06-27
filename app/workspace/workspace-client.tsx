@@ -1213,19 +1213,19 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             </div>
             <div className="relative flex items-center gap-1 text-[#6B7280] dark:text-[#A5ADBA]">
               <button onClick={() => { setPrompt(""); setStreamEvents([]); setLiveDiffs([]); setQueuedPrompt(""); setActiveRightTab("CHAT"); setMessage("New chat ready"); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="New chat"><Plus className="size-3.5" /></button>
-              <button onClick={() => { setAiHistoryOpen((open) => !open); setAiMenuOpen(false); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Chat history"><History className="size-3.5" /></button>
+              <button onClick={() => { setAiHistoryOpen((open) => !open); setAiMenuOpen(false); setAiSettingsOpen(false); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Chat history"><History className="size-3.5" /></button>
               <button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title={loading ? "Command running" : "Sync Meldex AI"}><RefreshCw className={`size-3.5 ${loading ? "animate-spin text-[#7C5CFF]" : ""}`} /></button>
-              <button onClick={() => setAiSettingsOpen(true)} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Meldex AI settings"><Settings className="size-3.5" /></button>
-              <button onClick={() => { setAiMenuOpen((open) => !open); setAiHistoryOpen(false); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="More actions"><MoreHorizontal className="size-3.5" /></button>
-              {aiHistoryOpen && (
-                <div className="absolute right-10 top-10 z-30 w-72 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white/98 p-2 text-sm text-[#111827] shadow-2xl shadow-slate-900/15 backdrop-blur-xl dark:border-[#242833] dark:bg-[#111318]/98 dark:text-[#E5E7EB] dark:shadow-black/45">
+              <button onClick={() => { setAiSettingsOpen(true); setAiHistoryOpen(false); setAiMenuOpen(false); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Meldex AI settings"><Settings className="size-3.5" /></button>
+              <button onClick={() => { setAiMenuOpen((open) => !open); setAiHistoryOpen(false); setAiSettingsOpen(false); }} className="grid size-7 place-items-center rounded-lg transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="More actions"><MoreHorizontal className="size-3.5" /></button>
+              {aiHistoryOpen && !aiSettingsOpen && (
+                <div className="absolute right-10 top-10 z-[80] w-72 overflow-hidden rounded-2xl border border-[#D8DEE8] bg-white p-2 text-sm text-[#111827] shadow-[0_22px_70px_rgba(15,23,42,0.24)] ring-1 ring-black/5 dark:border-[#2A2E39] dark:bg-[#0F1117] dark:text-[#E5E7EB] dark:shadow-[0_22px_70px_rgba(0,0,0,0.7)] dark:ring-white/10">
                   <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#6B7280] dark:text-[#A5ADBA]">Chat history</div>
                   <div className="max-h-72 overflow-y-auto">
                     {state.tasks.length ? state.tasks.slice(0, 8).map((task) => (
                       <button
                         key={task.id}
                         onClick={() => { setPrompt(task.prompt); setActiveRightTab("CHAT"); setAiHistoryOpen(false); setMessage(task.summary || task.status); }}
-                        className="block w-full rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"
+                        className="block w-full rounded-xl px-3 py-2 text-left transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"
                       >
                         <div className="truncate text-[13px] font-medium">{task.prompt}</div>
                         <div className="mt-0.5 truncate text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">{task.status} · {new Date(task.createdAt).toLocaleString()}</div>
@@ -1234,11 +1234,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                   </div>
                 </div>
               )}
-              {aiMenuOpen && (
-                <div className="absolute right-0 top-10 z-30 w-44 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white/98 p-1.5 text-sm text-[#111827] shadow-2xl shadow-slate-900/15 backdrop-blur-xl dark:border-[#242833] dark:bg-[#111318]/98 dark:text-[#E5E7EB] dark:shadow-black/45">
-                  <button onClick={() => { const next = window.prompt("Rename chat", prompt || activeTask?.prompt || "Meldex AI chat"); if (next?.trim()) { setPrompt(next.trim()); setMessage("Chat renamed"); } setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Edit3 className="size-3.5" /> Rename chat</button>
-                  <button onClick={() => { setMessage("Chat archived"); setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Archive className="size-3.5" /> Archive chat</button>
-                  <button onClick={() => { void navigator.clipboard?.writeText(activeTask?.summary || prompt || ""); setMessage("Chat copied"); setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Copy className="size-3.5" /> Copy</button>
+              {aiMenuOpen && !aiSettingsOpen && (
+                <div className="absolute right-0 top-10 z-[80] w-48 overflow-hidden rounded-2xl border border-[#D8DEE8] bg-white p-1.5 text-sm text-[#111827] shadow-[0_22px_70px_rgba(15,23,42,0.24)] ring-1 ring-black/5 dark:border-[#2A2E39] dark:bg-[#0F1117] dark:text-[#E5E7EB] dark:shadow-[0_22px_70px_rgba(0,0,0,0.7)] dark:ring-white/10">
+                  <button onClick={() => { const next = window.prompt("Rename chat", prompt || activeTask?.prompt || "Meldex AI chat"); if (next?.trim()) { setPrompt(next.trim()); setMessage("Chat renamed"); } setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Edit3 className="size-3.5 text-[#6B7280] dark:text-[#A5ADBA]" /> Rename chat</button>
+                  <button onClick={() => { setMessage("Chat archived"); setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Archive className="size-3.5 text-[#6B7280] dark:text-[#A5ADBA]" /> Archive chat</button>
+                  <button onClick={() => { void navigator.clipboard?.writeText(activeTask?.summary || prompt || ""); setMessage("Chat copied"); setAiMenuOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left transition hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><Copy className="size-3.5 text-[#6B7280] dark:text-[#A5ADBA]" /> Copy</button>
                 </div>
               )}
             </div>
@@ -1345,12 +1345,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             </div>
             <div className="mt-3 flex items-center justify-between text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
               <button onClick={() => setWorkMode(workMode === "local" ? "cloud" : "local")} className="flex items-center gap-1 transition hover:text-[#111827] dark:hover:text-white"><Globe2 className="size-3.5" /> Work {workMode === "local" ? "locally" : "in cloud"} <ChevronRight className={`size-3 transition ${workMode === "cloud" ? "rotate-90" : ""}`} /></button>
-              <div className="flex items-center gap-3"><button disabled title="Team controls are not available in this release" className="opacity-45"><UserRound className="size-4" /></button><button onClick={() => setAiSettingsOpen(true)} title="Notifications and settings"><Bell className="size-4" /></button></div>
+              <div className="flex items-center gap-3"><button disabled title="Team controls are not available in this release" className="opacity-45"><UserRound className="size-4" /></button><button onClick={() => { setAiSettingsOpen(true); setAiHistoryOpen(false); setAiMenuOpen(false); }} title="Notifications and settings"><Bell className="size-4" /></button></div>
             </div>
           </div>
           <AnimatePresence>
             {aiSettingsOpen && (
-              <motion.div initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 28 }} transition={{ duration: 0.18 }} className="absolute inset-0 z-40 flex flex-col border-l border-[#E5E7EB] bg-white/98 text-[#111827] shadow-[-24px_0_80px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#0B0D12]/98 dark:text-white dark:shadow-[-24px_0_80px_rgba(0,0,0,0.5)]">
+              <motion.div initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 28 }} transition={{ duration: 0.18 }} className="absolute inset-0 z-[70] flex flex-col border-l border-[#D8DEE8] bg-[#FCFCFD] text-[#111827] shadow-[-28px_0_90px_rgba(15,23,42,0.22)] ring-1 ring-black/5 dark:border-[#2A2E39] dark:bg-[#0B0D12] dark:text-white dark:shadow-[-28px_0_90px_rgba(0,0,0,0.65)] dark:ring-white/10">
                 <div className="flex h-16 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-6 dark:border-[#22252D]">
                   <h2 className="text-xl font-semibold">Meldex settings</h2>
                   <button onClick={() => setAiSettingsOpen(false)} className="grid size-9 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Close settings"><X className="size-5" /></button>
