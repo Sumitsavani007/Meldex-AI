@@ -7,6 +7,14 @@ import { prisma } from "@/lib/prisma";
 import { generateChatCompletionWithUsage, ModelRouterError, type CompletionUsage } from "@/lib/model-router";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
+import {
+  buildCliRuntimeV4Plan,
+  buildProjectKnowledgeGraph,
+  buildQwenRuntimePrompt,
+  localReflectRuntimeOutput,
+  rankSemanticFiles,
+  type RuntimeV4Event,
+} from "@/lib/cli-runtime-v4";
 
 export type WorkspaceTreeNode = {
   id?: string;
@@ -35,6 +43,16 @@ export type WorkspaceAgentResponse = {
   provider?: string;
   model?: string;
   rawContent?: string;
+  runtimeV4?: {
+    events: RuntimeV4Event[];
+    scratchpad: unknown;
+    graphSummary: unknown;
+    rankedFiles: Array<{ path: string; score: number; reasons: string[] }>;
+    packedContext: { files: number; omitted: number; charCount: number };
+    dag: unknown;
+    confidence: unknown;
+    reflection: unknown;
+  };
 };
 
 export type WorkspaceMemorySnapshot = {
@@ -872,17 +890,25 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
     }
   };
   flatten(tree);
-  const relevant = await Promise.all(files.slice(0, 12).map(async (filePath) => {
+  const allReadable = await Promise.all(files.slice(0, 240).map(async (filePath) => {
     try {
       const content = await readFile(resolveProjectFile(storagePath, filePath).absolute, "utf8");
-      return { path: filePath, content: content.slice(0, 6000) };
+      return { path: filePath, content: content.slice(0, 9000) };
     } catch {
       return { path: filePath, content: "" };
     }
   }));
+  const graph = buildProjectKnowledgeGraph(allReadable);
+  const ranked = rankSemanticFiles({ taskId: projectId, prompt, files: allReadable }, graph);
+  const relevant = (ranked.length ? ranked : allReadable).slice(0, 12).map((file) => ({
+    path: file.path,
+    content: file.content.slice(0, 7000),
+    score: "score" in file ? file.score : 0,
+    reasons: "reasons" in file ? file.reasons : [],
+  }));
   const memory = userId ? (await readWorkspaceMemorySnapshot(userId, projectId).catch(() => null))?.memory : undefined;
   const memoryContext = memory ? workspaceMemoryPrompt(memory, prompt) : { snippet: "", relatedTaskCount: 0, reusedStyle: false, avoidedIssue: false };
-  return { projectId, projectFiles: files.slice(0, 80), relevantFiles: relevant, memory, memoryContext };
+  return { projectId, projectFiles: files.slice(0, 120), relevantFiles: relevant, memory, memoryContext, knowledgeGraph: graph, rankedFiles: ranked.slice(0, 16) };
 }
 
 function parseNestedWorkspaceResponse(value: unknown, depth = 0): WorkspaceAgentResponse | null {
@@ -1002,6 +1028,14 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
 }
 
 export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>, orchestrationInstruction = "", runtime?: { userId?: string; taskType?: string }) {
+  const runtimeV4 = buildCliRuntimeV4Plan({
+    taskId: `${context.projectId}:${runtime?.taskType || "workspace_agent"}`,
+    prompt,
+    files: context.relevantFiles.map((file) => ({ path: file.path, content: file.content })),
+    memorySnippet: context.memoryContext?.snippet || "",
+    styleRules: context.memory?.designStyle || [],
+    taskType: runtime?.taskType || "workspace_agent",
+  });
   const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
 Website Designer Agent V2:
 - Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
@@ -1038,6 +1072,7 @@ Coding Engine V2:
 ${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");
+  const runtimePrompt = buildQwenRuntimePrompt(runtimeV4);
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
     maxTokens: 8192,
@@ -1045,16 +1080,29 @@ ${websiteDesignerRules}`;
     userId: runtime?.userId,
     taskType: runtime?.taskType || "workspace_agent",
     messages: [
-      { role: "system", content: [system, orchestrationInstruction].filter(Boolean).join("\n\n") },
-      { role: "user", content: `Task:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context:\n${fileContext || "(empty workspace)"}` },
+      { role: "system", content: [system, orchestrationInstruction, "Use the Meldex CLI Runtime V4 contract below. Qwen3-Coder 32B is the only coding model."].filter(Boolean).join("\n\n") },
+      { role: "user", content: `${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || "(empty workspace)"}` },
     ],
   });
+  const parsed = parseAgentJson(completion.content);
+  const reflection = localReflectRuntimeOutput(parsed.files || [], prompt);
   return {
-    ...parseAgentJson(completion.content),
+    ...parsed,
+    warnings: [...(parsed.warnings || []), ...(reflection.ok ? [] : reflection.issues)],
     usage: completion.usage,
     provider: completion.provider,
     model: completion.model,
     rawContent: completion.content,
+    runtimeV4: {
+      events: runtimeV4.events as RuntimeV4Event[],
+      scratchpad: runtimeV4.scratchpad,
+      graphSummary: runtimeV4.graph.summary,
+      rankedFiles: runtimeV4.rankedFiles.slice(0, 10).map((file) => ({ path: file.path, score: file.score, reasons: file.reasons })),
+      packedContext: { files: runtimeV4.packedContext.files.length, omitted: runtimeV4.packedContext.omitted, charCount: runtimeV4.packedContext.charCount },
+      dag: runtimeV4.dag,
+      confidence: runtimeV4.confidence,
+      reflection,
+    },
   };
 }
 

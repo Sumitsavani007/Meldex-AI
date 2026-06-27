@@ -196,6 +196,9 @@ export async function POST(
               confidence: orchestration.confidence.score,
             });
             response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
+            for (const runtimeEvent of response.runtimeV4?.events || []) {
+              await send(runtimeEvent.type, runtimeEvent.message, runtimeEvent.payload);
+            }
           } catch (providerError) {
             providerFailure = classifyWorkspaceProviderFailure(providerError, body.data.prompt);
             await send("error", providerFailure.userMessage, { providerFailure });
@@ -210,6 +213,13 @@ export async function POST(
           await send("changes_planned", "Planned changes");
 
           let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
+          if (response.runtimeV4?.reflection) {
+            await send(
+              (response.runtimeV4.reflection as { ok?: boolean }).ok ? "local_reflection_done" : "local_reflection_failed",
+              (response.runtimeV4.reflection as { ok?: boolean }).ok ? "Local reflection passed" : "Local reflection requested targeted repair",
+              { reflection: response.runtimeV4.reflection }
+            );
+          }
           await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
           });
@@ -368,6 +378,15 @@ export async function POST(
             commands: ["static-preview-verify"],
           }) : null;
           if (memory) await send("memory_updated", "Updated workspace memory", { recentTasks: memory.recentTasks.length, knownIssues: memory.knownIssues.length });
+          if (response.runtimeV4?.scratchpad) {
+            await send("scratchpad_finalized", "Finalized task scratchpad", {
+              scratchpad: {
+                ...(response.runtimeV4.scratchpad as Record<string, unknown>),
+                currentStatus: updatedTask.status === "SUCCEEDED" ? "completed" : "blocked",
+                finalResult: summary,
+              },
+            });
+          }
           const learning = await recordWorkspaceLearning({
             userId: session.user.id,
             projectId: project.id,

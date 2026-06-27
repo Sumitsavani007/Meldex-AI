@@ -11,6 +11,7 @@ import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { getNumberSetting } from "@/lib/runtime-config";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
+import { buildCliRuntimeV4Plan, buildQwenRuntimePrompt, coerceUnifiedRuntimeOutput, localReflectRuntimeOutput } from "@/lib/cli-runtime-v4";
 
 const schema = z.object({
   task: z.string().min(1).max(12000),
@@ -110,7 +111,7 @@ export async function POST(req: NextRequest) {
 
   const { task, model, context } = body.data;
 
-  // Build context message
+  // Build context message through the shared Meldex CLI Runtime V4 core.
   const ctxParts: string[] = [`Task: ${task}`];
   if (context?.workspaceName) ctxParts.push(`Workspace: ${context.workspaceName}`);
   if (context?.projectType) ctxParts.push(`Project type: ${context.projectType}`);
@@ -120,6 +121,23 @@ export async function POST(req: NextRequest) {
   if (context?.selectedText) ctxParts.push(`Selected code:\n\`\`\`\n${context.selectedText}\n\`\`\``);
   if (context?.activeFileContent) ctxParts.push(`Active file content:\n\`\`\`\n${context.activeFileContent.slice(0, 3000)}\n\`\`\``);
   if (context?.terminalError) ctxParts.push(`Terminal error:\n\`\`\`\n${context.terminalError}\n\`\`\``);
+  const runtimeFiles = [
+    ...(context?.activeFile && context.activeFileContent ? [{ path: context.activeFile, content: context.activeFileContent, active: true }] : []),
+    ...(context?.packageJson ? [{ path: "package.json", content: context.packageJson }] : []),
+    ...((context?.projectFiles || [])
+      .filter((filePath) => filePath !== context?.activeFile)
+      .slice(0, 80)
+      .map((filePath) => ({ path: filePath, content: "" }))),
+  ];
+  const runtimeV4 = buildCliRuntimeV4Plan({
+    taskId: `extension:${user.userId}:${Date.now()}`,
+    prompt: task,
+    files: runtimeFiles,
+    activeFile: context?.activeFile,
+    memorySnippet: context?.terminalError ? `Recent terminal error: ${context.terminalError.slice(0, 2000)}` : "",
+    taskType: "extension_agent",
+  });
+  const runtimePrompt = buildQwenRuntimePrompt(runtimeV4);
 
   try {
     const temperature = await getNumberSetting("QWEN_TEMPERATURE", 0.2);
@@ -132,20 +150,33 @@ export async function POST(req: NextRequest) {
       maxTokens,
       timeoutMs,
       messages: [
-        { role: "system", content: `${AGENT_SYSTEM}\n${CODING_ENGINE_V2}\n${isWebsiteTask(task) ? `\n${WEBSITE_DESIGNER_V2}` : ""}\nReturn JSON only. No markdown fences.` },
-        { role: "user", content: ctxParts.join("\n\n") },
+        { role: "system", content: `${AGENT_SYSTEM}\n${CODING_ENGINE_V2}\n${isWebsiteTask(task) ? `\n${WEBSITE_DESIGNER_V2}` : ""}\nUse Meldex CLI Runtime V4. Qwen3-Coder stays the coding model. Return JSON only. No markdown fences.` },
+        { role: "user", content: `${runtimePrompt}\n\nExtension context fallback:\n${ctxParts.join("\n\n")}` },
       ],
     });
 
-    let plan: unknown;
-    try {
-      plan = JSON.parse(rawContent);
-    } catch {
-      plan = { plan: ["Task analysis completed"], files: [], commands: [], summary: rawContent };
-    }
+    const plan = coerceUnifiedRuntimeOutput(rawContent);
+    const reflection = localReflectRuntimeOutput(plan.files, task);
 
     return NextResponse.json({
-      ...(plan as object),
+      ...plan,
+      files: plan.files.map((file) => ({
+        operation: file.operation || (file.action === "update" ? "edit" : file.action) || "create",
+        path: file.path,
+        content: file.content,
+        description: file.description,
+      })),
+      warnings: reflection.ok ? [] : reflection.issues,
+      runtimeV4: {
+        events: runtimeV4.events,
+        scratchpad: runtimeV4.scratchpad,
+        graphSummary: runtimeV4.graph.summary,
+        rankedFiles: runtimeV4.rankedFiles.slice(0, 10).map((file) => ({ path: file.path, score: file.score, reasons: file.reasons })),
+        packedContext: { files: runtimeV4.packedContext.files.length, omitted: runtimeV4.packedContext.omitted, charCount: runtimeV4.packedContext.charCount },
+        dag: runtimeV4.dag,
+        confidence: runtimeV4.confidence,
+        reflection,
+      },
       user: { id: user.userId, email: user.email },
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

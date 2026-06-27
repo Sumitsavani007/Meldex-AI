@@ -3,12 +3,34 @@ import * as path from "path";
 
 export type RuntimeEventType =
   | "task_started"
+  | "scratchpad_created"
+  | "scratchpad_updated"
+  | "scratchpad_finalized"
+  | "knowledge_graph_built"
+  | "knowledge_graph_updated"
+  | "file_ranking_done"
   | "context_packed"
+  | "context_compressed"
   | "project_instructions_loaded"
+  | "task_dag_created"
+  | "task_node_started"
+  | "task_node_completed"
+  | "task_node_failed"
+  | "local_reflection_done"
+  | "local_reflection_failed"
+  | "confidence_scored"
+  | "patch_planned"
   | "approval_required"
   | "command_classified"
   | "patch_guarded"
+  | "patch_applied"
+  | "patch_rejected_too_broad"
   | "rollback_recorded"
+  | "background_task_started"
+  | "background_task_resumed"
+  | "background_task_completed"
+  | "learning_rule_suggested"
+  | "learning_rule_applied"
   | "task_interrupted"
   | "task_completed";
 
@@ -56,6 +78,25 @@ export type PackedContext = {
   omitted: number;
   charCount: number;
 };
+
+export type RuntimeScratchpad = {
+  taskId: string;
+  goal: string;
+  currentStatus: "created" | "running" | "blocked" | "completed";
+  filesInspected: string[];
+  filesToEdit: string[];
+  assumptions: string[];
+  risks: string[];
+  completedSteps: string[];
+  nextStep: string;
+  validationPlan: string[];
+  errorsFound: string[];
+  fixesAttempted: string[];
+  finalResult?: string;
+  updatedAt: string;
+};
+
+export type RankedFile = { path: string; score: number; reasons: string[] };
 
 export type HybridRuntimeOptions = {
   root: string;
@@ -190,6 +231,83 @@ export class CodexStyleRuntimeAdapter {
     const instructions = blocks.join("\n\n");
     this.event("project_instructions_loaded", { files: blocks.length, chars: instructions.length });
     return instructions;
+  }
+
+  createScratchpad(goal: string): RuntimeScratchpad {
+    const scratchpad: RuntimeScratchpad = {
+      taskId: this.options.taskId,
+      goal,
+      currentStatus: "created",
+      filesInspected: [],
+      filesToEdit: [],
+      assumptions: ["Use existing project conventions", "Do not expose secrets", "Prefer minimal scoped edits"],
+      risks: [],
+      completedSteps: [],
+      nextStep: "Index workspace and rank relevant files",
+      validationPlan: ["Run local reflection", "Run relevant validation"],
+      errorsFound: [],
+      fixesAttempted: [],
+      updatedAt: new Date().toISOString(),
+    };
+    this.event("scratchpad_created", { scratchpad });
+    return scratchpad;
+  }
+
+  updateScratchpad(scratchpad: RuntimeScratchpad, patch: Partial<RuntimeScratchpad>): RuntimeScratchpad {
+    const next = { ...scratchpad, ...patch, updatedAt: new Date().toISOString() };
+    this.event("scratchpad_updated", { scratchpad: next });
+    return next;
+  }
+
+  buildKnowledgeGraph(files: Array<{ path: string; content: string }>) {
+    const nodes = files
+      .filter((file) => !SECRET_PATH_RE.test(file.path))
+      .map((file) => ({ id: file.path, type: /\.(tsx|jsx)$/.test(file.path) ? "component" : /route\.(ts|js)$|api/.test(file.path) ? "api_route" : /css|scss/.test(file.path) ? "style" : "file" }));
+    const edges: Array<{ from: string; to: string; type: string }> = [];
+    for (const file of files) {
+      for (const match of file.content.matchAll(/(?:import\s+[^"']*from\s+|require\()["']([^"']+)["']/g)) {
+        edges.push({ from: file.path, to: match[1], type: "imports" });
+      }
+    }
+    const graph = { nodes, edges, summary: { files: nodes.length, edges: edges.length } };
+    this.event("knowledge_graph_built", graph);
+    return graph;
+  }
+
+  rankFiles(task: string, files: Array<{ path: string; content: string }>, activeFile?: string): RankedFile[] {
+    const tokens = task.toLowerCase().split(/[^a-z0-9_.-]+/).filter((token) => token.length > 2);
+    const ranked = files
+      .filter((file) => !SECRET_PATH_RE.test(file.path))
+      .map((file) => {
+        let score = activeFile === file.path ? 35 : 0;
+        const reasons: string[] = activeFile === file.path ? ["active_file"] : [];
+        const lowerPath = file.path.toLowerCase();
+        const lowerContent = file.content.toLowerCase().slice(0, 4000);
+        for (const token of tokens) {
+          if (lowerPath.includes(token)) {
+            score += 18;
+            reasons.push(`path:${token}`);
+          }
+          if (lowerContent.includes(token)) {
+            score += 4;
+            reasons.push(`content:${token}`);
+          }
+        }
+        if (/package\.json|README\.md|index\.html|style\.css|script\.js/.test(file.path)) {
+          score += 10;
+          reasons.push("canonical_file");
+        }
+        return { path: file.path, score, reasons: [...new Set(reasons)].slice(0, 8) };
+      })
+      .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+    this.event("file_ranking_done", { top: ranked.slice(0, 10) });
+    return ranked;
+  }
+
+  localReflect(files: PatchLike[], staticProject = false): PatchGuardResult {
+    const result = this.guardPatch({ patches: files, mode: "task", staticProject });
+    this.event(result.ok ? "local_reflection_done" : "local_reflection_failed", result);
+    return result;
   }
 
   packContext(files: Array<{ path: string; content: string }>, extraInstructions = ""): PackedContext {

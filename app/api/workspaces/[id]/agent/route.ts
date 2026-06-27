@@ -20,6 +20,7 @@ import {
   deleteProjectFile,
 } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
@@ -142,6 +143,18 @@ export async function POST(
     let autofixes = 0;
     try {
       response = await askWorkspaceAgent(body.prompt, context, "", { userId: session.user.id, taskType: "workspace_agent" });
+      for (const runtimeEvent of response.runtimeV4?.events || []) {
+        await prisma.workspaceLog.create({
+          data: {
+            userId: session.user.id,
+            projectId: project.id,
+            taskId: task.id,
+            event: runtimeEvent.type,
+            message: runtimeEvent.message,
+            metadata: runtimeEvent.payload as Prisma.InputJsonValue,
+          },
+        });
+      }
     } catch (providerError) {
       providerFailure = classifyWorkspaceProviderFailure(providerError, body.prompt);
       await prisma.workspaceLog.create({
@@ -171,6 +184,18 @@ export async function POST(
     }
     const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
     let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.prompt);
+    if (response.runtimeV4?.reflection) {
+      await prisma.workspaceLog.create({
+        data: {
+          userId: session.user.id,
+          projectId: project.id,
+          taskId: task.id,
+          event: (response.runtimeV4.reflection as { ok?: boolean }).ok ? "local_reflection_done" : "local_reflection_failed",
+          message: (response.runtimeV4.reflection as { ok?: boolean }).ok ? "Local reflection passed." : "Local reflection requested targeted repair.",
+          metadata: response.runtimeV4.reflection as Prisma.InputJsonValue,
+        },
+      });
+    }
     if (!files.length && isStaticWebsitePrompt(body.prompt)) {
       autofixes += 1;
       const fallback = offlineStaticWorkspace(body.prompt);
