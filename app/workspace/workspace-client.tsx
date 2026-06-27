@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -172,6 +173,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
   const [previewStopped, setPreviewStopped] = useState(false);
   const [copiedPreview, setCopiedPreview] = useState(false);
+  const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
+    app: true,
+    api: true,
+    components: true,
+    styles: true,
+  });
+  const [leftWidth, setLeftWidth] = useState(320);
+  const [rightWidth, setRightWidth] = useState(360);
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
@@ -388,6 +397,26 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setTimeout(() => setCopiedPreview(false), 1800);
   }
 
+  function startResize(side: "left" | "right", event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startLeft = leftWidth;
+    const startRight = rightWidth;
+    const onMove = (moveEvent: MouseEvent) => {
+      if (side === "left") {
+        setLeftWidth(Math.min(420, Math.max(260, startLeft + moveEvent.clientX - startX)));
+      } else {
+        setRightWidth(Math.min(460, Math.max(320, startRight - (moveEvent.clientX - startX))));
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
 
   const ideFolders = ["app", "api", "components", "hooks", "providers", "lib", "utils", "styles", "public", "tests"];
   const rootFiles = ["package.json", "next.config.ts", "README.md", "tsconfig.json", ".env", ".gitignore"];
@@ -406,8 +435,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   return (
     <div className="h-screen overflow-hidden bg-[#f6f7fb] font-sans text-[13px] text-[#111827] antialiased transition-colors dark:bg-[#0B0D12] dark:text-white">
-      <main className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[320px_minmax(620px,1fr)_360px]">
-        <aside className="hidden min-h-0 border-r border-[#E5E7EB] bg-white/92 shadow-[8px_0_40px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/95 lg:flex lg:flex-col">
+      <main className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[var(--workspace-left)_minmax(620px,1fr)_var(--workspace-right)]" style={{ "--workspace-left": `${leftWidth}px`, "--workspace-right": `${rightWidth}px` } as React.CSSProperties}>
+        <aside className="relative hidden min-h-0 border-r border-[#E5E7EB] bg-white/92 shadow-[8px_0_40px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/95 lg:flex lg:flex-col">
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]">
             <div className="flex items-center gap-2">
               <div className="grid size-7 place-items-center rounded-lg bg-[#6D4AFF] text-white shadow-lg shadow-violet-500/20">
@@ -430,32 +459,40 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             </button>
 
             <div className="space-y-0.5">
-              {ideFolders.map((folder, index) => {
+              {ideFolders.map((folder) => {
                 const matches = files.filter((file) => file.path.startsWith(`${folder}/`));
-                const open = ["app", "components", "styles"].includes(folder) || matches.length > 0;
+                const open = openFolders[folder] ?? false;
                 return (
                   <div key={folder}>
-                    <button className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#374151] transition hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]">
+                    <button onClick={() => setOpenFolders((current) => ({ ...current, [folder]: !open }))} className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#374151] transition duration-200 hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]">
                       <ChevronRight className={`size-3.5 text-[#6B7280] transition ${open ? "rotate-90" : ""}`} />
                       <span className="grid size-5 place-items-center rounded-md bg-amber-100 text-amber-600 dark:bg-amber-400/12 dark:text-amber-300">
                         {open ? <FolderOpen className="size-3.5" /> : <Folder className="size-3.5" />}
                       </span>
                       <span className="truncate">{folder}</span>
                     </button>
-                    {open && (
-                      <div className="ml-6 border-l border-[#E5E7EB] pl-2 dark:border-[#22252D]">
-                        {(matches.length ? matches : index < 5 ? [{ path: `${folder}/index.ts`, name: "index.ts", type: "file" as const }] : []).slice(0, 5).map((node) => {
-                          const fileIcon = fileIconFor(node.name);
-                          const Icon = fileIcon.Icon;
-                          return (
-                            <button key={node.path} onClick={() => actualFilePaths.has(node.path) && openFile(node.path)} className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition ${selectedFile === node.path ? "bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/18 dark:text-white" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"}`}>
-                              <Icon className={`size-3.5 ${fileIcon.color}`} />
-                              <span className="truncate">{node.name}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                      {open && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.18, ease: "easeOut" }}
+                          className="ml-6 overflow-hidden border-l border-[#E5E7EB] pl-2 dark:border-[#22252D]"
+                        >
+                          {matches.length ? matches.slice(0, 8).map((node) => {
+                            const fileIcon = fileIconFor(node.name);
+                            const Icon = fileIcon.Icon;
+                            return (
+                              <button key={node.path} onClick={() => actualFilePaths.has(node.path) && openFile(node.path)} className={`flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition duration-200 ${selectedFile === node.path ? "bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/18 dark:text-white" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"}`}>
+                                <Icon className={`size-3.5 ${fileIcon.color}`} />
+                                <span className="truncate">{node.name}</span>
+                              </button>
+                            );
+                          }) : <div className="px-2 py-1 text-[11px] text-[#9CA3AF]">Empty</div>}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </div>
                 );
               })}
@@ -480,6 +517,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             <button className="flex h-10 w-full items-center gap-2 px-4 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-[#374151] hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"><ChevronRight className="size-3.5" /> Outline</button>
             <button className="flex h-10 w-full items-center gap-2 border-t border-[#E5E7EB] px-4 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-[#374151] hover:bg-[#F6F7FB] dark:border-[#22252D] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"><ChevronRight className="size-3.5" /> Timeline</button>
           </div>
+          <div onMouseDown={(event) => startResize("left", event)} className="absolute right-[-3px] top-0 z-20 hidden h-full w-1 cursor-col-resize bg-transparent transition hover:bg-[#6D4AFF]/70 lg:block" />
         </aside>
 
         <section className="flex min-h-0 flex-col bg-[#F6F7FB] dark:bg-[#0B0D12]">
@@ -514,7 +552,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           <div className="flex h-7 shrink-0 items-center justify-between border-t border-[#E5E7EB] bg-white px-4 text-[11px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><span>{state.project?.name || "MELDEX-WORKSPACE"}</span><span>{message}</span></div>
         </section>
 
-        <aside className="flex min-h-0 flex-col border-l border-[#E5E7EB] bg-white/94 shadow-[-8px_0_44px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/96">
+        <aside className="relative flex min-h-0 flex-col border-l border-[#E5E7EB] bg-white/94 shadow-[-8px_0_44px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/96">
+          <div onMouseDown={(event) => startResize("right", event)} className="absolute left-[-3px] top-0 z-20 hidden h-full w-1 cursor-col-resize bg-transparent transition hover:bg-[#6D4AFF]/70 lg:block" />
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-5 dark:border-[#22252D]"><div className="text-sm font-semibold uppercase tracking-[0.08em]">Codex</div><div className="flex items-center gap-1 text-[#6B7280] dark:text-[#9CA3AF]"><button onClick={() => setPrompt("")} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="New chat"><Plus className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="History"><History className="size-4" /></button><button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Refresh"><RefreshCw className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Settings"><Settings className="size-4" /></button><button className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="More"><MoreHorizontal className="size-4" /></button></div></div>
           <div className="flex h-11 shrink-0 items-center gap-5 border-b border-[#E5E7EB] px-5 text-[12px] font-semibold uppercase tracking-[0.08em] dark:border-[#22252D]"><button className="h-full border-b-2 border-[#6D4AFF] text-[#111827] dark:border-[#7C5CFF] dark:text-white">Chat</button><button onClick={() => setMessage("Rules are managed by workspace memory")} className="h-full text-[#6B7280] hover:text-[#111827] dark:text-[#9CA3AF] dark:hover:text-white">Rules</button></div>
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
