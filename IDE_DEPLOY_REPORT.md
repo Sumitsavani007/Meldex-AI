@@ -2,9 +2,9 @@
 
 Date: 2026-06-27
 
-## Recommended AWS Deployment
+## AWS Deployment
 
-Use OpenVSCode Server Docker image:
+Use OpenVSCode Server Docker image per workspace:
 
 ```bash
 docker run --init \
@@ -17,19 +17,20 @@ docker run --init \
 
 ## Nginx Requirements
 
-- Route `/ide/<session>/` to the assigned OpenVSCode port.
+- Route `/ide/` to the Meldex OpenVSCode proxy on `127.0.0.1:3101`.
 - Enable websocket upgrade headers.
 - Do not expose OpenVSCode directly to the public internet.
 - Enforce Meldex auth before issuing/redirecting to an IDE session URL.
 
 ## Meldex Environment
 
-Set one of:
+Meldex now uses:
 
-- `MELDEX_OPENVSCODE_URL_TEMPLATE`
-- `MELDEX_OPENVSCODE_BASE_URL`
+- `MELDEX_IDE_PROXY_PORT`, default `3101`
+- `MELDEX_IDE_SESSION_FILE`, default `/tmp/meldex-openvscode-sessions.json`
+- `MELDEX_IDE_PORT_BASE`, default `41000`
+- `MELDEX_IDE_PORT_SPAN`, default `12000`
 
 ## Deploy Status
 
-Meldex route support is implemented. OpenVSCode service deployment remains blocked.
-
+Meldex route, session manager, and proxy script are implemented.

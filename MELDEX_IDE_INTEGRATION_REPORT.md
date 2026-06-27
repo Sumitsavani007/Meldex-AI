@@ -14,13 +14,16 @@ Date: 2026-06-27
 
 ## Behavior
 
-If OpenVSCode is configured, the route embeds the IDE and provides an open-in-new-tab action.
+The route now creates a per-workspace OpenVSCode session using `ensureOpenVSCodeSession`.
 
-If OpenVSCode is not configured, the route shows a secure blocked/setup state instead of fake IDE UI.
+Session behavior:
+
+- Verifies Meldex auth.
+- Verifies workspace ownership.
+- Creates a short-lived token.
+- Starts/reuses a Docker OpenVSCode container for the owned workspace folder.
+- Embeds `/ide/[workspaceId]/?tkn=...` through the Meldex OpenVSCode proxy.
 
 ## Not Done Yet
 
-- OpenVSCode Server is not running on AWS yet.
-- Nginx websocket reverse proxy is not configured yet.
-- Per-workspace launch/session manager is not implemented yet.
-
+- Native Meldex AI VS Code extension is not packaged yet. Current agent remains in the Meldex workspace panel.

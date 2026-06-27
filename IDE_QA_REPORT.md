@@ -8,11 +8,13 @@ Date: 2026-06-27
 - License checked.
 - Meldex protected IDE route added.
 - Workspace ownership check added.
+- Per-workspace OpenVSCode session manager added.
+- Token-validating OpenVSCode websocket proxy added.
 - Workspace topbar Open IDE button added.
 
 ## Blocked QA
 
-The following could not be verified because Docker daemon was not running locally and the AWS OpenVSCode service is not deployed:
+The following must be verified after AWS Docker/Nginx proxy deployment:
 
 - Browser IDE opens.
 - Native file explorer works.
@@ -20,7 +22,6 @@ The following could not be verified because Docker daemon was not running locall
 - Native terminal works.
 - OpenVSCode extension/sidebar panel works.
 
-## Local Blocker
+## Previous Local Blocker
 
 `Cannot connect to the Docker daemon at unix:///Users/sumitsavani/.docker/run/docker.sock`
-

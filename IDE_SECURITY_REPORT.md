@@ -7,18 +7,14 @@ Date: 2026-06-27
 - `/workspace/[projectId]/ide` requires Meldex auth.
 - Workspace ownership is verified with `getOwnedWorkspaceProject`.
 - The route does not expose a public unauthenticated IDE.
-- If OpenVSCode is not configured, no fake or public IDE is shown.
+- OpenVSCode containers bind to localhost only.
+- IDE access requires a short-lived token.
+- The Node proxy validates token + workspace before proxying HTTP or websocket traffic.
 
 ## Required Before Production Enablement
 
-- Per-workspace OpenVSCode process or container.
-- Per-session connection token.
-- Token must not be logged.
-- Nginx must proxy websocket upgrades only after Meldex auth/session verification.
-- OpenVSCode must mount only the owned workspace folder.
-- Terminal must be disabled or sandboxed if raw shell access cannot be safely contained.
+- Terminal access is native OpenVSCode terminal inside the mounted workspace container. Production hardening should add container resource limits and optional terminal restrictions.
 
 ## Blocker
 
-Production OpenVSCode service is not deployed/configured yet.
-
+Native Meldex AI extension inside OpenVSCode is still pending.
