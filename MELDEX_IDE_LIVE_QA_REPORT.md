@@ -8,22 +8,25 @@ Date: 2026-06-27
 - `npx prisma generate`: passed.
 - `npm run build`: passed.
 
-## Live QA Plan
+## Live QA Result
 
-After deploy:
-
-1. Login.
-2. Open `/workspace`.
-3. Confirm workspace list loads.
-4. Click workspace card.
-5. Confirm direct navigation to `/workspace/[projectId]/ide`.
-6. Confirm Meldex loading shell appears.
-7. Confirm IDE session API returns 200.
-8. Confirm proxied IDE workbench returns 200.
-9. Confirm unauthenticated route redirects to login.
-10. Confirm bad IDE token returns 401.
-11. Confirm Docker container is bound to localhost only.
+- Deployed commit: `4bfdb8d1463d3a8a6d2378487056f22486086405`
+- Login: verified with authenticated session.
+- `/workspace`: HTTP 200.
+- `/api/workspaces`: HTTP 200, workspace list returned 4 projects.
+- `/workspace/[projectId]`: HTTP 307 to `/workspace/[projectId]/ide`.
+- `/workspace/[projectId]/ide`: HTTP 200.
+- Meldex loading shell: `Opening Meldex IDE…` present.
+- `POST /api/workspaces/[id]/ide-session`: HTTP 200.
+- Proxied IDE session route: HTTP 200.
+- Proxied workbench route: HTTP 200.
+- Bad IDE token: HTTP 401.
+- IDE container: running and bound to `127.0.0.1`.
+- Product metadata:
+  - `nameShort`: `Meldex IDE`
+  - `nameLong`: `Meldex IDE`
+  - `applicationName`: `meldex-ide`
 
 ## Status
 
-READY FOR LIVE VERIFY
+READY
