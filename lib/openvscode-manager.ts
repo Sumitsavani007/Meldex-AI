@@ -115,7 +115,10 @@ async function containerIsRunning(name: string, workspaceId: string) {
 
 async function ensureOpenVSCodeContainer(session: IdeSession) {
   await configureWorkspaceDefaults(session.workspacePath);
-  if (await containerIsRunning(session.containerName, session.workspaceId)) return;
+  if (await containerIsRunning(session.containerName, session.workspaceId)) {
+    await applyMeldexBranding(session.containerName);
+    return;
+  }
   await docker(["rm", "-f", session.containerName]).catch(() => undefined);
   await mkdir(session.workspacePath, { recursive: true });
   await docker([
