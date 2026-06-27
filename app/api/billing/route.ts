@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { createUserNotification, getUserPlanLimits, listPlans } from "@/lib/plans-credits";
+import { getPaymentConfig } from "@/lib/payment-gateway";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export async function GET() {
   if (error) return error;
 
   try {
-    const [plans, usage, requests, notifications] = await Promise.all([
+    const [plans, usage, requests, notifications, paymentConfig, subscriptions, invoices, paymentEvents] = await Promise.all([
       listPlans(),
       getUserPlanLimits(session.user.id),
       prisma.upgradeRequest.findMany({
@@ -31,9 +32,43 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 12,
       }),
+      getPaymentConfig(),
+      prisma.subscription.findMany({
+        where: { userId: session.user.id },
+        include: { plan: true },
+        orderBy: { updatedAt: "desc" },
+        take: 5,
+      }),
+      prisma.invoice.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
+      prisma.paymentEvent.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+      }),
     ]);
 
-    return NextResponse.json({ plans, usage, requests, notifications }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({
+      plans,
+      usage,
+      requests,
+      notifications,
+      paymentConfig: {
+        provider: paymentConfig.provider,
+        mode: paymentConfig.mode,
+        currency: paymentConfig.currency,
+        enabled: paymentConfig.provider !== "manual" && (paymentConfig.provider === "stripe" ? paymentConfig.stripeConfigured : paymentConfig.razorpayConfigured),
+        stripeConfigured: paymentConfig.stripeConfigured,
+        razorpayConfigured: paymentConfig.razorpayConfigured,
+      },
+      subscriptions,
+      activeSubscription: subscriptions.find((item) => ["ACTIVE", "TRIALING", "PAST_DUE"].includes(item.status)) || null,
+      invoices,
+      paymentEvents,
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Billing unavailable" }, { status: 400 });
   }

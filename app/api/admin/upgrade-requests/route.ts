@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { PaymentEventStatus, PaymentProvider, SubscriptionStatus } from "@prisma/client";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { assignUserPlan, createUserNotification, grantExtraCredits } from "@/lib/plans-credits";
@@ -22,6 +23,11 @@ const actionSchema = z.discriminatedUnion("action", [
     requestId: z.string().min(1),
     adminNote: z.string().max(500).optional(),
   }),
+  z.object({
+    action: z.literal("cancelSubscription"),
+    subscriptionId: z.string().min(1),
+    adminNote: z.string().max(500).optional(),
+  }),
 ]);
 
 export async function GET() {
@@ -29,16 +35,21 @@ export async function GET() {
   if (error) return error;
 
   try {
-    const requests = await prisma.upgradeRequest.findMany({
-      include: {
-        user: { select: { id: true, email: true, name: true } },
-        currentPlan: true,
-        requestedPlan: true,
-      },
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-      take: 100,
-    });
-    return NextResponse.json({ requests }, { headers: { "Cache-Control": "no-store" } });
+    const [requests, subscriptions, invoices, paymentEvents] = await Promise.all([
+      prisma.upgradeRequest.findMany({
+        include: {
+          user: { select: { id: true, email: true, name: true } },
+          currentPlan: true,
+          requestedPlan: true,
+        },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        take: 100,
+      }),
+      prisma.subscription.findMany({ include: { user: { select: { id: true, email: true, name: true } }, plan: true }, orderBy: { updatedAt: "desc" }, take: 100 }),
+      prisma.invoice.findMany({ include: { user: { select: { id: true, email: true, name: true } }, plan: true }, orderBy: { createdAt: "desc" }, take: 100 }),
+      prisma.paymentEvent.findMany({ include: { user: { select: { id: true, email: true, name: true } } }, orderBy: { createdAt: "desc" }, take: 100 }),
+    ]);
+    return NextResponse.json({ requests, subscriptions, invoices, paymentEvents }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Upgrade requests unavailable" }, { status: 400 });
   }
@@ -50,6 +61,33 @@ export async function POST(request: Request) {
 
   try {
     const body = actionSchema.parse(await request.json().catch(() => ({})));
+    if (body.action === "cancelSubscription") {
+      const subscription = await prisma.subscription.update({
+        where: { id: body.subscriptionId },
+        data: { status: SubscriptionStatus.CANCELED, cancelAtPeriodEnd: true },
+        include: { user: true, plan: true },
+      });
+      await prisma.paymentEvent.create({
+        data: {
+          userId: subscription.userId,
+          provider: subscription.provider || PaymentProvider.MANUAL,
+          type: "admin.subscription_cancelled",
+          status: PaymentEventStatus.PROCESSED,
+          providerEventId: `admin_cancel_${subscription.id}_${Date.now()}`,
+          metadataJson: { subscriptionId: subscription.id, adminNote: body.adminNote || null },
+        },
+      });
+      await createUserNotification({
+        userId: subscription.userId,
+        type: "subscription_cancelled",
+        title: "Subscription cancelled",
+        message: `Your ${subscription.plan.name} subscription was marked cancelled by an admin.`,
+        metadata: { subscriptionId: subscription.id },
+      });
+      await logAuditEvent({ userId: session.user.id, action: "SUBSCRIPTION_CANCELLED", resource: subscription.user.email, success: true, metadata: { subscriptionId: subscription.id } });
+      return NextResponse.json({ subscription }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     const upgradeRequest = await prisma.upgradeRequest.findUnique({
       where: { id: body.requestId },
       include: { user: true, requestedPlan: true },

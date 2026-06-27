@@ -80,6 +80,43 @@ enum UpgradeRequestStatus {
   CANCELED
 }
 
+enum PaymentProvider {
+  MANUAL
+  STRIPE
+  RAZORPAY
+}
+
+enum SubscriptionStatus {
+  INCOMPLETE
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  EXPIRED
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentEventStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  FAILED
+  VOID
+  REFUNDED
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -116,6 +153,9 @@ model User {
   creditTransactions CreditTransaction[]
   upgradeRequests UpgradeRequest[]
   userNotifications UserNotification[]
+  subscriptions Subscription[]
+  paymentEvents PaymentEvent[]
+  invoices Invoice[]
 }
 
 model Account {
@@ -326,6 +366,13 @@ model Plan {
   priorityLevel      Int         @default(1)
   allowedModelsJson  Json?
   featuresJson       Json?
+  stripePriceIdMonthly String?
+  stripePriceIdYearly  String?
+  razorpayPlanIdMonthly String?
+  razorpayPlanIdYearly  String?
+  paymentEnabled     Boolean     @default(false)
+  trialDays          Int         @default(0)
+  yearlyDiscount     Int         @default(0)
   isActive           Boolean     @default(true)
   sortOrder          Int         @default(0)
   createdAt          DateTime    @default(now())
@@ -335,6 +382,8 @@ model Plan {
   creditTransactions CreditTransaction[]
   upgradeRequestsFrom UpgradeRequest[] @relation("UpgradeRequestCurrentPlan")
   upgradeRequestsTo   UpgradeRequest[] @relation("UpgradeRequestRequestedPlan")
+  subscriptions      Subscription[]
+  invoices           Invoice[]
 
   @@index([isActive, sortOrder])
   @@index([priorityLevel])
@@ -458,6 +507,71 @@ model UserNotification {
   @@index([userId, readAt])
   @@index([type])
   @@index([createdAt])
+}
+
+model Subscription {
+  id                     String             @id @default(cuid())
+  userId                 String
+  planId                 String
+  provider               PaymentProvider
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  status                 SubscriptionStatus @default(INCOMPLETE)
+  billingCycle           BillingCycle       @default(MONTHLY)
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  trialEndsAt            DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                   Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices               Invoice[]
+
+  @@index([userId, status])
+  @@index([provider, providerSubscriptionId])
+  @@index([planId])
+}
+
+model PaymentEvent {
+  id              String             @id @default(cuid())
+  userId          String?
+  provider        PaymentProvider
+  type            String
+  status          PaymentEventStatus @default(RECEIVED)
+  amount          Int?
+  currency        String?
+  providerEventId String?
+  metadataJson    Json?
+  createdAt       DateTime           @default(now())
+  user            User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([userId, createdAt])
+  @@index([provider, type])
+}
+
+model Invoice {
+  id                 String        @id @default(cuid())
+  userId             String
+  planId             String?
+  subscriptionId     String?
+  provider           PaymentProvider
+  providerInvoiceId  String?
+  amount             Int
+  currency           String
+  status             InvoiceStatus @default(OPEN)
+  hostedInvoiceUrl   String?
+  invoicePdf         String?
+  metadataJson       Json?
+  createdAt          DateTime      @default(now())
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan               Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
+  subscription       Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([subscriptionId])
+  @@index([provider, providerInvoiceId])
 }
 
 model ModelConfig {

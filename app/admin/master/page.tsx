@@ -107,6 +107,13 @@ interface PlanRow {
   priorityLevel: number;
   allowedModelsJson?: string[] | null;
   featuresJson?: string[] | null;
+  stripePriceIdMonthly?: string | null;
+  stripePriceIdYearly?: string | null;
+  razorpayPlanIdMonthly?: string | null;
+  razorpayPlanIdYearly?: string | null;
+  paymentEnabled: boolean;
+  trialDays: number;
+  yearlyDiscount: number;
   isActive: boolean;
   sortOrder: number;
 }
@@ -162,6 +169,44 @@ interface UpgradeRequestRow {
   requestedPlan: PlanRow;
 }
 
+interface SubscriptionRow {
+  id: string;
+  provider: string;
+  status: string;
+  billingCycle: string;
+  providerSubscriptionId?: string | null;
+  currentPeriodEnd?: string | null;
+  cancelAtPeriodEnd: boolean;
+  updatedAt: string;
+  user: { id: string; email: string; name?: string | null };
+  plan: PlanRow;
+}
+
+interface InvoiceRow {
+  id: string;
+  provider: string;
+  status: string;
+  amount: number;
+  currency: string;
+  hostedInvoiceUrl?: string | null;
+  invoicePdf?: string | null;
+  createdAt: string;
+  user: { id: string; email: string; name?: string | null };
+  plan?: PlanRow | null;
+}
+
+interface PaymentEventRow {
+  id: string;
+  provider: string;
+  type: string;
+  status: string;
+  amount?: number | null;
+  currency?: string | null;
+  providerEventId?: string | null;
+  createdAt: string;
+  user?: { id: string; email: string; name?: string | null } | null;
+}
+
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
 const groups: Array<{ category: string; label: string; icon: ElementType }> = [
@@ -171,6 +216,7 @@ const groups: Array<{ category: string; label: string; icon: ElementType }> = [
   { category: "r2", label: "Cloudflare R2", icon: Cloud },
   { category: "oauth", label: "Auth Providers", icon: Globe },
   { category: "aws", label: "AWS / Deployment", icon: Server },
+  { category: "billing", label: "Billing / Payments", icon: CreditCard },
   { category: "runtime", label: "App Runtime", icon: Settings },
   { category: "auth", label: "Boot Auth", icon: Shield },
   { category: "database", label: "Database", icon: Database },
@@ -250,11 +296,12 @@ function SectionTitle({ title, description, action }: { title: string; descripti
   );
 }
 
-function IconButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
+function IconButton({ children, onClick, disabled, title }: { children: ReactNode; onClick?: () => void; disabled?: boolean; title?: string }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"
     >
       {children}
@@ -278,6 +325,10 @@ function statusTone(status?: string): "green" | "red" | "amber" | "neutral" {
   return "neutral";
 }
 
+function formatMoney(cents = 0, currency = "USD") {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format((cents || 0) / 100);
+}
+
 export default function MasterAdminPage() {
   const { data: session, status: sessionStatus } = useSession();
   const role = session?.user?.role;
@@ -293,6 +344,9 @@ export default function MasterAdminPage() {
   const [usageConfigs, setUsageConfigs] = useState<ModelUsageConfigRow[]>([]);
   const [editingUsageConfig, setEditingUsageConfig] = useState<ModelUsageConfigRow | null>(null);
   const [upgradeRequests, setUpgradeRequests] = useState<UpgradeRequestRow[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubscriptionRow[]>([]);
+  const [invoices, setInvoices] = useState<InvoiceRow[]>([]);
+  const [paymentEvents, setPaymentEvents] = useState<PaymentEventRow[]>([]);
   const [selectedUserPlan, setSelectedUserPlan] = useState<UserPlanDetail | null>(null);
   const [grantCredits, setGrantCredits] = useState("500");
   const [upgradeBonusCredits, setUpgradeBonusCredits] = useState("0");
@@ -396,6 +450,9 @@ export default function MasterAdminPage() {
       if (!res.ok) throw new Error("Upgrade requests unavailable");
       const data = await res.json();
       setUpgradeRequests(data.requests ?? []);
+      setSubscriptions(data.subscriptions ?? []);
+      setInvoices(data.invoices ?? []);
+      setPaymentEvents(data.paymentEvents ?? []);
     } catch (err) {
       pushToast("error", err instanceof Error ? err.message : "Upgrade requests unavailable");
     } finally {
@@ -718,6 +775,24 @@ export default function MasterAdminPage() {
     }
   }
 
+  async function cancelSubscription(subscriptionId: string) {
+    setSaving((prev) => ({ ...prev, [`subscription-${subscriptionId}`]: true }));
+    try {
+      const res = await fetch("/api/admin/upgrade-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancelSubscription", subscriptionId, adminNote: upgradeNote || undefined }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Subscription marked cancelled.");
+      await fetchUpgradeRequests();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Subscription cancel failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [`subscription-${subscriptionId}`]: false }));
+    }
+  }
+
   function renderSettingRows(rows: SettingRow[]) {
     if (loading.settings) return <div className="p-6 text-sm text-slate-500 dark:text-slate-400"><SpinnerText label="Loading settings" /></div>;
     if (!rows.length) return <div className="p-6 text-sm text-slate-500 dark:text-slate-400">No settings in this section.</div>;
@@ -938,6 +1013,13 @@ export default function MasterAdminPage() {
                     priorityLevel: 1,
                     allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct", "qwen/qwen3-coder:free"],
                     featuresJson: [],
+                    stripePriceIdMonthly: "",
+                    stripePriceIdYearly: "",
+                    razorpayPlanIdMonthly: "",
+                    razorpayPlanIdYearly: "",
+                    paymentEnabled: false,
+                    trialDays: 0,
+                    yearlyDiscount: 0,
                     isActive: true,
                     sortOrder: 99,
                   })}
@@ -991,6 +1073,8 @@ export default function MasterAdminPage() {
                     {[
                       ["Monthly Price", "priceMonthly"],
                       ["Yearly Price", "priceYearly"],
+                      ["Trial Days", "trialDays"],
+                      ["Yearly Discount %", "yearlyDiscount"],
                       ["Monthly Credits", "monthlyCredits"],
                       ["Weekly Credits", "weeklyCredits"],
                       ["5-hour Credits", "fiveHourCredits"],
@@ -1004,6 +1088,21 @@ export default function MasterAdminPage() {
                       <label key={key} className="grid gap-1 text-sm">
                         <span className="font-medium">{label}</span>
                         <input type="number" min={0} value={Number(editingPlan[key as keyof PlanRow] ?? 0)} onChange={(event) => setEditingPlan({ ...editingPlan, [key]: Number(event.target.value) })} className="h-10 rounded-md border border-slate-200 bg-white px-3 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                      </label>
+                    ))}
+                    <label className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-white/[0.1]">
+                      <input type="checkbox" checked={Boolean(editingPlan.paymentEnabled)} onChange={(event) => setEditingPlan({ ...editingPlan, paymentEnabled: event.target.checked })} />
+                      <span className="font-medium">Payment enabled</span>
+                    </label>
+                    {[
+                      ["Stripe Monthly Price ID", "stripePriceIdMonthly"],
+                      ["Stripe Yearly Price ID", "stripePriceIdYearly"],
+                      ["Razorpay Monthly Plan ID", "razorpayPlanIdMonthly"],
+                      ["Razorpay Yearly Plan ID", "razorpayPlanIdYearly"],
+                    ].map(([label, key]) => (
+                      <label key={key} className="grid gap-1 text-sm">
+                        <span className="font-medium">{label}</span>
+                        <input value={String(editingPlan[key as keyof PlanRow] ?? "")} onChange={(event) => setEditingPlan({ ...editingPlan, [key]: event.target.value })} className="h-10 rounded-md border border-slate-200 bg-white px-3 font-mono text-xs outline-none dark:border-white/[0.1] dark:bg-black/20" />
                       </label>
                     ))}
                     <label className="grid gap-1 text-sm">
@@ -1133,7 +1232,7 @@ export default function MasterAdminPage() {
         <>
           <SectionTitle
             title="Billing"
-            description="Manual upgrade requests, admin approvals, plan assignment, bonus credits, and billing notifications."
+            description="Payment provider settings, subscriptions, invoices, webhooks, manual upgrades, and admin overrides."
             action={<IconButton onClick={fetchUpgradeRequests}><RefreshCw className={cx("size-4", loading.billing && "animate-spin")} />Refresh</IconButton>}
           />
           <Panel className="overflow-hidden">
@@ -1141,7 +1240,7 @@ export default function MasterAdminPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold">Upgrade Requests</h3>
-                  <p className="text-xs text-slate-500">Payment is not integrated yet. Approvals assign plans directly from Master.</p>
+                  <p className="text-xs text-slate-500">Manual admin upgrade remains available even when Stripe or Razorpay is enabled.</p>
                 </div>
                 <div className="flex gap-2">
                   <input value={upgradeBonusCredits} onChange={(event) => setUpgradeBonusCredits(event.target.value)} type="number" min={0} className="h-9 w-32 rounded-md border border-slate-200 bg-white px-3 text-xs dark:border-white/[0.1] dark:bg-black/20" placeholder="Bonus credits" />
@@ -1177,11 +1276,97 @@ export default function MasterAdminPage() {
               {!upgradeRequests.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.billing ? "Loading upgrade requests..." : "No upgrade requests yet."}</div>}
             </div>
           </Panel>
+
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold">Subscriptions</h3>
+                <p className="text-xs text-slate-500">Latest Stripe, Razorpay, and manual subscription state.</p>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {subscriptions.map((subscription) => (
+                  <div key={subscription.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1fr_auto]">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={subscription.status === "ACTIVE" || subscription.status === "TRIALING" ? "green" : subscription.status === "PAST_DUE" ? "amber" : "neutral"}>{subscription.status}</Badge>
+                        <span className="text-sm font-semibold">{subscription.user.email}</span>
+                        <span className="text-xs text-slate-500">{subscription.plan.name} · {subscription.provider} · {subscription.billingCycle}</span>
+                      </div>
+                      <p className="mt-2 truncate font-mono text-xs text-slate-500">{subscription.providerSubscriptionId || subscription.id}</p>
+                      <p className="mt-1 text-xs text-slate-400">Renews {subscription.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleString() : "not set"} {subscription.cancelAtPeriodEnd ? "· cancels at period end" : ""}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <IconButton disabled title="Provider sync will use provider customer portal/API in the next billing hardening pass."><RefreshCw className="size-4" />Sync</IconButton>
+                      {subscription.status !== "CANCELED" ? (
+                        <IconButton onClick={() => cancelSubscription(subscription.id)} disabled={saving[`subscription-${subscription.id}`]}><XCircle className="size-4" />Cancel</IconButton>
+                      ) : (
+                        <span className="text-xs text-slate-500">Cancelled</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {!subscriptions.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.billing ? "Loading subscriptions..." : "No subscriptions yet."}</div>}
+              </div>
+            </Panel>
+
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <h3 className="text-sm font-semibold">Invoices</h3>
+                <p className="text-xs text-slate-500">Recent provider invoices and hosted invoice links.</p>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {invoices.map((invoice) => (
+                  <div key={invoice.id} className="grid gap-3 px-4 py-4 lg:grid-cols-[1fr_auto]">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={invoice.status === "PAID" ? "green" : invoice.status === "OPEN" ? "amber" : "neutral"}>{invoice.status}</Badge>
+                        <span className="text-sm font-semibold">{invoice.user.email}</span>
+                        <span className="text-xs text-slate-500">{formatMoney(invoice.amount, invoice.currency)} · {invoice.provider}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">{invoice.plan?.name || "No plan"} · {new Date(invoice.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {invoice.hostedInvoiceUrl ? <a className="inline-flex h-9 items-center rounded-md border border-slate-200 px-3 text-sm dark:border-white/[0.1]" href={invoice.hostedInvoiceUrl} target="_blank" rel="noreferrer">Open</a> : <IconButton disabled>No link</IconButton>}
+                    </div>
+                  </div>
+                ))}
+                {!invoices.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.billing ? "Loading invoices..." : "No invoices yet."}</div>}
+              </div>
+            </Panel>
+          </div>
+
+          <Panel className="mt-4 overflow-hidden">
+            <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+              <h3 className="text-sm font-semibold">Payment Events</h3>
+              <p className="text-xs text-slate-500">Webhook and admin billing actions. Raw secrets are never shown.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/[0.08]">
+                  <tr><th className="px-4 py-3">Event</th><th className="px-4 py-3">User</th><th className="px-4 py-3">Provider</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Time</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                  {paymentEvents.map((event) => (
+                    <tr key={event.id}>
+                      <td className="px-4 py-3 font-mono text-xs">{event.type}</td>
+                      <td className="px-4 py-3">{event.user?.email || "System"}</td>
+                      <td className="px-4 py-3">{event.provider}</td>
+                      <td className="px-4 py-3">{event.amount ? formatMoney(event.amount, event.currency || "USD") : "-"}</td>
+                      <td className="px-4 py-3"><Badge tone={event.status === "PROCESSED" ? "green" : event.status === "FAILED" ? "red" : "neutral"}>{event.status}</Badge></td>
+                      <td className="px-4 py-3 text-xs text-slate-500">{new Date(event.createdAt).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!paymentEvents.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.billing ? "Loading payment events..." : "No payment events yet."}</div>}
+            </div>
+          </Panel>
+
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             {[
-              ["Manual approvals", "Admins assign plans until Stripe/Razorpay is added."],
-              ["Notifications ready", "Users get request, approval, rejection, and limit records."],
-              ["Plan enforcement", "AI generation pauses on limits while workspace access stays open."],
+              ["Provider settings", "Configure Stripe, Razorpay, or Manual from Billing / Payments settings."],
+              ["Manual fallback", "Admins can still assign plans and grant credits without payment provider checkout."],
+              ["Plan enforcement", "Active subscriptions use DB plan limits; expired users fall back through plan assignment rules."],
             ].map(([title, copy]) => <Panel key={title} className="p-4"><CreditCard className="mb-3 size-4 text-violet-600" /><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{copy}</p></Panel>)}
           </div>
         </>

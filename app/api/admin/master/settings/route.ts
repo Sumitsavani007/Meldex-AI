@@ -59,6 +59,17 @@ const KNOWN_KEYS: Array<{
   { key: "AWS_SSH_USER", label: "SSH User", category: "aws", isSecret: false },
   { key: "AWS_SERVER_NAME", label: "Server Name", category: "aws", isSecret: false },
   { key: "SETTINGS_ENCRYPTION_KEY", label: "Encryption Key", category: "security", isSecret: true },
+  { key: "PAYMENT_PROVIDER", label: "Payment Provider", category: "billing", isSecret: false, description: "manual, stripe, or razorpay" },
+  { key: "PAYMENT_MODE", label: "Payment Mode", category: "billing", isSecret: false, description: "test or live" },
+  { key: "PAYMENT_CURRENCY", label: "Payment Currency", category: "billing", isSecret: false },
+  { key: "PAYMENT_SUCCESS_URL", label: "Checkout Success URL", category: "billing", isSecret: false },
+  { key: "PAYMENT_CANCEL_URL", label: "Checkout Cancel URL", category: "billing", isSecret: false },
+  { key: "PAYMENT_TAX_GST_PERCENT", label: "Tax / GST Percent", category: "billing", isSecret: false },
+  { key: "STRIPE_SECRET_KEY", label: "Stripe Secret Key", category: "billing", isSecret: true },
+  { key: "STRIPE_WEBHOOK_SECRET", label: "Stripe Webhook Secret", category: "billing", isSecret: true },
+  { key: "RAZORPAY_KEY_ID", label: "Razorpay Key ID", category: "billing", isSecret: false },
+  { key: "RAZORPAY_KEY_SECRET", label: "Razorpay Key Secret", category: "billing", isSecret: true },
+  { key: "RAZORPAY_WEBHOOK_SECRET", label: "Razorpay Webhook Secret", category: "billing", isSecret: true },
 ];
 
 function settingStatus(source: "ENV" | "VAULT" | "MISSING") {
