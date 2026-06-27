@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { getOwnedWorkspaceProject, listProjectTree, readProjectFile, resolveProjectFile, writeProjectFile } from "@/lib/ai-workspace";
+import { checkStorageLimit } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -61,6 +62,8 @@ export async function POST(
       await mkdir(absolute, { recursive: true });
       return NextResponse.json({ folder: { path: relative } }, { status: 201, headers: { "Cache-Control": "no-store" } });
     }
+    const storageLimit = await checkStorageLimit(session.user.id, Buffer.byteLength(body.content, "utf8"));
+    if (!storageLimit.ok) return NextResponse.json(storageLimit, { status: 402, headers: { "Cache-Control": "no-store" } });
     const filePath = await writeProjectFile(session.user.id, id, body.path, body.content, body.status || "CREATED");
     return NextResponse.json({ file: { path: filePath, content: body.content } }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (err) {

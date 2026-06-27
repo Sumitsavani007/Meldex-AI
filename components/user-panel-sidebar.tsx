@@ -21,7 +21,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -51,7 +51,15 @@ export function UserPanelSidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [collapsed, setCollapsed] = useState(false);
+  const [planName, setPlanName] = useState("Plan");
   const initials = (session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase();
+
+  useEffect(() => {
+    fetch("/api/usage", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setPlanName(data?.usage?.plan?.name || "Plan"))
+      .catch(() => undefined);
+  }, []);
 
   return (
     <aside className={cn("hidden h-screen shrink-0 border-r border-slate-200 bg-white p-3 text-slate-950 shadow-xl shadow-slate-950/5 transition-[width] duration-200 dark:border-white/10 dark:bg-[#0d1526] dark:text-white lg:flex lg:flex-col", collapsed ? "w-[72px]" : "w-[232px]")}>
@@ -134,7 +142,7 @@ export function UserPanelSidebar() {
               </span>
               {!collapsed && <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-semibold">{session?.user?.name || "Meldex User"}</p>
-                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">Pro Plan</p>
+                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{planName}</p>
               </div>}
             </Link>
             {!collapsed && <button

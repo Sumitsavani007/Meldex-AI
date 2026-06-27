@@ -1240,7 +1240,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">You’re close to your 5-hour limit.</div>
                   )}
                   {Object.values(usage.windows).some((window) => window.creditsUsed >= window.creditsLimit) && (
-                    <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">Limit reached. Try Meldex Plus / Upgrade Plan.</div>
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+                      <div className="font-medium">You’ve reached your 5-hour limit.</div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <a href="/settings/billing" className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-semibold text-white">Upgrade to Meldex Plus</a>
+                        <a href="/settings/usage" className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold dark:border-red-500/30">View Usage</a>
+                        <button onClick={() => void loadUsage()} className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-semibold dark:border-red-500/30">Try again after reset</button>
+                      </div>
+                    </div>
                   )}
                 </div>
               ) : <div className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Usage will appear after refresh.</div>}

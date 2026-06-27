@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { assignUserPlan, getUserPlanLimits, grantExtraCredits, listPlans, resetUserUsage } from "@/lib/plans-credits";
+import { assignUserPlan, createUserNotification, getUserPlanLimits, grantExtraCredits, listPlans, resetUserUsage } from "@/lib/plans-credits";
 import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -54,15 +54,18 @@ export async function POST(
         endsAt: body.endsAt ? new Date(body.endsAt) : null,
       });
       await logAuditEvent({ userId: session.user.id, action: "USER_PLAN_ASSIGN", resource: user.email, success: true, metadata: { planId: body.planId } });
+      await createUserNotification({ userId: id, type: "plan_changed", title: "Plan changed", message: `Your Meldex plan is now ${assigned.plan.name}.`, metadata: { planId: body.planId } }).catch(() => undefined);
       return NextResponse.json({ usage: await getUserPlanLimits(id), assigned }, { headers: { "Cache-Control": "no-store" } });
     }
     if (body.action === "grant") {
       const usage = await grantExtraCredits(id, body.credits, body.reason || "Admin credit grant");
       await logAuditEvent({ userId: session.user.id, action: "USER_CREDIT_GRANT", resource: user.email, success: true, metadata: { credits: body.credits } });
+      await createUserNotification({ userId: id, type: "credits_granted", title: "Credits granted", message: `${body.credits.toLocaleString()} bonus credits were added by an admin.`, metadata: { credits: body.credits } }).catch(() => undefined);
       return NextResponse.json({ usage }, { headers: { "Cache-Control": "no-store" } });
     }
     const usage = await resetUserUsage(id, body.reason || "Admin usage reset");
     await logAuditEvent({ userId: session.user.id, action: "USER_USAGE_RESET", resource: user.email, success: true });
+    await createUserNotification({ userId: id, type: "usage_reset", title: "Usage reset", message: "Your usage counters were reset by an admin." }).catch(() => undefined);
     return NextResponse.json({ usage }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to update user plan" }, { status: 400 });

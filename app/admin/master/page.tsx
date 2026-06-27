@@ -10,6 +10,7 @@ import {
   Cloud,
   Code2,
   Copy,
+  CreditCard,
   Database,
   FileText,
   Globe,
@@ -28,7 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "usage-pricing" | "users" | "audit" | "diagnostics";
+type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "billing" | "usage-pricing" | "users" | "audit" | "diagnostics";
 type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
@@ -147,6 +148,20 @@ interface ModelUsageConfigRow {
   isActive: boolean;
 }
 
+interface UpgradeRequestRow {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "CANCELED";
+  message?: string | null;
+  adminNote?: string | null;
+  bonusCredits?: number | null;
+  expiresAt?: string | null;
+  createdAt: string;
+  reviewedAt?: string | null;
+  user: { id: string; email: string; name?: string | null };
+  currentPlan?: PlanRow | null;
+  requestedPlan: PlanRow;
+}
+
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
 const groups: Array<{ category: string; label: string; icon: ElementType }> = [
@@ -193,7 +208,7 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function getSection(): TabId {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("section") as TabId | null;
-  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
+  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "billing", "usage-pricing", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
@@ -277,14 +292,17 @@ export default function MasterAdminPage() {
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
   const [usageConfigs, setUsageConfigs] = useState<ModelUsageConfigRow[]>([]);
   const [editingUsageConfig, setEditingUsageConfig] = useState<ModelUsageConfigRow | null>(null);
+  const [upgradeRequests, setUpgradeRequests] = useState<UpgradeRequestRow[]>([]);
   const [selectedUserPlan, setSelectedUserPlan] = useState<UserPlanDetail | null>(null);
   const [grantCredits, setGrantCredits] = useState("500");
+  const [upgradeBonusCredits, setUpgradeBonusCredits] = useState("0");
+  const [upgradeNote, setUpgradeNote] = useState("");
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, usagePricing: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, billing: false, usagePricing: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -371,6 +389,20 @@ export default function MasterAdminPage() {
     }
   }, [pushToast]);
 
+  const fetchUpgradeRequests = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, billing: true }));
+    try {
+      const res = await fetch("/api/admin/upgrade-requests", { cache: "no-store" });
+      if (!res.ok) throw new Error("Upgrade requests unavailable");
+      const data = await res.json();
+      setUpgradeRequests(data.requests ?? []);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Upgrade requests unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, billing: false }));
+    }
+  }, [pushToast]);
+
   const fetchAudit = useCallback(async () => {
     setLoading((prev) => ({ ...prev, audit: true }));
     try {
@@ -399,10 +431,11 @@ export default function MasterAdminPage() {
 
   useEffect(() => {
     if (tab === "plans") fetchPlans();
+    if (tab === "billing") fetchUpgradeRequests();
     if (tab === "usage-pricing") fetchUsagePricing();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchUsagePricing, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -656,6 +689,32 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "User plan update failed");
     } finally {
       setSaving((prev) => ({ ...prev, userPlan: false }));
+    }
+  }
+
+  async function reviewUpgradeRequest(requestId: string, action: "approve" | "reject", planId?: string) {
+    setSaving((prev) => ({ ...prev, [`upgrade-${requestId}`]: true }));
+    try {
+      const res = await fetch("/api/admin/upgrade-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          requestId,
+          planId,
+          adminNote: upgradeNote || undefined,
+          bonusCredits: action === "approve" ? Number(upgradeBonusCredits || 0) : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", action === "approve" ? "Upgrade approved and plan assigned." : "Upgrade rejected.");
+      setUpgradeNote("");
+      setUpgradeBonusCredits("0");
+      await fetchUpgradeRequests();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Upgrade review failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [`upgrade-${requestId}`]: false }));
     }
   }
 
@@ -1066,6 +1125,64 @@ export default function MasterAdminPage() {
                 </div>
               ) : <div className="p-8 text-center text-sm text-slate-500">Select usage pricing to edit.</div>}
             </Panel>
+          </div>
+        </>
+      )}
+
+      {tab === "billing" && (
+        <>
+          <SectionTitle
+            title="Billing"
+            description="Manual upgrade requests, admin approvals, plan assignment, bonus credits, and billing notifications."
+            action={<IconButton onClick={fetchUpgradeRequests}><RefreshCw className={cx("size-4", loading.billing && "animate-spin")} />Refresh</IconButton>}
+          />
+          <Panel className="overflow-hidden">
+            <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Upgrade Requests</h3>
+                  <p className="text-xs text-slate-500">Payment is not integrated yet. Approvals assign plans directly from Master.</p>
+                </div>
+                <div className="flex gap-2">
+                  <input value={upgradeBonusCredits} onChange={(event) => setUpgradeBonusCredits(event.target.value)} type="number" min={0} className="h-9 w-32 rounded-md border border-slate-200 bg-white px-3 text-xs dark:border-white/[0.1] dark:bg-black/20" placeholder="Bonus credits" />
+                  <input value={upgradeNote} onChange={(event) => setUpgradeNote(event.target.value)} className="h-9 w-64 rounded-md border border-slate-200 bg-white px-3 text-xs dark:border-white/[0.1] dark:bg-black/20" placeholder="Admin note" />
+                </div>
+              </div>
+            </div>
+            <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+              {upgradeRequests.map((request) => (
+                <div key={request.id} className="grid gap-4 px-4 py-4 lg:grid-cols-[1fr_auto]">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={request.status === "PENDING" ? "amber" : request.status === "APPROVED" ? "green" : "red"}>{request.status}</Badge>
+                      <span className="text-sm font-semibold">{request.user.email}</span>
+                      <span className="text-xs text-slate-500">{request.currentPlan?.name || "No plan"} → {request.requestedPlan.name}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">{request.message || "Manual upgrade requested."}</p>
+                    {request.adminNote && <p className="mt-1 text-xs text-slate-500">Admin note: {request.adminNote}</p>}
+                    <div className="mt-2 text-xs text-slate-400">Requested {new Date(request.createdAt).toLocaleString()}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {request.status === "PENDING" ? (
+                      <>
+                        <IconButton onClick={() => reviewUpgradeRequest(request.id, "approve", request.requestedPlan.id)} disabled={saving[`upgrade-${request.id}`]}><CheckCircle2 className="size-4" />Approve</IconButton>
+                        <IconButton onClick={() => reviewUpgradeRequest(request.id, "reject")} disabled={saving[`upgrade-${request.id}`]}><XCircle className="size-4" />Reject</IconButton>
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-500">{request.reviewedAt ? `Reviewed ${new Date(request.reviewedAt).toLocaleString()}` : "Reviewed"}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {!upgradeRequests.length && <div className="px-4 py-10 text-center text-sm text-slate-500">{loading.billing ? "Loading upgrade requests..." : "No upgrade requests yet."}</div>}
+            </div>
+          </Panel>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {[
+              ["Manual approvals", "Admins assign plans until Stripe/Razorpay is added."],
+              ["Notifications ready", "Users get request, approval, rejection, and limit records."],
+              ["Plan enforcement", "AI generation pauses on limits while workspace access stays open."],
+            ].map(([title, copy]) => <Panel key={title} className="p-4"><CreditCard className="mb-3 size-4 text-violet-600" /><h3 className="text-sm font-semibold">{title}</h3><p className="mt-1 text-sm text-slate-500">{copy}</p></Panel>)}
           </div>
         </>
       )}

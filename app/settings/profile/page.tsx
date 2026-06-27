@@ -2,11 +2,20 @@
 
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import { Calendar, CreditCard, KeyRound, Mail, Shield, User } from "lucide-react";
 import { PanelCard, SoftButton, UserPanelShell } from "@/components/user-panel-shell";
 
 export default function ProfileSettingsPage() {
   const { data: session, status } = useSession({ required: true });
+  const [planName, setPlanName] = useState("Plan");
+
+  useEffect(() => {
+    fetch("/api/usage", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setPlanName(data?.usage?.plan?.name || "Plan"))
+      .catch(() => undefined);
+  }, []);
 
   if (status === "loading") {
     return <UserPanelShell title="Profile" eyebrow="Profile"><div className="h-80 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/[0.06]" /></UserPanelShell>;
@@ -23,7 +32,7 @@ export default function ProfileSettingsPage() {
             <div className="min-w-0 flex-1">
               <h2 className="text-2xl font-semibold">{session?.user?.name || "Meldex User"}</h2>
               <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">{session?.user?.email}</p>
-              <span className="mt-3 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">Pro Plan</span>
+              <span className="mt-3 inline-flex rounded-full bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">{planName}</span>
             </div>
             <SoftButton disabled title="Profile editing is not available in this release">Edit Profile</SoftButton>
           </div>

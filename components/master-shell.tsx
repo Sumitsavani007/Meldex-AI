@@ -23,6 +23,7 @@ import {
   Shield,
   User,
   Users,
+  WalletCards,
   Zap,
 } from "lucide-react";
 
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { label: "Integrations", href: "/admin/master?section=integrations", icon: Database, section: "integrations" },
   { label: "Runtime", href: "/admin/master?section=runtime", icon: Settings, section: "runtime" },
   { label: "Plans & Credits", href: "/admin/master?section=plans", icon: CreditCard, section: "plans" },
+  { label: "Billing", href: "/admin/master?section=billing", icon: WalletCards, section: "billing" },
   { label: "Usage Pricing", href: "/admin/master?section=usage-pricing", icon: Gauge, section: "usage-pricing" },
   { label: "Users", href: "/admin/master?section=users", icon: Users, section: "users" },
   { label: "Audit Logs", href: "/admin/master?section=audit", icon: Activity, section: "audit" },

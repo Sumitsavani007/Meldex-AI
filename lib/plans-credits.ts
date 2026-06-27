@@ -116,6 +116,28 @@ export type CreditCalculationInput = {
   autofixes?: number;
 };
 
+export type PlanLimitType =
+  | "five_hour_credits"
+  | "weekly_credits"
+  | "monthly_credits"
+  | "model"
+  | "context"
+  | "workspace_count"
+  | "storage"
+  | "parallel_tasks";
+
+export type PlanLimitError = {
+  ok: false;
+  code: "PLAN_LIMIT_EXCEEDED";
+  limitType: PlanLimitType;
+  message: string;
+  currentUsage: number;
+  limit: number;
+  resetAt?: Date | string | null;
+  recommendedPlan?: { id: string; name: string; slug: string } | null;
+  legacyCode?: string;
+};
+
 function startOfMonth(now: Date) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
 }
@@ -351,6 +373,42 @@ export async function getUserPlanLimits(userId: string) {
   };
 }
 
+async function recommendPlan(currentPriority: number, limitType: PlanLimitType, needed?: number) {
+  const plans = await listPlans();
+  return plans.find((plan) => {
+    if (!plan.isActive || plan.priorityLevel <= currentPriority) return false;
+    if (limitType === "workspace_count") return plan.maxWorkspaceCount >= (needed || 0);
+    if (limitType === "storage") return plan.maxStorageMb >= (needed || 0);
+    if (limitType === "parallel_tasks") return plan.maxParallelTasks >= (needed || 0);
+    if (limitType === "context") return plan.maxContextTokens >= (needed || 0);
+    return true;
+  }) || plans.find((plan) => plan.isActive && plan.priorityLevel > currentPriority) || null;
+}
+
+async function planLimitError(input: {
+  summary: UsageSummary;
+  limitType: PlanLimitType;
+  message: string;
+  currentUsage: number;
+  limit: number;
+  resetAt?: Date | string | null;
+  needed?: number;
+  legacyCode?: string;
+}): Promise<PlanLimitError> {
+  const recommended = await recommendPlan(input.summary.plan.priorityLevel, input.limitType, input.needed);
+  return {
+    ok: false,
+    code: "PLAN_LIMIT_EXCEEDED",
+    limitType: input.limitType,
+    message: input.message,
+    currentUsage: input.currentUsage,
+    limit: input.limit,
+    resetAt: input.resetAt,
+    recommendedPlan: recommended ? { id: recommended.id, name: recommended.name, slug: recommended.slug } : null,
+    legacyCode: input.legacyCode,
+  };
+}
+
 export async function checkUserCreditLimit(userId: string, estimatedCredits: number) {
   const summary = await getUserPlanLimits(userId);
   const checks = [
@@ -360,16 +418,16 @@ export async function checkUserCreditLimit(userId: string, estimatedCredits: num
   ];
   const exceeded = checks.find((window) => window.creditsUsed + estimatedCredits > window.creditsLimit);
   if (!exceeded) return { ok: true as const, summary, estimatedCredits };
-  return {
-    ok: false as const,
-    code: "LIMIT_EXCEEDED",
-    message: "You’ve reached your Meldex usage limit. Upgrade to Meldex Plus/Pro to continue.",
-    windowType: exceeded.windowType,
-    creditsUsed: exceeded.creditsUsed,
-    creditsLimit: exceeded.creditsLimit,
-    estimatedCredits,
+  const limitType = exceeded.windowType === UsageWindowType.FIVE_HOUR ? "five_hour_credits" : exceeded.windowType === UsageWindowType.WEEKLY ? "weekly_credits" : "monthly_credits";
+  return planLimitError({
     summary,
-  };
+    limitType,
+    message: exceeded.windowType === UsageWindowType.FIVE_HOUR ? "You’ve reached your 5-hour limit." : "You’ve reached your Meldex credit limit.",
+    currentUsage: exceeded.creditsUsed + estimatedCredits,
+    limit: exceeded.creditsLimit,
+    resetAt: exceeded.resetAt,
+    legacyCode: "LIMIT_EXCEEDED",
+  });
 }
 
 export async function precheckUserAiRequest(input: { userId: string; estimatedCredits: number; model?: string; provider?: string; estimatedContextTokens?: number }) {
@@ -377,28 +435,94 @@ export async function precheckUserAiRequest(input: { userId: string; estimatedCr
   const model = input.model || (await getActiveGenerationModel()).model;
   const allowed = summary.allowedModels.map(String);
   if (allowed.length && !allowed.includes(model)) {
-    return {
-      ok: false as const,
-      code: "MODEL_NOT_ALLOWED",
-      message: "This model is not available on your current Meldex plan.",
-      model,
+    return planLimitError({
       summary,
-    };
+      limitType: "model",
+      message: "This model is not available on your current Meldex plan.",
+      currentUsage: 1,
+      limit: 0,
+      legacyCode: "MODEL_NOT_ALLOWED",
+    });
   }
   if ((input.estimatedContextTokens || 0) > summary.plan.maxContextTokens) {
-    return {
-      ok: false as const,
-      code: "CONTEXT_TOO_LARGE",
-      message: "This request is larger than your current Meldex context limit.",
-      model,
-      maxContextTokens: summary.plan.maxContextTokens,
-      estimatedContextTokens: input.estimatedContextTokens || 0,
+    return planLimitError({
       summary,
-    };
+      limitType: "context",
+      message: "This request is larger than your current Meldex context limit.",
+      currentUsage: input.estimatedContextTokens || 0,
+      limit: summary.plan.maxContextTokens,
+      needed: input.estimatedContextTokens || 0,
+      legacyCode: "CONTEXT_TOO_LARGE",
+    });
   }
   const credit = await checkUserCreditLimit(input.userId, input.estimatedCredits);
   if (!credit.ok) return credit;
   return { ok: true as const, summary, model, estimatedCredits: input.estimatedCredits };
+}
+
+export async function checkWorkspaceCreateLimit(userId: string) {
+  const summary = await getUserPlanLimits(userId);
+  const currentUsage = await prisma.workspaceProject.count({ where: { userId, deletedAt: null } });
+  if (currentUsage < summary.plan.maxWorkspaceCount) return { ok: true as const, summary, currentUsage };
+  return planLimitError({
+    summary,
+    limitType: "workspace_count",
+    message: "You’ve reached your workspace limit.",
+    currentUsage,
+    limit: summary.plan.maxWorkspaceCount,
+    needed: currentUsage + 1,
+  });
+}
+
+export async function checkParallelTaskLimit(userId: string) {
+  const summary = await getUserPlanLimits(userId);
+  const currentUsage = await prisma.workspaceTask.count({ where: { userId, status: { in: ["QUEUED", "RUNNING"] } } });
+  if (currentUsage < summary.plan.maxParallelTasks) return { ok: true as const, summary, currentUsage };
+  return planLimitError({
+    summary,
+    limitType: "parallel_tasks",
+    message: "You’ve reached your parallel task limit.",
+    currentUsage,
+    limit: summary.plan.maxParallelTasks,
+    needed: currentUsage + 1,
+  });
+}
+
+export async function checkStorageLimit(userId: string, additionalBytes = 0) {
+  const summary = await getUserPlanLimits(userId);
+  const aggregate = await prisma.workspaceFile.aggregate({
+    where: { userId, deletedAt: null },
+    _sum: { sizeBytes: true },
+  });
+  const currentBytes = (aggregate._sum.sizeBytes || 0) + additionalBytes;
+  const currentMb = Math.ceil(currentBytes / 1024 / 1024);
+  if (currentMb <= summary.plan.maxStorageMb) return { ok: true as const, summary, currentUsage: currentMb };
+  return planLimitError({
+    summary,
+    limitType: "storage",
+    message: "You’ve reached your workspace storage limit.",
+    currentUsage: currentMb,
+    limit: summary.plan.maxStorageMb,
+    needed: currentMb,
+  });
+}
+
+export async function createUserNotification(input: {
+  userId: string;
+  type: string;
+  title: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+}) {
+  return prisma.userNotification.create({
+    data: {
+      userId: input.userId,
+      type: input.type,
+      title: input.title,
+      message: input.message,
+      metadata: (input.metadata || {}) as Prisma.InputJsonValue,
+    },
+  });
 }
 
 export async function recordCreditUsage(userId: string, credits: number, metadata: Record<string, unknown> = {}) {

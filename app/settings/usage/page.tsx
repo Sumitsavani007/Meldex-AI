@@ -53,6 +53,7 @@ export default function UsagePage() {
         <div className="text-sm text-slate-500 dark:text-slate-400">{data?.usage.plan.name || "Plan"} · {totalCredits.toLocaleString()} credits used in recent history</div>
         <div className="flex gap-2">
           <SoftButton onClick={loadUsage} disabled={loading}><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</SoftButton>
+          <a href="/settings/billing" className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-medium text-white transition hover:bg-violet-500">Upgrade</a>
           <a href="/api/usage?format=csv" className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]"><Download className="size-4" />Export CSV</a>
         </div>
       </div>

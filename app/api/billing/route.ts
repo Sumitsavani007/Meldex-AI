@@ -1,66 +1,85 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { z } from "zod";
+import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
+import { createUserNotification, getUserPlanLimits, listPlans } from "@/lib/plans-credits";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const requestSchema = z.object({
+  planId: z.string().min(1),
+  message: z.string().max(500).optional(),
+});
 
 export async function GET() {
+  const { session, error } = await requireAuth();
+  if (error) return error;
+
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const [plans, usage, requests, notifications] = await Promise.all([
+      listPlans(),
+      getUserPlanLimits(session.user.id),
+      prisma.upgradeRequest.findMany({
+        where: { userId: session.user.id },
+        include: { requestedPlan: true, currentPlan: true },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.userNotification.findMany({
+        where: { userId: session.user.id },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+      }),
+    ]);
 
-    let billing = await prisma.billing.findUnique({
-      where: { userId: session.user.id },
-    });
-
-    // Create default billing if doesn't exist
-    if (!billing) {
-      billing = await prisma.billing.create({
-        data: {
-          userId: session.user.id,
-          plan: "free",
-          status: "FREE",
-        },
-      });
-    }
-
-    return NextResponse.json({ billing });
-  } catch (error) {
-    console.error("Error fetching billing:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch billing" },
-      { status: 500 }
-    );
+    return NextResponse.json({ plans, usage, requests, notifications }, { headers: { "Cache-Control": "no-store" } });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Billing unavailable" }, { status: 400 });
   }
 }
 
 export async function POST(request: Request) {
+  const { session, error } = await requireAuth();
+  if (error) return error;
+
   try {
-    const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const body = requestSchema.parse(await request.json().catch(() => ({})));
+    const [usage, targetPlan] = await Promise.all([
+      getUserPlanLimits(session.user.id),
+      prisma.plan.findUnique({ where: { id: body.planId } }),
+    ]);
+    if (!targetPlan || !targetPlan.isActive) return NextResponse.json({ error: "Plan unavailable" }, { status: 404 });
+    if (targetPlan.priorityLevel <= usage.plan.priorityLevel) {
+      return NextResponse.json({ error: "Select a higher plan to request an upgrade." }, { status: 400 });
     }
 
-    const { plan } = await request.json();
+    const existing = await prisma.upgradeRequest.findFirst({
+      where: { userId: session.user.id, requestedPlanId: targetPlan.id, status: "PENDING" },
+      include: { requestedPlan: true, currentPlan: true },
+      orderBy: { createdAt: "desc" },
+    });
+    if (existing) return NextResponse.json({ request: existing, message: "Upgrade request is already pending." }, { headers: { "Cache-Control": "no-store" } });
 
-    const billing = await prisma.billing.upsert({
-      where: { userId: session.user.id },
-      create: {
+    const upgradeRequest = await prisma.upgradeRequest.create({
+      data: {
         userId: session.user.id,
-        plan,
-        status: "ACTIVE",
+        currentPlanId: usage.plan.id,
+        requestedPlanId: targetPlan.id,
+        message: body.message || "User requested manual upgrade. Payment gateway is coming soon.",
       },
-      update: {
-        plan,
-      },
+      include: { requestedPlan: true, currentPlan: true },
+    });
+    await createUserNotification({
+      userId: session.user.id,
+      type: "upgrade_requested",
+      title: "Upgrade request sent",
+      message: `Your request for ${targetPlan.name} is pending admin approval.`,
+      metadata: { requestId: upgradeRequest.id, planId: targetPlan.id },
     });
 
-    return NextResponse.json({ billing });
-  } catch (error) {
-    console.error("Error updating billing:", error);
-    return NextResponse.json(
-      { error: "Failed to update billing" },
-      { status: 500 }
-    );
+    return NextResponse.json({ request: upgradeRequest }, { status: 201, headers: { "Cache-Control": "no-store" } });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Upgrade request failed" }, { status: 400 });
   }
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 import {
   Bell,
   Bot,
@@ -65,6 +66,14 @@ export function UserPanelShell({
   const { data: session } = useSession();
   const { theme, setTheme } = useThemePreference();
   const initials = (session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase();
+  const [planName, setPlanName] = useState("Plan");
+
+  useEffect(() => {
+    fetch("/api/usage", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => setPlanName(data?.usage?.plan?.name || "Plan"))
+      .catch(() => undefined);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#f7f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
@@ -137,7 +146,7 @@ export function UserPanelShell({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold">{session?.user?.name || "Meldex User"}</p>
-                    <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">Pro Plan</p>
+                    <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{planName}</p>
                   </div>
                 </Link>
                 <button

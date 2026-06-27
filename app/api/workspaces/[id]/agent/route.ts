@@ -21,7 +21,7 @@ import {
 } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
-import { calculateCredits, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { calculateCredits, checkParallelTaskLimit, createUserNotification, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +43,8 @@ export async function POST(
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const parallelCheck = await checkParallelTaskLimit(session.user.id);
+    if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
     const activeModel = await getActiveGenerationModel();
     const promptTokens = Math.ceil(body.prompt.length / 4);
     const preEstimate = await calculateCredits({ provider: activeModel.provider, model: activeModel.model, inputTokens: promptTokens, toolCalls: 2, memoryReads: 1 });
@@ -54,9 +56,21 @@ export async function POST(
       estimatedContextTokens: promptTokens,
     });
     if (!creditCheck.ok) {
+      await createUserNotification({
+        userId: session.user.id,
+        type: "plan_limit_reached",
+        title: "Plan limit reached",
+        message: creditCheck.message,
+        metadata: { limitType: creditCheck.limitType, recommendedPlan: creditCheck.recommendedPlan },
+      }).catch(() => undefined);
       return NextResponse.json({
         error: creditCheck.message,
         code: creditCheck.code,
+        limitType: creditCheck.limitType,
+        currentUsage: creditCheck.currentUsage,
+        limit: creditCheck.limit,
+        resetAt: creditCheck.resetAt,
+        recommendedPlan: creditCheck.recommendedPlan,
         estimatedCredits: preEstimate.credits,
         details: creditCheck,
       }, { status: 402, headers: { "Cache-Control": "no-store" } });

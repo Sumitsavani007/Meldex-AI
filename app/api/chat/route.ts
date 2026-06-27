@@ -25,6 +25,7 @@ import { buildProjectContext } from "@/lib/project-brain";
 import { lookupFact } from "@/lib/knowledge-brain";
 import { resolveConversationContext, buildConversationContext } from "@/lib/conversation-brain";
 import { ensureConversation, saveMessage } from "@/lib/chat-persistence";
+import { calculateCredits, createUserNotification, getActiveGenerationModel, precheckUserAiRequest } from "@/lib/plans-credits";
 
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
@@ -68,6 +69,41 @@ export async function POST(request: Request) {
     // Resolve provider once — uses runtime config (vault > env)
     const provider = await getActiveProvider();
     const providerLabel = await getProviderLabel();
+    const activeModel = await getActiveGenerationModel();
+    const estimatedTokens = Math.ceil(body.messages.map((message) => message.content).join("\n").length / 4);
+    const estimatedCredits = await calculateCredits({
+      provider: activeModel.provider,
+      model: body.model || activeModel.model,
+      inputTokens: estimatedTokens,
+      toolCalls: 1,
+      memoryReads: 1,
+    });
+    const planCheck = await precheckUserAiRequest({
+      userId,
+      estimatedCredits: estimatedCredits.credits,
+      provider: activeModel.provider,
+      model: body.model || activeModel.model,
+      estimatedContextTokens: estimatedTokens,
+    });
+    if (!planCheck.ok) {
+      await createUserNotification({
+        userId,
+        type: "plan_limit_reached",
+        title: "Plan limit reached",
+        message: planCheck.message,
+        metadata: { limitType: planCheck.limitType, recommendedPlan: planCheck.recommendedPlan },
+      }).catch(() => undefined);
+      return NextResponse.json({
+        error: planCheck.message,
+        code: planCheck.code,
+        limitType: planCheck.limitType,
+        currentUsage: planCheck.currentUsage,
+        limit: planCheck.limit,
+        resetAt: planCheck.resetAt,
+        recommendedPlan: planCheck.recommendedPlan,
+        actions: ["Upgrade to Meldex Plus", "View Usage", "Try again after reset"],
+      }, { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
 
     // Background: learn from message, track recent topic
     learnFromMessage(userId, lastUserMessage).catch(() => {});

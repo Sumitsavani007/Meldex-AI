@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
-import { calculateCredits, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { calculateCredits, checkParallelTaskLimit, createUserNotification, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -58,6 +58,8 @@ export async function POST(
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const parallelCheck = await checkParallelTaskLimit(session.user.id);
+    if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
     const activeModel = await getActiveGenerationModel();
     const promptTokens = Math.ceil(body.data.prompt.length / 4);
     const preEstimate = await calculateCredits({
@@ -75,9 +77,21 @@ export async function POST(
       estimatedContextTokens: promptTokens,
     });
     if (!creditCheck.ok) {
+      await createUserNotification({
+        userId: session.user.id,
+        type: "plan_limit_reached",
+        title: "Plan limit reached",
+        message: creditCheck.message,
+        metadata: { limitType: creditCheck.limitType, recommendedPlan: creditCheck.recommendedPlan },
+      }).catch(() => undefined);
       return NextResponse.json({
         error: creditCheck.message,
         code: creditCheck.code,
+        limitType: creditCheck.limitType,
+        currentUsage: creditCheck.currentUsage,
+        limit: creditCheck.limit,
+        resetAt: creditCheck.resetAt,
+        recommendedPlan: creditCheck.recommendedPlan,
         estimatedCredits: preEstimate.credits,
         details: creditCheck,
       }, { status: 402, headers: { "Cache-Control": "no-store" } });
