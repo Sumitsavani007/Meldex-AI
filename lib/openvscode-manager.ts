@@ -77,9 +77,6 @@ async function ensureOpenVSCodeContainer(session: IdeSession) {
     "-p", `127.0.0.1:${session.port}:3000`,
     "-v", `${session.workspacePath}:/home/workspace:cached`,
     "gitpod/openvscode-server:latest",
-    "--host", "0.0.0.0",
-    "--connection-token", session.token,
-    "/home/workspace",
   ]);
 }
 
