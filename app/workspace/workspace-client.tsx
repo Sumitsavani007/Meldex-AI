@@ -278,7 +278,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     return sortTree(prune(state.tree));
   }, [fileSearch, showChangedOnly, showHiddenFiles, sortMode, state.tree]);
   const changed = liveDiffs.length ? liveDiffs : activeTask?.diffs || [];
-  const currentPromptDiffs = liveDiffs.length ? liveDiffs : streamEvents.length ? activeTask?.diffs || [] : [];
+  const currentPromptDiffs = liveDiffs;
   const hasPreviewFile = files.some((file) => file.path === "index.html");
   const previewVersion = [
     state.project?.updatedAt,

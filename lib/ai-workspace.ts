@@ -177,7 +177,256 @@ function looksLikeRawModelDump(content = "") {
   );
 }
 
+function onlyStaticCoreFilesRequested(prompt = "") {
+  return /only\s+(?:use\s+)?(?:the\s+)?(?:files?\s*)?(?:index\.html|html)[\s,]*(?:style\.css|css)[\s,]*(?:and\s+)?(?:script\.js|js)/i.test(prompt) ||
+    /use\s+only\s+index\.html,\s*style\.css,\s*script\.js/i.test(prompt);
+}
+
+function isGujaratiFoodPrompt(prompt = "") {
+  return /gujarati|tasty\s+gujarat|food\s+delivery|dhokla|fafda|khandvi|thepla|undhiyu|khaman/i.test(prompt);
+}
+
 function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileAction[] {
+  if (isGujaratiFoodPrompt(prompt)) {
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tasty Gujarat - Premium Gujarati Food Delivery</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="Tasty Gujarat home"><span>TG</span>Tasty Gujarat</a>
+    <nav aria-label="Primary navigation">
+      <a href="#dishes">Dishes</a>
+      <a href="#how">How it works</a>
+      <a href="#plans">Plans</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="header-cta" type="button" data-scroll="#plans">Order now</button>
+  </header>
+
+  <main id="top">
+    <section class="hero reveal">
+      <div class="hero-copy">
+        <p class="eyebrow">Ahmedabad to your doorstep</p>
+        <h1>Premium Gujarati meals delivered hot, fast, and full of ghar jaisi taste.</h1>
+        <p class="lede">Tasty Gujarat brings curated thalis, farsan, sweets, and festive family packs from trusted local kitchens in a dark, premium delivery experience.</p>
+        <div class="hero-actions">
+          <button class="primary-btn" type="button" data-scroll="#dishes">Explore dishes</button>
+          <button class="secondary-btn" type="button" data-scroll="#how">How it works</button>
+        </div>
+        <div class="hero-stats" aria-label="Service highlights">
+          <span><strong>35 min</strong> average delivery</span>
+          <span><strong>4.9/5</strong> taste rating</span>
+          <span><strong>120+</strong> Gujarati dishes</span>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="Gujarati thali preview">
+        <div class="glow"></div>
+        <div class="thali-card">
+          <div class="dish large">થેપલા</div>
+          <div class="dish">ઢોકળા</div>
+          <div class="dish">ખમણ</div>
+          <div class="dish">જલેબી</div>
+          <div class="dish">છાસ</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="dishes" class="section reveal">
+      <div class="section-heading">
+        <p class="eyebrow">Popular dishes</p>
+        <h2>Gujarati favorites, plated for modern cravings.</h2>
+      </div>
+      <div class="dish-grid">
+        <article class="food-card"><span>🥟</span><h3>Surti Locho Bowl</h3><p>Soft, spicy, buttery locho with sev, chutney, and onion crunch.</p><strong>₹129</strong></article>
+        <article class="food-card"><span>🍱</span><h3>Kathiyawadi Thali</h3><p>Ringan no olo, bajra rotla, khichdi, kadhi, pickle, and jaggery.</p><strong>₹249</strong></article>
+        <article class="food-card"><span>🥨</span><h3>Fafda Jalebi Box</h3><p>Crisp fafda, hot jalebi, papaya sambharo, and kadhi chutney.</p><strong>₹179</strong></article>
+        <article class="food-card"><span>🥘</span><h3>Undhiyu Feast</h3><p>Seasonal vegetables, methi muthia, puri, shrikhand, and chaas.</p><strong>₹299</strong></article>
+      </div>
+    </section>
+
+    <section id="how" class="section reveal">
+      <div class="section-heading">
+        <p class="eyebrow">How it works</p>
+        <h2>From kitchen to khushi in three simple steps.</h2>
+      </div>
+      <div class="steps">
+        <article><span>01</span><h3>Pick your craving</h3><p>Choose thalis, snacks, sweets, or weekly meal plans from curated local kitchens.</p></article>
+        <article><span>02</span><h3>Track fresh prep</h3><p>Live updates show when your food is being cooked, packed, and dispatched.</p></article>
+        <article><span>03</span><h3>Enjoy it hot</h3><p>Smart routing keeps delivery fast so every bite arrives fresh and flavorful.</p></article>
+      </div>
+    </section>
+
+    <section id="plans" class="section reveal">
+      <div class="section-heading">
+        <p class="eyebrow">Plans</p>
+        <h2>Simple food plans for every Gujarati appetite.</h2>
+      </div>
+      <div class="plans">
+        <article class="plan"><p>Snack Pass</p><h3>₹499<span>/mo</span></h3><ul><li>4 farsan boxes</li><li>Free chutney upgrades</li><li>Weekend delivery slots</li></ul><button type="button">Choose Snack</button></article>
+        <article class="plan featured"><p>Family Thali</p><h3>₹1,999<span>/mo</span></h3><ul><li>8 premium thalis</li><li>Priority delivery</li><li>Festival sweet add-ons</li></ul><button type="button">Choose Family</button></article>
+        <article class="plan"><p>Office Meals</p><h3>₹3,999<span>/mo</span></h3><ul><li>Team lunch packs</li><li>Bulk order support</li><li>Dedicated manager</li></ul><button type="button">Contact us</button></article>
+      </div>
+    </section>
+
+    <section id="faq" class="section faq reveal">
+      <div class="section-heading">
+        <p class="eyebrow">FAQ</p>
+        <h2>Questions before your first bite?</h2>
+      </div>
+      <div class="accordion">
+        <button class="faq-item" type="button"><span>Which cities do you serve?</span><strong>+</strong></button>
+        <div class="faq-panel">We currently serve Ahmedabad, Surat, Vadodara, and Gandhinagar, with more Gujarati cities coming soon.</div>
+        <button class="faq-item" type="button"><span>Can I schedule orders?</span><strong>+</strong></button>
+        <div class="faq-panel">Yes. Schedule meals up to 7 days in advance for family events, offices, and festivals.</div>
+        <button class="faq-item" type="button"><span>Are meals vegetarian?</span><strong>+</strong></button>
+        <div class="faq-panel">Yes, Tasty Gujarat focuses on pure vegetarian Gujarati food with Jain options where available.</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>© 2026 Tasty Gujarat. Premium Gujarati food, delivered with love.</footer>
+  <script src="./script.js"></script>
+</body>
+</html>`;
+    const css = `:root {
+  color-scheme: dark;
+  --bg: #08070b;
+  --panel: rgba(255, 255, 255, 0.07);
+  --panel-strong: rgba(255, 255, 255, 0.12);
+  --text: #fffaf2;
+  --muted: #b8ad9c;
+  --border: rgba(255, 255, 255, 0.14);
+  --saffron: #ffb347;
+  --rose: #ff5c7a;
+  --green: #4ade80;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at 15% 8%, rgba(255, 179, 71, 0.22), transparent 28rem),
+    radial-gradient(circle at 86% 18%, rgba(255, 92, 122, 0.18), transparent 24rem),
+    linear-gradient(180deg, #100b13 0%, var(--bg) 44%, #0d0b08 100%);
+  color: var(--text);
+}
+.site-header {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  padding: 18px clamp(18px, 4vw, 64px);
+  border-bottom: 1px solid var(--border);
+  background: rgba(8, 7, 11, 0.72);
+  backdrop-filter: blur(18px);
+}
+.brand, nav a { color: inherit; text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 850; letter-spacing: -0.03em; }
+.brand span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: linear-gradient(135deg, var(--saffron), var(--rose)); color: #180b05; }
+nav { display: flex; gap: 22px; color: var(--muted); font-size: 14px; }
+nav a:hover { color: var(--text); }
+button { font: inherit; }
+.header-cta, .primary-btn, .secondary-btn, .plan button {
+  border: 1px solid var(--border); border-radius: 999px; padding: 12px 18px; cursor: pointer;
+  color: var(--text); background: rgba(255,255,255,.06); transition: transform .2s ease, border-color .2s ease, background .2s ease;
+}
+.header-cta, .primary-btn, .plan.featured button { background: linear-gradient(135deg, var(--saffron), var(--rose)); color: #1b0d07; border-color: transparent; font-weight: 800; }
+button:hover { transform: translateY(-2px); }
+.hero { min-height: 86vh; display: grid; grid-template-columns: 1.08fr .92fr; gap: clamp(32px, 5vw, 76px); align-items: center; padding: clamp(56px, 8vw, 108px) clamp(18px, 5vw, 86px); }
+.eyebrow { margin: 0 0 14px; color: var(--saffron); font-size: 12px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
+h1, h2, h3, p { margin-top: 0; }
+h1 { max-width: 860px; font-size: clamp(46px, 7.8vw, 104px); line-height: .9; letter-spacing: -0.075em; margin-bottom: 24px; }
+.lede { max-width: 720px; color: var(--muted); font-size: clamp(17px, 2vw, 22px); line-height: 1.7; }
+.hero-actions, .hero-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
+.hero-stats span { border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; color: var(--muted); background: rgba(255,255,255,.045); }
+.hero-stats strong { display: block; color: var(--text); font-size: 20px; }
+.hero-visual { position: relative; min-height: 520px; display: grid; place-items: center; }
+.glow { position: absolute; width: 72%; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(from 90deg, var(--saffron), var(--rose), var(--green), var(--saffron)); filter: blur(46px); opacity: .34; animation: spin 14s linear infinite; }
+.thali-card { position: relative; display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 16px; width: min(460px, 100%); padding: 24px; border: 1px solid var(--border); border-radius: 34px; background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.045)); box-shadow: 0 30px 110px rgba(0,0,0,.42); backdrop-filter: blur(18px); }
+.dish { min-height: 120px; display: grid; place-items: center; border-radius: 26px; color: #211006; background: linear-gradient(135deg, #ffd79a, #ff9b73); font-size: 22px; font-weight: 850; box-shadow: inset 0 1px rgba(255,255,255,.5); }
+.dish.large { grid-row: span 2; min-height: 256px; font-size: 32px; background: linear-gradient(135deg, #fff1b8, #ffb347); }
+.section { padding: 78px clamp(18px, 5vw, 86px); }
+.section-heading { max-width: 760px; margin-bottom: 30px; }
+.section h2 { font-size: clamp(32px, 4vw, 56px); line-height: 1; letter-spacing: -0.055em; }
+.dish-grid, .steps, .plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+.steps, .plans { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.food-card, .steps article, .plan, .faq-panel {
+  border: 1px solid var(--border); border-radius: 26px; background: var(--panel); padding: 24px; box-shadow: 0 18px 60px rgba(0,0,0,.18);
+}
+.food-card span { font-size: 34px; }
+.food-card p, .steps p, .plan li, .faq-panel { color: var(--muted); line-height: 1.65; }
+.food-card strong { color: var(--saffron); font-size: 20px; }
+.steps article span { color: var(--saffron); font-weight: 900; }
+.plan { position: relative; overflow: hidden; }
+.plan.featured { border-color: rgba(255,179,71,.48); background: linear-gradient(145deg, rgba(255,179,71,.16), rgba(255,255,255,.06)); transform: translateY(-8px); }
+.plan h3 { font-size: 40px; letter-spacing: -0.05em; }
+.plan h3 span { color: var(--muted); font-size: 15px; letter-spacing: 0; }
+.plan ul { padding-left: 18px; }
+.accordion { max-width: 900px; }
+.faq-item { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 18px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; }
+.faq-panel { display: none; margin: 14px 0; }
+.faq-panel.open { display: block; animation: fadeUp .24s ease both; }
+footer { padding: 32px clamp(18px, 5vw, 86px); color: var(--muted); border-top: 1px solid var(--border); }
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity .65s ease, transform .65s ease; }
+.reveal.visible { opacity: 1; transform: translateY(0); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 980px) {
+  nav { display: none; }
+  .hero { grid-template-columns: 1fr; min-height: auto; }
+  .dish-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .steps, .plans { grid-template-columns: 1fr; }
+  .plan.featured { transform: none; }
+}
+@media (max-width: 620px) {
+  .site-header { padding-inline: 16px; }
+  .header-cta { display: none; }
+  .hero { padding-top: 42px; }
+  .hero-visual { min-height: 360px; }
+  .thali-card { grid-template-columns: 1fr; border-radius: 24px; }
+  .dish, .dish.large { min-height: 88px; font-size: 21px; }
+  .dish-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}`;
+    const js = `const scrollButtons = document.querySelectorAll("[data-scroll]");
+scrollButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    const target = document.querySelector(button.dataset.scroll || "");
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add("visible");
+      observer.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.16 });
+
+document.querySelectorAll(".reveal").forEach((item) => observer.observe(item));
+
+document.querySelectorAll(".faq-item").forEach((button) => {
+  button.addEventListener("click", () => {
+    const panel = button.nextElementSibling;
+    const icon = button.querySelector("strong");
+    const open = panel?.classList.toggle("open");
+    if (icon) icon.textContent = open ? "−" : "+";
+  });
+});`;
+    return [
+      { operation: "create", path: "index.html", content: html, description: "Premium Gujarati food delivery landing page" },
+      { operation: "create", path: "style.css", content: css, description: "Dark premium responsive styling and animations" },
+      { operation: "create", path: "script.js", content: js, description: "Smooth scroll, reveal animations, and FAQ accordion" },
+    ];
+  }
   const productName = /meldex/i.test(prompt) ? "Meldex" : "Meldex AI";
   const isPricing = /\bpricing|price|plan|subscription\b/i.test(prompt);
   const title = isPricing ? `${productName} Pricing` : productName;
@@ -322,12 +571,13 @@ buttons.forEach((button) => {
     });
   });
 });`;
-  return [
+  const files: WorkspaceFileAction[] = [
     { operation: "create", path: "index.html", content: html, description: `Generated safe preview fallback: ${reason}` },
     { operation: "create", path: "style.css", content: css, description: "Premium responsive pricing styles" },
     { operation: "create", path: "script.js", content: js, description: "Monthly/yearly pricing toggle" },
     { operation: "create", path: "README.md", content: `# ${title}\n\nGenerated by Meldex Workspace.\n\n## Files\n\n- index.html\n- style.css\n- script.js\n\n## Validation\n\nPreview must render HTML, load CSS/JS, and contain no raw model JSON or unresolved placeholders.\n`, description: "Project notes" },
   ];
+  return onlyStaticCoreFilesRequested(prompt) ? files.filter((file) => ["index.html", "style.css", "script.js"].includes(file.path)) : files;
 }
 
 function uniqueLimit(values: string[], limit: number) {
@@ -715,6 +965,7 @@ export async function findStaticPreviewEntry(storagePath: string) {
 }
 
 export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prompt = "") {
+  const allowedCoreFiles = new Set(["index.html", "style.css", "script.js"]);
   const normalizedFiles: WorkspaceFileAction[] = files
     .map((file) => ({
       ...file,
@@ -722,7 +973,8 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
       path: safeRelative(file.path || ""),
       content: file.operation === "delete" ? file.content : decodeGeneratedContent(file.content),
     }))
-    .filter((file) => file.path);
+    .filter((file) => file.path)
+    .filter((file) => !onlyStaticCoreFilesRequested(prompt) || allowedCoreFiles.has(file.path));
   const isStatic = isStaticWebsitePrompt(prompt);
   const hasIndex = normalizedFiles.some((file) => file.path.toLowerCase() === "index.html");
   if (!isStatic) return normalizedFiles;
@@ -773,7 +1025,8 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
     /\.(html|css|js)$/i.test(file.path) &&
     (looksLikeRawModelDump(file.content || "") || hasUnresolvedTemplatePlaceholder(file.content || ""))
   );
-  return invalidContent ? staticFallbackFiles(prompt, "raw model dump or unresolved placeholder detected") : nextFiles;
+  const finalFiles = invalidContent ? staticFallbackFiles(prompt, "raw model dump or unresolved placeholder detected") : nextFiles;
+  return onlyStaticCoreFilesRequested(prompt) ? finalFiles.filter((file) => allowedCoreFiles.has(file.path)) : finalFiles;
 }
 
 export function validateStaticPreviewContent(html: string, linkedAssets: string[], existingAssets: Set<string>) {
@@ -1024,7 +1277,22 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     };
   }
 
-  return { plan: ["Read model response"], files: [], commands: [], summary: raw };
+  if (isStaticWebsitePrompt(raw)) {
+    return {
+      plan: ["Recover static website output", "Create required static files", "Verify preview"],
+      files: staticFallbackFiles(raw, "model response could not be parsed"),
+      commands: ["static-preview-verify"],
+      summary: "Recovered a static website from an unparseable model response.",
+      warnings: ["Model response was not parseable as strict JSON; generated safe static files instead."],
+    };
+  }
+
+  return {
+    plan: ["Read model response"],
+    files: [],
+    commands: [],
+    summary: looksLikeRawModelDump(raw) ? "The model returned an unparseable response with no safe file actions." : safeMemoryText(raw, 600),
+  };
 }
 
 export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>, orchestrationInstruction = "", runtime?: { userId?: string; taskType?: string }) {
@@ -1046,7 +1314,7 @@ Website Designer Agent V2:
 - SaaS: hero, features, how it works, integrations, pricing, testimonials, FAQ, CTA, footer.
 - Portfolio: hero, projects, skills, experience, testimonials, contact, footer.
 - For animated/modern/beautiful/premium/creative prompts, include tasteful IntersectionObserver reveals, hover motion, smooth scrolling, gradient/glass effects, responsive grids, and reduced-motion support.
-- Static website tasks must remain dependency-free unless explicitly asked: create index.html, style.css, script.js, README.md.
+- Static website tasks must remain dependency-free unless explicitly asked. If the user says "only index.html, style.css, script.js", create exactly those three files and no README/internal files. Otherwise static sites may include README.md.
 - Internal visual score must be 90+ for hierarchy, spacing, typography, responsiveness, animation, color, component quality, completeness, and accessibility before returning.` : "";
   const system = `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:
@@ -1061,7 +1329,7 @@ Rules: use relative paths, avoid secrets, do not add dependencies for static HTM
 Coding Engine V2:
 - Internally run: understand request, detect project type, detect framework, plan architecture, plan files, plan reusable components, plan state/data flow, generate code, self-review, run checks, fix errors, refactor if needed, verify final output.
 - Before coding decide folder structure, components, utilities, data model, API routes, validation, state management, styling approach, and testing approach.
-- Static sites must remain dependency-free unless explicitly requested and should use index.html, style.css, script.js, README.md.
+- Static sites must remain dependency-free unless explicitly requested. Honor explicit file-count constraints exactly.
 - React/Vite must use correct main entry, component imports, CSS import, and no Next-only APIs.
 - Next.js must follow existing app/pages router conventions, server/client boundaries, metadata, imports, and route placement.
 - Backend tasks should use routes/controllers/services/middleware/validators/utils when creating new structure, with validation, error handling, status codes, and safe defaults.
