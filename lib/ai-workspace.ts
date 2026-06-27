@@ -8,6 +8,7 @@ import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 
 export type WorkspaceTreeNode = {
+  id?: string;
   name: string;
   path: string;
   type: "file" | "folder";
@@ -479,8 +480,10 @@ export async function listProjectTree(projectId: string) {
   const tree = await walkTree(project.storagePath);
   const fileRecords = await prisma.workspaceFile.findMany({ where: { projectId, deletedAt: null } });
   const statusMap = new Map(fileRecords.map((file) => [file.path, file.status]));
+  const idMap = new Map(fileRecords.map((file) => [file.path, file.id]));
   const applyStatus = (nodes: WorkspaceTreeNode[]): WorkspaceTreeNode[] => nodes.map((node) => ({
     ...node,
+    id: node.type === "file" ? idMap.get(node.path) : undefined,
     status: node.type === "file" ? statusMap.get(node.path) || node.status : undefined,
     children: node.children ? applyStatus(node.children) : undefined,
   }));
