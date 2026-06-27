@@ -26,7 +26,13 @@ Date: 2026-06-27
 - Prisma generate passed.
 - Prisma migrate deploy passed locally with no pending migrations.
 - Production build passed locally.
+- AWS deploy completed at commit `5d3bfeef9c5f3981a3ff91220cc5a930c8576bf2`.
+- Live existing workspace container label: `native-v4`.
+- Live product metadata: `nameShort`, `nameLong`, `applicationName`, and `serverApplicationName` use Meldex names.
+- Live workbench localization scan found no forbidden strings in `product.json`, `nls.messages.js`, or `nls.messages.json`.
+- Authenticated IDE shell route returned HTTP `200`.
+- Unauthenticated `/ide/[workspaceId]/` returned HTTP `401`.
 
 ## Remaining Issues
 
-- Live deployment and live zero-leak search pending at report creation time.
+- In-app screenshot capture was unavailable in this Codex session, so visual QA used live source/container inspection instead.

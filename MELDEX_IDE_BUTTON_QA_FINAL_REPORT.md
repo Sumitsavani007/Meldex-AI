@@ -28,4 +28,5 @@ Date: 2026-06-27
 
 ## Remaining Issues
 
-- Live browser click QA pending at report creation time.
+- In-app browser was unavailable, so click-level visual QA could not be automated.
+- Button behavior was validated by source wiring and live endpoint checks where applicable: IDE session, preview URL, stream send endpoint, stop abort path, retry path, copy controls, and disabled reasons are present.

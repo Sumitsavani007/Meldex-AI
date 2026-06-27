@@ -22,7 +22,11 @@ Date: 2026-06-27
 ## Verification
 
 - Local build/type validation passed.
+- Live authenticated IDE route source contains `Meldex AI` and `Meldex IDE`.
+- Live authenticated IDE route source contains no forbidden upstream product/setup/chat labels.
+- Real stream endpoint smoke test returned `39` events and completed with `done: Task complete`.
+- Stream event types included memory, intent, classifier, planner, architect, designer, tool plan, confidence, Qwen generation, file extraction, reviewer, security, performance, preview, finalizer, memory, and learning events.
 
 ## Remaining Issues
 
-- Live streamed prompt QA pending at report creation time.
+- Native upstream workbench internals still exist under the runtime base, but user-facing Meldex shell and patched workbench sources no longer expose the forbidden labels in verified routes.

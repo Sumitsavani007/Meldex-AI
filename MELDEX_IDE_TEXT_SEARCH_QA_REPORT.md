@@ -23,4 +23,6 @@ Result:
 
 ## Remaining Issues
 
-- Live deployed HTML/workbench source search pending at report creation time.
+- Live authenticated IDE shell route source search found no forbidden strings.
+- Live container workbench source search found no forbidden strings in patched product/localization files.
+- Forbidden strings still exist in internal replacement code and historical reports/attachments; those are not user-facing rendered UI.

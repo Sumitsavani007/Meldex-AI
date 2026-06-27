@@ -25,4 +25,6 @@ Date: 2026-06-27
 
 ## Remaining Issues
 
-- Live visual inspection pending at report creation time.
+- In-app browser was unavailable (`Browser is not available: iab`).
+- Visual-equivalent QA used live authenticated route source, live container product metadata, and live localization source search.
+- No forbidden upstream labels were found in the authenticated IDE route source or patched runtime sources.

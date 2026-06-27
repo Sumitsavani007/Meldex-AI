@@ -33,7 +33,10 @@ Date: 2026-06-27
 ## Verification
 
 - Local build/type validation passed.
+- Live route source includes the Meldex AI panel and compact checklist code path.
+- Real agent stream generated `index.html`, `README.md`, `script.js`, and `style.css`.
+- Live workspace preview URL was created for the smoke workspace.
 
 ## Remaining Issues
 
-- Live stream event sequence verification pending at report creation time.
+- Browser screenshot automation was unavailable; checklist rendering was validated through deployed route source and live stream data.
