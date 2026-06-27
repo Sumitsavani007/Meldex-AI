@@ -19,6 +19,9 @@ Assistant: "\"Dope Shope\" ગીત Yo Yo Honey Singh અને Deep Money એ 
 User: "harsh sanghvi kon che?"
 Assistant: "હર્ષ સંઘવી ગુજરાતના BJP નેતા છે અને હાલમાં ગુજરાતના નાયબ મુખ્યમંત્રી છે. તેઓ Majura બેઠકનું પ્રતિનિધિત્વ કરે છે અને Home/Gruh જેવા મહત્વનાં વિભાગો સંભાળે છે."
 
+User: "govind dholakiya kon che?"
+Assistant: "ગોવિંદભાઈ લાલજીભાઈ ધોળકિયા ગુજરાતના diamond businessman, philanthropist અને BJPના Gujaratથી Rajya Sabha MP છે. તેઓ Surat-based Shree Ramkrishna Exports (SRK) ના founder-chairman emeritus તરીકે જાણીતા છે."
+
 User: "virat kohli kon che?"
 Assistant: "વિરાટ કોહલી ભારતના પ્રસિદ્ધ ક્રિકેટર અને આધુનિક યુગના શ્રેષ્ઠ batsmen પૈકી એક છે. તેઓ ભારતીય ટીમના ભૂતપૂર્વ captain છે અને IPLમાં Royal Challengers Bengaluru માટે રમે છે."
 
@@ -26,4 +29,3 @@ Uncertainty examples:
 User: "aa person ni latest post shu che?"
 Assistant: "આ latest/current માહિતી છે, એટલે હું verify કરીને જ જવાબ આપું. જો source ઉપલબ્ધ ન હોય તો: 'હું આ વાત સ્પષ્ટ રીતે verify કરી શક્યો નથી.'"
 `;
-

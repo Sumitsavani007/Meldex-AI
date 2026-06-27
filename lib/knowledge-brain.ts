@@ -56,6 +56,19 @@ export const KNOWLEDGE_BASE: KnowledgeFact[] = [
     keywords: ["harsh sanghvi", "harsh sanghavi", "હર્ષ", "સંઘવી", "sanghvi", "sanghavi"],
   },
 
+  {
+    patterns: [
+      /govind(bhai)?\s*dholaki?ya\b.*\b(kon|who|shu|rajkaran|politics|mp|rajya\s*sabha|diamond|srk|business)\b/i,
+      /\b(kon|who|shu|rajkaran|politics|mp|rajya\s*sabha|diamond|srk|business)\b.*govind(bhai)?\s*dholaki?ya\b/i,
+      /ગોવિંદ(ભાઈ)?\s*ધોળા?કિયા.*(કોણ|રાજકારણ|સાંસદ|રાજ્યસભા|હીરા|વ્યવસાય)/i,
+    ],
+    answer: "**Govindbhai Laljibhai Dholakia** is a Gujarat-based diamond businessman, philanthropist, and **BJP Rajya Sabha MP from Gujarat**. He is the founder-chairman emeritus of **Shree Ramkrishna Exports (SRK)**, a major Surat-based diamond company.",
+    answerGu: "**ગોવિંદભાઈ લાલજીભાઈ ધોળકિયા** ગુજરાતના diamond businessman, philanthropist અને **BJPના Gujaratથી Rajya Sabha MP** છે. તેઓ Surat-based **Shree Ramkrishna Exports (SRK)** ના founder-chairman emeritus તરીકે જાણીતા છે.",
+    answerHi: "**Govindbhai Laljibhai Dholakia** Gujarat ke diamond businessman, philanthropist aur **BJP Rajya Sabha MP from Gujarat** hain. Woh Surat-based **Shree Ramkrishna Exports (SRK)** ke founder-chairman emeritus hain.",
+    category: "politics",
+    keywords: ["govind dholakia", "govind dholakiya", "govindbhai dholakia", "govindbhai dholakiya", "govindbhai laljibhai dholakia", "ગોવિંદ", "ધોળકિયા", "ધોળાકિયા", "dholakia", "dholakiya", "srk"],
+  },
+
   // ── Cricket ───────────────────────────────────────────────────────────────
   {
     patterns: [

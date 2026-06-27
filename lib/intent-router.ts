@@ -79,6 +79,11 @@ const STRONG_SEARCH_PATTERNS: RegExp[] = [
   // Song / artist factual lookup
   /\b(song|gaano|gana|ગીત|ગાણું)\b.{0,60}\b(who|singer|artist|sang|gayu|gayo|gાયું|કોણ|kone|kon)\b/i,
   /\b(who|singer|artist|sang|gayu|gayo|gાયું|કોણ|kone|kon)\b.{0,60}\b(song|gaano|gana|ગીત|ગાણું)\b/i,
+
+  // Public-person lookup: "govind dholakiya kon che", "who is first last".
+  // Keep this away from single-word casual questions so normal chat still works.
+  /^(?!\s*(tu|tame|hu|mane|mara|maru)\b)([a-z][a-z.'-]{2,}\s+){1,4}[a-z][a-z.'-]{2,}\s+(kon\s*ch[eh]|who\s*is|kaun\s*h[ae][in])\??$/i,
+  /^(who\s*is|kon\s*ch[eh]|kaun\s*h[ae][in])\s+([a-z][a-z.'-]{2,}\s+){1,4}[a-z][a-z.'-]{2,}\??$/i,
 ];
 
 // ── WEAK search keywords — need score >= 2 to trigger ─────────────────────────
