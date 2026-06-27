@@ -25,6 +25,52 @@ const contentTypes: Record<string, string> = {
   ".gif": "image/gif",
 };
 
+function isPreviewLocalAsset(value: string) {
+  const trimmed = value.trim();
+  return Boolean(trimmed) &&
+    !trimmed.startsWith("#") &&
+    !trimmed.startsWith("data:") &&
+    !trimmed.startsWith("blob:") &&
+    !trimmed.startsWith("mailto:") &&
+    !trimmed.startsWith("tel:") &&
+    !trimmed.startsWith("javascript:") &&
+    !/^https?:\/\//i.test(trimmed) &&
+    !trimmed.startsWith("/api/workspaces/");
+}
+
+function previewAssetUrl(projectId: string, entryPath: string, assetPath: string) {
+  const cleanAsset = assetPath.split("#")[0]?.split("?")[0] || "";
+  const entryDir = path.posix.dirname(entryPath);
+  const relative = cleanAsset.startsWith("/")
+    ? cleanAsset.replace(/^\/+/, "")
+    : path.posix.join(entryDir === "." ? "" : entryDir, cleanAsset);
+  return `/api/workspaces/${projectId}/preview?file=${encodeURIComponent(relative)}`;
+}
+
+function rewritePreviewHtml(projectId: string, entryPath: string, html: string) {
+  return html
+    .replace(/\b(href|src)=["']([^"']+)["']/gi, (match, attr: string, value: string) => {
+      if (!isPreviewLocalAsset(value)) return match;
+      return `${attr}="${previewAssetUrl(projectId, entryPath, value)}"`;
+    })
+    .replace(/\bsrcset=["']([^"']+)["']/gi, (match, value: string) => {
+      const rewritten = value.split(",").map((part) => {
+        const [url, ...descriptor] = part.trim().split(/\s+/);
+        if (!url || !isPreviewLocalAsset(url)) return part.trim();
+        return [previewAssetUrl(projectId, entryPath, url), ...descriptor].join(" ");
+      }).join(", ");
+      return `srcset="${rewritten}"`;
+    });
+}
+
+function rewritePreviewCss(projectId: string, entryPath: string, css: string) {
+  return css.replace(/url\((['"]?)([^'")]+)\1\)/gi, (match, quote: string, value: string) => {
+    if (!isPreviewLocalAsset(value)) return match;
+    const nextQuote = quote || "";
+    return `url(${nextQuote}${previewAssetUrl(projectId, entryPath, value)}${nextQuote})`;
+  });
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -43,15 +89,19 @@ export async function GET(
 
     const filePath = searchParams.get("file") || await findStaticPreviewEntry(project.storagePath) || "index.html";
     const { absolute } = resolveProjectFile(project.storagePath, filePath);
-    const body = await readFile(absolute);
+    const fileBuffer = await readFile(absolute);
+    let body: BodyInit = new Uint8Array(fileBuffer);
     const type = contentTypes[path.extname(absolute).toLowerCase()] || "text/plain; charset=utf-8";
     const headers = new Headers({
       "Content-Type": type,
       "Cache-Control": "no-store",
     });
     if (type.startsWith("text/html")) {
-      headers.set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob:; frame-ancestors 'self'");
+      body = rewritePreviewHtml(id, filePath, fileBuffer.toString("utf8"));
+      headers.set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; frame-ancestors 'self'");
       headers.set("X-Frame-Options", "SAMEORIGIN");
+    } else if (type.startsWith("text/css")) {
+      body = rewritePreviewCss(id, filePath, fileBuffer.toString("utf8"));
     }
     return new NextResponse(body, {
       status: 200,
