@@ -1,7 +1,6 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -39,8 +38,6 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-
-const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
 type TreeNode = {
   id?: string;
@@ -348,12 +345,16 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         setOnboardingOpen(true);
       }
     }
-    const folders = flatten(data.tree || []).filter((node) => node.type === "folder");
-    setOpenFolders((current) => {
-      const next = { ...current };
-      for (const folder of folders) if (next[folder.path] === undefined) next[folder.path] = true;
-      return next;
-    });
+    const savedFolders = window.localStorage.getItem(`meldex.workspace.openFolders:${data.project.id}`);
+    if (savedFolders) {
+      try {
+        setOpenFolders(JSON.parse(savedFolders) as Record<string, boolean>);
+      } catch {
+        setOpenFolders({});
+      }
+    } else {
+      setOpenFolders({});
+    }
   }
 
   async function loadUsage() {
@@ -723,6 +724,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   }, [centerMode, splitRatio, selectedFile, previewDevice, previewMode, previewZoom, showHiddenFiles, state.project?.id]);
 
   useEffect(() => {
+    if (!state.project?.id) return;
+    window.localStorage.setItem(`meldex.workspace.openFolders:${state.project.id}`, JSON.stringify(openFolders));
+  }, [openFolders, state.project?.id]);
+
+  useEffect(() => {
     if (!fileDirty || !selectedFile) return;
     const timeout = window.setTimeout(() => void saveCurrentFile(false), 1400);
     return () => window.clearTimeout(timeout);
@@ -948,7 +954,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         </button>
       );
     }
-    const open = openFolders[node.path] ?? true;
+    const open = openFolders[node.path] ?? false;
     return (
       <div key={node.path}>
         <button
@@ -1148,14 +1154,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 )}
                 <div className={selectedFile ? "h-[calc(100%-4.5rem)]" : "h-[calc(100%-2.5rem)]"}>
                   {selectedFile ? (
-                    <MonacoEditor
+                    <textarea
                       key={selectedFile}
-                      language={editorLanguage}
                       value={editorContent}
-                      theme={typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "vs-dark" : "light"}
-                      onChange={(value) => setEditorContent(value || "")}
-                      loading={<div className="flex h-full items-center justify-center text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading {selectedFile}...</div>}
-                      options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", automaticLayout: true, scrollBeyondLastLine: false, wordWrap: "on", renderLineHighlight: "all", padding: { top: 12, bottom: 12 } }}
+                      onChange={(event) => setEditorContent(event.target.value)}
+                      spellCheck={false}
+                      aria-label={`Code editor for ${selectedFile}`}
+                      className="h-full w-full resize-none bg-white p-4 font-mono text-[13px] leading-6 text-[#111827] outline-none selection:bg-[#7C5CFF]/20 dark:bg-[#0B0D12] dark:text-[#E5E7EB]"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-[#6B7280] dark:text-[#9CA3AF]">Select a file to open the code editor.</div>
@@ -1331,12 +1336,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             {activeRightTab === "MEMORY" && <div className="space-y-3"><div className="flex h-8 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Search memory" /></div><button onClick={async () => { if (!state.project || !window.confirm("Clear workspace memory?")) return; const response = await fetch(`/api/workspaces/${state.project.id}/memory`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) }); setMessage(response.ok ? "Memory cleared" : "Memory clear failed"); await loadWorkspace(state.project.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:text-red-300">Clear memory</button>{memoryItems.length ? memoryItems.map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 text-xs dark:bg-[#1A1E27]">{item}</div>) : <div className="text-[#6B7280] dark:text-[#9CA3AF]">No matching memory.</div>}</div>}
           </div>
           <div className="shrink-0 border-t border-[#E5E7EB] p-4 dark:border-[#22252D]">
-            <div className="rounded-2xl border border-[#E5E7EB] bg-white/92 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] transition focus-within:border-[#7C5CFF] dark:border-[#22252D] dark:bg-[#111318]/92 dark:shadow-[0_14px_34px_rgba(0,0,0,0.28)]">
+            <div className="rounded-2xl border border-[#E5E7EB]/70 bg-white/92 p-3 shadow-[0_14px_34px_rgba(15,23,42,0.08)] transition focus-within:border-[#7C5CFF] dark:border-[#22252D] dark:bg-[#111318]/92 dark:shadow-[0_14px_34px_rgba(0,0,0,0.28)]">
               <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((sendShortcut === "Enter" && event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-[14px] leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask for follow-up changes..." />
               <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
                 <div className="flex min-w-0 items-center gap-2">
                   <button className="flex h-8 items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3 text-amber-700 transition hover:bg-amber-50 dark:border-[#2A2E39] dark:text-amber-300 dark:hover:bg-amber-500/10" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
-                  <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-8 rounded-full border border-[#E5E7EB] bg-white px-3 text-[12px] font-medium text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
+                  <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-8 min-w-[122px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 pr-7 text-[12px] font-medium text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
                     <option>MelDex 1.0</option>
                   </select>
                 </div>
