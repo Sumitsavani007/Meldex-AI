@@ -76,30 +76,19 @@ async function configureWorkspaceDefaults(workspacePath: string) {
 
 async function applyMeldexBranding(containerName: string) {
   const script = `
-node <<'NODE'
-const fs = require('fs');
-const candidates = [
-  '/home/.openvscode-server/product.json',
-  '/home/openvscode-server/.openvscode-server/product.json',
-];
-for (const file of candidates) {
-  try {
-    const product = JSON.parse(fs.readFileSync(file, 'utf8'));
-    Object.assign(product, {
-      nameShort: 'Meldex IDE',
-      nameLong: 'Meldex IDE',
-      applicationName: 'meldex-ide',
-      dataFolderName: '.meldex-ide',
-      serverApplicationName: 'meldex-ide',
-      serverDataFolderName: '.meldex-ide-server',
-      reportIssueUrl: 'https://meldex.newsyfly.com/settings',
-      urlProtocol: 'meldex-ide',
-      licenseName: 'Meldex',
-    });
-    fs.writeFileSync(file, JSON.stringify(product, null, 2));
-  } catch {}
-}
-NODE
+for file in /home/.openvscode-server/product.json /home/openvscode-server/.openvscode-server/product.json; do
+  [ -f "$file" ] || continue
+  sed -i \
+    -e 's/"nameShort": "[^"]*"/"nameShort": "Meldex IDE"/' \
+    -e 's/"nameLong": "[^"]*"/"nameLong": "Meldex IDE"/' \
+    -e 's/"applicationName": "[^"]*"/"applicationName": "meldex-ide"/' \
+    -e 's/"dataFolderName": "[^"]*"/"dataFolderName": ".meldex-ide"/' \
+    -e 's/"serverApplicationName": "[^"]*"/"serverApplicationName": "meldex-ide"/' \
+    -e 's/"serverDataFolderName": "[^"]*"/"serverDataFolderName": ".meldex-ide-server"/' \
+    -e 's/"urlProtocol": "[^"]*"/"urlProtocol": "meldex-ide"/' \
+    -e 's/"licenseName": "[^"]*"/"licenseName": "Meldex"/' \
+    "$file"
+done
 `;
   await docker(["exec", "-u", "0", containerName, "sh", "-lc", script]).catch(() => undefined);
 }
