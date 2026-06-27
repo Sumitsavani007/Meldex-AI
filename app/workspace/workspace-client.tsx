@@ -913,7 +913,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                   onClick={() => setCenterMode(mode)}
                   className={`h-7 rounded-lg px-3 text-xs font-semibold capitalize transition ${centerMode === mode ? "bg-[#6D4AFF] text-white shadow-sm" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"}`}
                 >
-                  {mode}
+                  {mode === "code" ? "Code" : mode === "preview" ? "Preview" : "Split"}
                 </button>
               ))}
             </div>
