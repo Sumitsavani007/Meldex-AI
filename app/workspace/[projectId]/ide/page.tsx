@@ -10,5 +10,5 @@ export default async function WorkspaceIdePage({ params }: { params: Promise<{ p
   if (!session?.user?.id) redirect(`/login?callbackUrl=/workspace`);
   const { projectId } = await params;
   const project = await getOwnedWorkspaceProject(session.user.id, projectId);
-  return <IdeFrameClient projectId={project.id} projectName={project.name} />;
+  return <IdeFrameClient projectId={project.id} projectName={project.name} projectCreatedAt={project.createdAt.toISOString()} />;
 }

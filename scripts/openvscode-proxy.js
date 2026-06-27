@@ -113,12 +113,12 @@ server.on("upgrade", (req, socket, head) => {
     },
   });
   upstream.on("upgrade", (upstreamRes, upstreamSocket, upstreamHead) => {
-    socket.write([
-      "HTTP/1.1 101 Switching Protocols",
-      "Connection: Upgrade",
-      `Upgrade: ${req.headers.upgrade || "websocket"}`,
-      "\r\n",
-    ].join("\r\n"));
+    socket.write(`HTTP/1.1 ${upstreamRes.statusCode || 101} ${upstreamRes.statusMessage || "Switching Protocols"}\r\n`);
+    const rawHeaders = upstreamRes.rawHeaders || [];
+    for (let index = 0; index < rawHeaders.length; index += 2) {
+      socket.write(`${rawHeaders[index]}: ${rawHeaders[index + 1]}\r\n`);
+    }
+    socket.write("\r\n");
     if (upstreamHead?.length) socket.write(upstreamHead);
     if (head?.length) upstreamSocket.write(head);
     upstreamSocket.pipe(socket);
