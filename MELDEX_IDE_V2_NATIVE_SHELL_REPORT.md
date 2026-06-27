@@ -12,6 +12,7 @@ Make the visible IDE experience a Meldex-owned React shell instead of exposing O
 - The shell uses the existing workspace backend for projects, files, previews, memory, tasks, and agent streaming.
 - OpenVSCode is no longer the primary visible IDE route.
 - Existing OpenVSCode session API remains available as an internal engine/fallback integration, but not the user-facing IDE shell.
+- The workspace orchestration confidence threshold now allows medium safe tasks to proceed with assumptions instead of incorrectly blocking at score 66.
 
 ## Native Shell Capabilities
 
@@ -29,6 +30,7 @@ Make the visible IDE experience a Meldex-owned React shell instead of exposing O
 
 - `app/workspace/[projectId]/ide/page.tsx`
 - `app/workspace/workspace-client.tsx`
+- `lib/workspace-orchestrator.ts`
 
 ## Local Verification
 

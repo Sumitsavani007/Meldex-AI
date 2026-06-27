@@ -209,7 +209,7 @@ function scoreConfidence(plan: OrchestrationResult["plan"], classification: Orch
   const decision =
     plan.riskLevel === "high" && score < 70 ? "ask_user" :
     score >= 90 ? "auto_proceed" :
-    score >= 70 ? "proceed_with_assumption" :
+    score >= 60 ? "proceed_with_assumption" :
     "block";
   return {
     score,
