@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
+import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -100,6 +101,8 @@ type WorkspaceState = {
 };
 
 type BottomTab = "TERMINAL" | "OUTPUT" | "PROBLEMS" | "LOGS" | "PREVIEW LOGS" | "GIT";
+type CenterMode = "code" | "preview" | "split";
+type RightTab = "CHAT" | "CHANGES" | "ACTIVITY" | "MEMORY" | "RULES";
 
 type WorkspaceMemory = {
   projectSummary: string;
@@ -191,7 +194,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [leftWidth, setLeftWidth] = useState(320);
   const [rightWidth, setRightWidth] = useState(360);
   const [fileSearch, setFileSearch] = useState("");
-  const [activeRightTab, setActiveRightTab] = useState<"MELDEX AI" | "FILES" | "ACTIVITY" | "MEMORY" | "RULES">("MELDEX AI");
+  const [activeRightTab, setActiveRightTab] = useState<RightTab>("CHAT");
+  const [centerMode, setCenterMode] = useState<CenterMode>("split");
+  const [splitRatio, setSplitRatio] = useState(52);
+  const [previewRotated, setPreviewRotated] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<"Desktop" | "Tablet" | "Mobile">("Desktop");
   const [previewMode, setPreviewMode] = useState<"Responsive" | "1440px" | "1280px" | "768px" | "390px">("Responsive");
   const [previewZoom, setPreviewZoom] = useState(100);
@@ -203,7 +209,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [savingFile, setSavingFile] = useState(false);
   const [bottomTab, setBottomTab] = useState<BottomTab>("TERMINAL");
   const [bottomHeight, setBottomHeight] = useState(210);
-  const [bottomCollapsed, setBottomCollapsed] = useState(false);
+  const [bottomCollapsed, setBottomCollapsed] = useState(true);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
@@ -215,7 +221,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
-  const files = useMemo(() => flatten(state.tree).filter((node) => node.type === "file"), [state.tree]);
+  const files = useMemo(() => flatten(state.tree).filter((node) => node.type === "file" && isUserVisibleWorkspaceFile(node.path)), [state.tree]);
   const selectedNode = files.find((file) => file.path === selectedFile);
   const fileDirty = Boolean(selectedFile && editorContent !== savedEditorContent);
   const editorLanguage = selectedFile.endsWith(".html") ? "html" : selectedFile.endsWith(".css") ? "css" : selectedFile.endsWith(".json") ? "json" : selectedFile.endsWith(".md") ? "markdown" : selectedFile.endsWith(".ts") || selectedFile.endsWith(".tsx") ? "typescript" : selectedFile.endsWith(".js") || selectedFile.endsWith(".jsx") ? "javascript" : "plaintext";
@@ -224,11 +230,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     const prune = (nodes: TreeNode[]): TreeNode[] => nodes
       .map((node) => {
         if (node.type === "file") {
-          if (node.name === ".gitkeep") return null;
+          if (!isUserVisibleWorkspaceFile(node.path)) return null;
           return !query || node.path.toLowerCase().includes(query) || node.name.toLowerCase().includes(query) ? node : null;
         }
         const children = prune(node.children || []);
         const selfMatches = !query || node.path.toLowerCase().includes(query) || node.name.toLowerCase().includes(query);
+        if (!isUserVisibleWorkspaceFile(node.path)) return null;
         if (!children.length && !selfMatches) return null;
         if (!children.length && !query) return null;
         return { ...node, children };
@@ -237,8 +244,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     return prune(state.tree);
   }, [fileSearch, state.tree]);
   const changed = liveDiffs.length ? liveDiffs : activeTask?.diffs || [];
-  const totalAdded = changed.reduce((sum, diff) => sum + diff.added, 0);
-  const totalRemoved = changed.reduce((sum, diff) => sum + diff.removed, 0);
   const hasPreviewFile = files.some((file) => file.path === "index.html");
   const previewVersion = [
     state.project?.updatedAt,
@@ -383,6 +388,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           setStreamEvents((current) => [...current, event].sort((a, b) => a.sequence - b.sequence));
           setMessage(event.message);
           setTerminalOutput((current) => [`${event.type}: ${event.message}`, ...current].slice(0, 180));
+          if (event.type === "error") {
+            setBottomTab("PROBLEMS");
+            setBottomCollapsed(false);
+          }
           if (event.type === "diff_ready" || event.type === "file_created" || event.type === "file_updated" || event.type === "file_deleted") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
@@ -411,7 +420,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       await loadWorkspace(state.project.id);
     } catch (error) {
       if (controller.signal.aborted) setMessage("Task cancelled");
-      else setMessage(error instanceof Error ? error.message : "Workspace agent failed");
+      else {
+        setMessage(error instanceof Error ? error.message : "Workspace agent failed");
+        setBottomTab("PROBLEMS");
+        setBottomCollapsed(false);
+      }
       await loadWorkspace(state.project.id).catch(() => undefined);
     } finally {
       setLoading(false);
@@ -612,16 +625,47 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     const left = window.localStorage.getItem("meldex.workspace.leftWidth");
     const right = window.localStorage.getItem("meldex.workspace.rightWidth");
     const bottom = window.localStorage.getItem("meldex.workspace.bottomHeight");
+    const collapsed = window.localStorage.getItem("meldex.workspace.bottomCollapsed");
     if (left) setLeftWidth(Math.min(420, Math.max(260, Number(left))));
     if (right) setRightWidth(Math.min(460, Math.max(320, Number(right))));
     if (bottom) setBottomHeight(Math.min(380, Math.max(120, Number(bottom))));
+    if (collapsed) setBottomCollapsed(collapsed === "true");
   }, []);
 
   useEffect(() => {
     window.localStorage.setItem("meldex.workspace.leftWidth", String(leftWidth));
     window.localStorage.setItem("meldex.workspace.rightWidth", String(rightWidth));
     window.localStorage.setItem("meldex.workspace.bottomHeight", String(bottomHeight));
-  }, [leftWidth, rightWidth, bottomHeight]);
+    window.localStorage.setItem("meldex.workspace.bottomCollapsed", String(bottomCollapsed));
+  }, [leftWidth, rightWidth, bottomHeight, bottomCollapsed]);
+
+  useEffect(() => {
+    if (!state.project?.id) return;
+    const key = `meldex.workspace.view.${state.project.id}`;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as Partial<{ centerMode: CenterMode; splitRatio: number; activeFile: string; previewDevice: "Desktop" | "Tablet" | "Mobile"; previewMode: "Responsive" | "1440px" | "1280px" | "768px" | "390px"; previewZoom: number }>;
+      if (saved.centerMode && ["code", "preview", "split"].includes(saved.centerMode)) setCenterMode(saved.centerMode);
+      if (saved.splitRatio) setSplitRatio(Math.min(72, Math.max(32, Number(saved.splitRatio))));
+      if (saved.previewDevice) setPreviewDevice(saved.previewDevice);
+      if (saved.previewMode) setPreviewMode(saved.previewMode);
+      if (saved.previewZoom) setPreviewZoom(Number(saved.previewZoom));
+      if (saved.activeFile && files.some((file) => file.path === saved.activeFile)) void openFile(saved.activeFile);
+    } catch {}
+  }, [state.project?.id]);
+
+  useEffect(() => {
+    if (!state.project?.id) return;
+    window.localStorage.setItem(`meldex.workspace.view.${state.project.id}`, JSON.stringify({
+      centerMode,
+      splitRatio,
+      activeFile: selectedFile,
+      previewDevice,
+      previewMode,
+      previewZoom,
+    }));
+  }, [centerMode, splitRatio, selectedFile, previewDevice, previewMode, previewZoom, state.project?.id]);
 
   useEffect(() => {
     if (!fileDirty || !selectedFile) return;
@@ -635,10 +679,15 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setBottomHeight(210);
     setLeftCollapsed(false);
     setRightCollapsed(false);
-    setBottomCollapsed(false);
+    setBottomCollapsed(true);
     setPreviewFullscreen(false);
     setEditorFullscreen(false);
     setMessage("Layout reset");
+  }
+
+  function openTerminal(tab: BottomTab = "TERMINAL") {
+    setBottomTab(tab);
+    setBottomCollapsed(false);
   }
 
   function dismissOnboarding() {
@@ -689,9 +738,24 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     window.addEventListener("mouseup", onUp);
   }
 
+  function startSplitResize(event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const container = (event.currentTarget.parentElement as HTMLElement | null);
+    const bounds = container?.getBoundingClientRect();
+    if (!bounds) return;
+    const onMove = (moveEvent: MouseEvent) => {
+      const next = ((moveEvent.clientX - bounds.left) / bounds.width) * 100;
+      setSplitRatio(Math.min(72, Math.max(32, next)));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
-  const rootFiles = ["package.json", "next.config.ts", "README.md", "tsconfig.json", ".env", ".gitignore"];
-  const generatedFiles = files.filter((file) => !rootFiles.includes(file.name));
+
   const conversationEvents = [...(activeTask?.events || []), ...streamEvents]
     .sort((a, b) => a.sequence - b.sequence)
     .filter((event, index, list) => list.findIndex((item) => item.type === event.type && item.message === event.message) === index);
@@ -842,32 +906,45 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <button className="flex h-full items-center gap-2 border-r border-[#E5E7EB] px-3 text-sm font-semibold dark:border-[#22252D]"><Globe2 className="size-4 text-[#6D4AFF]" /> Meldex IDE</button>
               <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid h-full w-9 place-items-center text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
             </div>
+            <div className="ml-1 flex h-9 items-center rounded-xl border border-[#E5E7EB] bg-white p-1 shadow-sm dark:border-[#22252D] dark:bg-[#111318]">
+              {(["code", "preview", "split"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setCenterMode(mode)}
+                  className={`h-7 rounded-lg px-3 text-xs font-semibold capitalize transition ${centerMode === mode ? "bg-[#6D4AFF] text-white shadow-sm" : "text-[#6B7280] hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"}`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
             <button onClick={() => setLeftCollapsed((value) => !value)} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">{leftCollapsed ? "Show Files" : "Hide Files"}</button>
             <button onClick={() => setRightCollapsed((value) => !value)} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">{rightCollapsed ? "Show Agent" : "Hide Agent"}</button>
-            <button onClick={() => setBottomCollapsed((value) => !value)} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">{bottomCollapsed ? "Show Terminal" : "Hide Terminal"}</button>
+            <button onClick={() => openTerminal("TERMINAL")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Terminal</button>
             <button onClick={resetLayout} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Reset</button>
             <button onClick={() => router.push("/workspace")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Workspaces</button>
             <button onClick={() => setCommandPaletteOpen(true)} className="ml-auto rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Command</button>
             <button onClick={downloadProjectZip} disabled={!state.project} className="grid size-9 place-items-center rounded-xl border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Download Project ZIP"><Download className="size-4" /></button>
           </div>
 
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
+          {(centerMode !== "code" || previewFullscreen) && <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
             <button disabled title="Preview history is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4 rotate-180" /></button>
             <button disabled title="Preview history is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4" /></button>
             <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
             <div className="mx-2 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] px-3 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#0B0D12] dark:text-[#9CA3AF]"><Globe2 className="size-3.5" /><span className="truncate">{previewFullUrl || "https://meldex.workspace/preview"}</span></div>
+            <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span>
             <select value={previewDevice} onChange={(event) => setPreviewDevice(event.target.value as typeof previewDevice)} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>
             <select value={previewMode} onChange={(event) => setPreviewMode(event.target.value as typeof previewMode)} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Responsive</option><option>1440px</option><option>1280px</option><option>768px</option><option>390px</option></select>
             <select value={previewZoom} onChange={(event) => setPreviewZoom(Number(event.target.value))} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option value={75}>75%</option><option value={90}>90%</option><option value={100}>100%</option><option value={125}>125%</option></select>
+            <button onClick={() => setPreviewRotated((value) => !value)} disabled={previewDevice === "Desktop"} title={previewDevice === "Desktop" ? "Rotate is available for tablet/mobile preview" : "Rotate device"} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><RotateCcw className="size-4" /></button>
             {previewReady ? <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><ArrowUpRight className="size-4" /></a> : <button disabled className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] text-[#9CA3AF] dark:border-[#22252D]"><ArrowUpRight className="size-4" /></button>}
             <button onClick={copyPreviewUrl} disabled={!previewReady} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]" title="Copy Preview URL">{copiedPreview ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}</button>
             <button onClick={() => setPreviewFullscreen((value) => !value)} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]" title="Fullscreen preview"><Maximize2 className="size-4" /></button>
             <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><RotateCcw className="size-4" /></button>
-          </div>
+          </div>}
 
-          <div className="grid min-h-0 flex-1 grid-rows-[minmax(220px,0.85fr)_minmax(260px,1fr)] gap-3 overflow-hidden p-3">
-            {!previewFullscreen && (
-              <div className={`min-h-0 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm dark:border-[#22252D] dark:bg-[#111318] ${editorFullscreen ? "fixed inset-3 z-40" : ""}`}>
+          <div className={`${centerMode === "split" && !previewFullscreen && !editorFullscreen ? "flex" : "block"} min-h-0 flex-1 overflow-hidden p-3`}>
+            {(centerMode === "code" || centerMode === "split" || editorFullscreen) && !previewFullscreen && (
+              <div className={`min-h-0 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white shadow-sm dark:border-[#22252D] dark:bg-[#111318] ${editorFullscreen ? "fixed inset-3 z-40" : ""}`} style={centerMode === "split" && !editorFullscreen ? { width: `${splitRatio}%` } : { width: "100%", height: "100%" }}>
                 <div className="flex h-10 items-center justify-between border-b border-[#E5E7EB] bg-[#F6F7FB] px-3 dark:border-[#22252D] dark:bg-[#0B0D12]">
                   <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
                     {openTabs.length ? openTabs.map((tab) => (
@@ -898,11 +975,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </div>
               </div>
             )}
-            {!editorFullscreen && (
-            <div className={`mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-col rounded-xl border border-[#E5E7EB] bg-white shadow-[0_24px_90px_rgba(15,23,42,0.10)] dark:border-[#22252D] dark:bg-[#111318] dark:shadow-[0_24px_90px_rgba(0,0,0,0.38)] ${previewFullscreen ? "fixed inset-3 z-40 max-w-none" : ""}`}>
+            {centerMode === "split" && !previewFullscreen && !editorFullscreen ? <div onMouseDown={startSplitResize} className="mx-2 h-full w-1 cursor-col-resize rounded-full bg-transparent hover:bg-[#6D4AFF]/70" /> : null}
+            {(centerMode === "preview" || centerMode === "split" || previewFullscreen) && !editorFullscreen && (
+            <div className={`mx-auto flex h-full min-h-0 flex-col rounded-xl border border-[#E5E7EB] bg-white shadow-[0_24px_90px_rgba(15,23,42,0.10)] dark:border-[#22252D] dark:bg-[#111318] dark:shadow-[0_24px_90px_rgba(0,0,0,0.38)] ${previewFullscreen ? "fixed inset-3 z-40 max-w-none" : ""}`} style={centerMode === "split" && !previewFullscreen ? { width: `${100 - splitRatio}%` } : { width: "100%", maxWidth: centerMode === "preview" ? "none" : 1180 }}>
               <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]"><div className="flex items-center gap-2 text-sm font-semibold"><Globe2 className="size-4 text-[#6D4AFF]" /> Live Preview</div><div className="flex items-center gap-2 text-[12px]"><span className={`rounded-full px-2 py-1 ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span><button onClick={copyPreviewUrl} disabled={!previewReady} className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]">{copiedPreview ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}</button></div></div>
               <div className="min-h-0 flex-1 overflow-auto bg-[#edf0f7] p-4 dark:bg-black">
-                <div className="mx-auto h-full origin-top overflow-hidden rounded-b-xl bg-white transition-all duration-200 dark:bg-black" style={{ width: previewMode === "Responsive" ? "100%" : `${previewWidth}px`, maxWidth: "100%", transform: `scale(${previewZoom / 100})`, transformOrigin: "top center" }}>
+                <div className="mx-auto h-full origin-top overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 dark:bg-black dark:ring-white/10" style={{ width: previewMode === "Responsive" ? "100%" : previewRotated && previewDevice !== "Desktop" ? `${Math.min(1180, Math.max(previewWidth, 760))}px` : `${previewWidth}px`, maxWidth: "100%", transform: `scale(${previewZoom / 100})`, transformOrigin: "top center" }}>
                   {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-b-xl bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,0.18),transparent_36%),linear-gradient(180deg,#0B0D12,#111318)] p-10 text-white"><div className="max-w-2xl text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#7C5CFF] shadow-xl shadow-violet-500/25"><Sparkles className="size-6" /></div><p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-200">The Ultimate AI Coding Platform</p><h2 className="text-5xl font-bold tracking-tight">Build Anything<br />with <span className="text-[#7C5CFF]">AI Power</span></h2><p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#D1D5DB]">Meldex AI combines agents, preview, memory, and code generation into one production workspace.</p><button onClick={() => void runAgent()} className="mt-8 rounded-xl bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25"><Play className="mr-2 inline size-4" /> Start Building</button></div></div>}
                 </div>
               </div>
@@ -931,17 +1009,43 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         <aside className={`relative min-h-0 flex-col border-l border-[#E5E7EB] bg-white/94 shadow-[-8px_0_44px_rgba(15,23,42,0.05)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/96 ${rightCollapsed || previewFullscreen || editorFullscreen ? "hidden" : "flex"}`}>
           <div onMouseDown={(event) => startResize("right", event)} className="absolute left-[-3px] top-0 z-20 hidden h-full w-1 cursor-col-resize bg-transparent transition hover:bg-[#6D4AFF]/70 lg:block" />
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-5 dark:border-[#22252D]"><div className="text-sm font-semibold uppercase tracking-[0.08em]">Meldex AI</div><div className="flex items-center gap-1 text-[#6B7280] dark:text-[#9CA3AF]"><button onClick={() => setPrompt("")} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="New Meldex AI prompt"><Plus className="size-4" /></button><button disabled className="grid size-8 cursor-not-allowed place-items-center rounded-lg opacity-45" title="Conversation history is not available in this release"><History className="size-4" /></button><button onClick={() => loadWorkspace().catch((error) => setMessage(error.message))} className="grid size-8 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]" title="Refresh"><RefreshCw className="size-4" /></button><button disabled className="grid size-8 cursor-not-allowed place-items-center rounded-lg opacity-45" title="Workspace settings are managed automatically"><Settings className="size-4" /></button><button disabled className="grid size-8 cursor-not-allowed place-items-center rounded-lg opacity-45" title="More actions are not available in this release"><MoreHorizontal className="size-4" /></button></div></div>
-          <div className="flex h-11 shrink-0 items-center gap-4 border-b border-[#E5E7EB] px-5 text-[12px] font-semibold uppercase tracking-[0.08em] dark:border-[#22252D]">{(["MELDEX AI","FILES","ACTIVITY","MEMORY","RULES"] as const).map((tab) => <button key={tab} onClick={() => setActiveRightTab(tab)} className={`h-full border-b-2 ${activeRightTab === tab ? "border-[#6D4AFF] text-[#111827] dark:border-[#7C5CFF] dark:text-white" : "border-transparent text-[#6B7280] hover:text-[#111827] dark:text-[#9CA3AF] dark:hover:text-white"}`}>{tab}</button>)}</div>
+          <div className="flex h-11 shrink-0 items-center gap-4 border-b border-[#E5E7EB] px-5 text-[12px] font-semibold uppercase tracking-[0.08em] dark:border-[#22252D]">{(["CHAT","CHANGES","ACTIVITY","MEMORY","RULES"] as const).map((tab) => <button key={tab} onClick={() => setActiveRightTab(tab)} className={`h-full border-b-2 ${activeRightTab === tab ? "border-[#6D4AFF] text-[#111827] dark:border-[#7C5CFF] dark:text-white" : "border-transparent text-[#6B7280] hover:text-[#111827] dark:text-[#9CA3AF] dark:hover:text-white"}`}>{tab}</button>)}</div>
           <div className="min-h-0 flex-1 overflow-y-auto p-5">
-            {activeRightTab === "MELDEX AI" && <>
-            <div className="ml-auto max-w-[310px] rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] p-4 text-sm leading-6 shadow-sm dark:border-[#22252D] dark:bg-[#1A1E27]/62">{activeTask?.prompt || prompt || "Create a responsive landing page for Meldex AI with a hero section, features section, and modern dark theme."}</div>
-            <div className="mt-7 flex items-center gap-3 text-sm font-semibold"><span className="grid size-7 place-items-center rounded-full bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/15 dark:text-[#A996FF]"><Sparkles className="size-4" /></span>Meldex AI</div>
-            <div className="mt-4 space-y-3">{checklist.map(([label, done], index) => (<div key={label} className="flex items-center gap-3 text-sm"><span className={`grid size-5 place-items-center rounded-full ${done ? "text-emerald-500" : index === checklist.findIndex(([, state]) => !state) ? "text-white ring-1 ring-[#6B7280]" : "text-[#6B7280] ring-1 ring-[#374151]"}`}>{done ? <CheckCircle2 className="size-4" /> : <span className="size-2 rounded-full bg-current" />}</span><span className={done ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-[#9CA3AF]"}>{label}</span></div>))}</div>
-            <div className="mt-4 grid grid-cols-3 gap-2"><button onClick={stopTask} disabled={!loading} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Stop</button><button onClick={() => activeTask && void runAgent(activeTask.prompt)} disabled={loading || !activeTask} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Retry</button><button onClick={() => void runAgent("Continue previous task")} disabled={loading} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Continue</button></div>
-            <div className="mt-4 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Model: Qwen3-Coder · Events: {conversationEvents.length} · Status: {loading ? "Streaming" : "Idle"}</div>
+            {activeRightTab === "CHAT" && <>
+            <div className="rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/50">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-[#6D4AFF]" /> Meldex AI</div>
+                  <div className="mt-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Qwen3-Coder · {loading ? "Working" : previewStatus === "Failed" ? "Error" : "Ready"}</div>
+                </div>
+                <button onClick={loading ? stopTask : () => setPrompt("")} className="rounded-lg border border-[#E5E7EB] px-2 py-1 text-[11px] font-medium dark:border-[#22252D]">{loading ? "Stop" : "New"}</button>
+              </div>
+              <div className="mt-4 rounded-xl bg-[#F6F7FB] p-3 text-sm leading-6 dark:bg-[#1A1E27]">{activeTask?.prompt || prompt || "Ask Meldex AI to build, fix, or improve this workspace."}</div>
+            </div>
+            <div className="mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/50">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="text-sm font-semibold">{loading ? "Working on task" : eventTypes.has("done") || activeTask ? "Done — task completed and verified." : "Ready to build"}</div>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${loading ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"}`}>{loading ? "Working" : "Ready"}</span>
+              </div>
+              <div className="space-y-3">{checklist.map(([label, done], index) => {
+                const activeIndex = checklist.findIndex(([, state]) => !state);
+                const active = loading && index === activeIndex;
+                return <div key={label} className="flex items-center gap-3 text-sm"><span className={`grid size-5 place-items-center rounded-full ${done ? "text-emerald-500" : active ? "animate-pulse text-[#6D4AFF] ring-1 ring-[#6D4AFF]" : "text-[#9CA3AF] ring-1 ring-[#D1D5DB] dark:ring-[#374151]"}`}>{done ? <CheckCircle2 className="size-4" /> : <span className="size-2 rounded-full bg-current" />}</span><span className={done ? "text-[#111827] dark:text-white" : "text-[#6B7280] dark:text-[#9CA3AF]"}>{label}</span></div>;
+              })}</div>
+              <div className="mt-5 space-y-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#6B7280] dark:text-[#9CA3AF]">Changed files</div>
+                {(changed.length ? changed : []).slice(0, 5).map((diff) => <button key={diff.path} onClick={() => openFile(diff.path)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><span className="min-w-0 flex-1 truncate">{diff.path}</span><span className="text-emerald-500">+{diff.added}</span><span className="text-red-500">-{diff.removed}</span></button>)}
+                {!changed.length && <div className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No changes yet.</div>}
+              </div>
+              <div className="mt-5 rounded-xl bg-[#F6F7FB] p-3 text-xs leading-5 text-[#6B7280] dark:bg-[#1A1E27] dark:text-[#9CA3AF]">
+                <div>Preview: {state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</div>
+                <div>Next: Ask me to improve design, add sections, or deploy.</div>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2"><button onClick={stopTask} disabled={!loading} title={!loading ? "No running task" : "Stop current task"} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Stop</button><button onClick={() => activeTask && void runAgent(activeTask.prompt)} disabled={loading || !activeTask} title={!activeTask ? "No previous task to retry" : "Retry previous task"} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Retry</button><button onClick={() => void runAgent("Continue previous task")} disabled={loading} title={loading ? "Wait for current task" : "Continue previous task"} className="rounded-lg border border-[#E5E7EB] py-2 text-xs disabled:opacity-40 dark:border-[#22252D]">Continue</button></div>
             </>}
             {activeRightTab === "RULES" && <div className="space-y-3 text-sm"><div className="rounded-xl border border-[#E5E7EB] p-4 dark:border-[#22252D]"><div className="font-semibold">Workspace Rules</div><p className="mt-2 text-[#6B7280] dark:text-[#9CA3AF]">Rules are loaded from memory and orchestration. Raw secrets are never shown.</p></div>{(state.memory?.codingStyle || []).concat(state.memory?.designStyle || []).slice(0, 8).map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 dark:bg-[#1A1E27]">{item}</div>)}</div>}
-            {activeRightTab === "FILES" && (
+            {activeRightTab === "CHANGES" && (
               <div className="space-y-2">
                 {(changed.length ? changed.map((diff) => ({ path: diff.path, added: diff.added, removed: diff.removed })) : files.map((file) => ({ path: file.path, added: 0, removed: 0 }))).length ? (changed.length ? changed.map((diff) => ({ path: diff.path, added: diff.added, removed: diff.removed })) : files.map((file) => ({ path: file.path, added: 0, removed: 0 }))).map((file) => (
                   <div key={file.path} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]">
@@ -972,10 +1076,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             )}
             {activeRightTab === "ACTIVITY" && <div className="space-y-2">{conversationEvents.length ? conversationEvents.map((event) => <div key={`${event.sequence}-${event.type}`} className="rounded-lg border border-[#E5E7EB] p-3 text-xs dark:border-[#22252D]"><div className="font-semibold">{event.type.replaceAll("_", " ")}</div><div className="mt-1 text-[#6B7280] dark:text-[#9CA3AF]">{event.message}</div></div>) : <div className="text-[#6B7280]">Activity appears during generation.</div>}</div>}
             {activeRightTab === "MEMORY" && <div className="space-y-3"><div className="flex h-8 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Search memory" /></div><button onClick={async () => { if (!state.project || !window.confirm("Clear workspace memory?")) return; const response = await fetch(`/api/workspaces/${state.project.id}/memory`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) }); setMessage(response.ok ? "Memory cleared" : "Memory clear failed"); await loadWorkspace(state.project.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 dark:border-red-500/30">Clear memory</button>{memoryItems.length ? memoryItems.map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 text-xs dark:bg-[#1A1E27]">{item}</div>) : <div className="text-[#6B7280]">No matching memory.</div>}</div>}
-            {activeRightTab === "MELDEX AI" && <>
-            <div className="mt-7 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/40"><div className="mb-3 flex items-center justify-between text-sm font-semibold"><span>{generatedFiles.length || changed.length || files.length} files</span><span className="text-[11px] font-medium text-[#6B7280] dark:text-[#9CA3AF]">+{totalAdded} -{totalRemoved}</span></div><div className="max-h-52 space-y-2 overflow-y-auto pr-1">{(changed.length ? changed.map((diff) => ({ path: diff.path, name: diff.path.split("/").pop() || diff.path, added: diff.added })) : files.slice(0, 10).map((file) => ({ path: file.path, name: file.name, added: 0 }))).map((file) => (<button key={file.path} onClick={() => openFile(file.path)} className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><span className="text-emerald-500">+</span><span className="min-w-0 flex-1 truncate">{file.path}</span>{file.added ? <span className="text-[11px] text-emerald-500">+{file.added}</span> : null}</button>))}</div></div>
-            <div className="mt-5 rounded-xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/40"><div className="mb-3 text-sm font-semibold">Activity</div><div className="max-h-44 space-y-2 overflow-y-auto text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">{conversationEvents.length ? conversationEvents.slice(-9).map((event) => <div key={`${event.sequence}-${event.type}`} className="truncate">{event.message}</div>) : <div>Ready to build.</div>}</div></div>
-            </>}
           </div>
           <div className="shrink-0 border-t border-[#E5E7EB] p-4 dark:border-[#22252D]"><div className="rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] p-3 shadow-sm transition focus-within:border-[#6D4AFF] dark:border-[#22252D] dark:bg-[#0B0D12] dark:focus-within:border-[#7C5CFF]"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask Meldex AI to build, fix, or improve..." /><div className="mt-3 flex items-center justify-between text-[12px] text-[#6B7280] dark:text-[#9CA3AF]"><div className="flex items-center gap-3"><button disabled title="Attach context is not available in this release" className="flex cursor-not-allowed items-center gap-1 opacity-45"><Upload className="size-3.5" /> Add context</button><button disabled title="Voice input is not available in this release" className="cursor-not-allowed opacity-45"><Mic className="size-3.5" /></button></div><button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="grid size-9 place-items-center rounded-lg bg-[#6D4AFF] text-white shadow-lg shadow-violet-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-45">{loading ? <Square className="size-4" /> : <Play className="size-4" />}</button></div></div></div>
         </aside>

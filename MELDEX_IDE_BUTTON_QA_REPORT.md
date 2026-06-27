@@ -2,28 +2,30 @@
 
 Date: 2026-06-27
 
-## Workspace List
+## Working
 
-- Workspace card: opens Meldex IDE.
-- Open IDE: opens Meldex IDE.
-- Open preview: works when preview exists; disabled with reason when unavailable.
-- Classic fallback: opens `/workspace/[projectId]/classic`.
-- Archive: calls existing workspace PATCH.
-- Delete/archive: calls existing workspace DELETE.
-- New workspace: creates workspace and opens Meldex IDE.
-- Quick prompts: create workspace and open Meldex IDE.
+- Code / Preview / Split mode buttons.
+- Terminal open button.
+- Preview refresh, open, copy URL, device selector, zoom, rotate, fullscreen.
+- Explorer actions, create file/folder, rename, duplicate, delete, download, copy path.
+- Editor save and autosave.
+- AI send, stop, retry, continue.
+- Activity refresh through workspace reload.
+- Memory clear.
+- Command palette actions.
 
-## IDE Shell
+## Disabled With Reason
 
-- Back to Workspaces: works.
-- Open full tab: disabled until IDE session exists; opens IDE URL when ready.
-- Retry: retries IDE session creation.
-- Back to list in error card: works.
+- Preview back/forward: preview history is not available.
+- Attach context and voice input: not available in this release.
+- Apply/reject/rollback: require selected diff/task snapshot.
+- Outline/timeline: require symbol indexing/history.
 
-## Notes
+## Verification
 
-OpenVSCode internal buttons are provided by the embedded IDE. Meldex controls around it are either functional or disabled with a clear reason.
+- `npm run lint`: passed with existing warnings only.
+- `npm run build`: passed.
 
-## Status
+## Remaining
 
-READY
+- Drag/drop and multi-select are not exposed as visible fake controls.

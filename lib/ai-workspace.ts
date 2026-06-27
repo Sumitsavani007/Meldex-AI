@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
+import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 
 export type WorkspaceTreeNode = {
   id?: string;
@@ -458,7 +459,10 @@ async function walkTree(root: string, relativePath = ""): Promise<WorkspaceTreeN
   const { absolute } = resolveProjectFile(root, relativePath);
   const entries = await readdir(absolute, { withFileTypes: true }).catch(() => []);
   const nodes = await Promise.all(entries
-    .filter((entry) => entry.name !== ".meldex" && !entry.name.startsWith(".DS_Store"))
+    .filter((entry) => {
+      const child = path.join(relativePath, entry.name).split(path.sep).join("/");
+      return isUserVisibleWorkspaceFile(child);
+    })
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
     .map(async (entry) => {
       const child = path.join(relativePath, entry.name).split(path.sep).join("/");

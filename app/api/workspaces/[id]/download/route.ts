@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
 import { createStoredZip } from "@/lib/simple-zip";
 import { getOwnedWorkspaceProject, resolveProjectFile } from "@/lib/ai-workspace";
+import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,9 +14,8 @@ async function collectFiles(root: string, relativePath = ""): Promise<Array<{ pa
   const entries = await readdir(absolute, { withFileTypes: true }).catch(() => []);
   const files: Array<{ path: string; content: Buffer }> = [];
   for (const entry of entries) {
-    if (entry.name === ".meldex" || entry.name === ".DS_Store") continue;
     const child = path.join(relativePath, entry.name).split(path.sep).join("/");
-    if (/(^|\/)\.env(\.|$)/i.test(child)) continue;
+    if (!isUserVisibleWorkspaceFile(child)) continue;
     if (entry.isDirectory()) files.push(...await collectFiles(root, child));
     else files.push({ path: child, content: await readFile(resolveProjectFile(root, child).absolute) });
   }
