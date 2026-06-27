@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
+import { checkUserCreditLimit, estimateCredits, recordCreditUsage } from "@/lib/plans-credits";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -57,6 +58,18 @@ export async function POST(
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const estimatedCredits = estimateCredits({ prompt: body.data.prompt });
+    const creditCheck = await checkUserCreditLimit(session.user.id, estimatedCredits);
+    if (!creditCheck.ok) {
+      return NextResponse.json({
+        error: creditCheck.message,
+        code: creditCheck.code,
+        windowType: creditCheck.windowType,
+        creditsUsed: creditCheck.creditsUsed,
+        creditsLimit: creditCheck.creditsLimit,
+        estimatedCredits,
+      }, { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream<Uint8Array>({
@@ -91,6 +104,10 @@ export async function POST(
 
           const snapshot = await createWorkspaceSnapshot(session.user.id, project.id, task.id);
           await send("thinking", "Thinking", { taskId, snapshotId: snapshot.id });
+          await send("usage_checked", "Plan and credit limits checked", {
+            estimatedCredits,
+            plan: creditCheck.summary.plan.name,
+          });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("tool_start", "Reading workspace");
           const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.data.prompt);
@@ -299,6 +316,21 @@ export async function POST(
             verification,
           });
           await send("learning_updated", "Recorded safe learning summary", { learning });
+          const creditsUsed = estimateCredits({ prompt: body.data.prompt, filesChanged: changedFiles.length });
+          const usage = await recordCreditUsage(session.user.id, creditsUsed, {
+            projectId: project.id,
+            taskId: task.id,
+            promptLength: body.data.prompt.length,
+            filesChanged: changedFiles.length,
+            previewVerified: verification.verified,
+          });
+          await send("usage_recorded", "Recorded credit usage", {
+            creditsUsed,
+            plan: usage.plan.name,
+            monthly: usage.windows.MONTHLY,
+            weekly: usage.windows.WEEKLY,
+            fiveHour: usage.windows.FIVE_HOUR,
+          });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode });
           await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory });
           completed = true;

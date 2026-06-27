@@ -21,6 +21,7 @@ import {
 } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
+import { checkUserCreditLimit, estimateCredits, recordCreditUsage } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +43,18 @@ export async function POST(
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const estimatedCredits = estimateCredits({ prompt: body.prompt });
+    const creditCheck = await checkUserCreditLimit(session.user.id, estimatedCredits);
+    if (!creditCheck.ok) {
+      return NextResponse.json({
+        error: creditCheck.message,
+        code: creditCheck.code,
+        windowType: creditCheck.windowType,
+        creditsUsed: creditCheck.creditsUsed,
+        creditsLimit: creditCheck.creditsLimit,
+        estimatedCredits,
+      }, { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
 
     const task = await prisma.workspaceTask.create({
       data: {
@@ -236,6 +249,14 @@ export async function POST(
       fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
       commands: ["static-preview-verify"],
     });
+    const creditsUsed = estimateCredits({ prompt: body.prompt, filesChanged: changedFiles.length });
+    const usage = await recordCreditUsage(session.user.id, creditsUsed, {
+      projectId: project.id,
+      taskId: task.id,
+      promptLength: body.prompt.length,
+      filesChanged: changedFiles.length,
+      previewVerified: verification.verified,
+    });
 
     return NextResponse.json({
       task: updatedTask,
@@ -248,6 +269,8 @@ export async function POST(
       offlineMode,
       providerFailure,
       memory,
+      usage,
+      creditsUsed,
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     if (taskId) {

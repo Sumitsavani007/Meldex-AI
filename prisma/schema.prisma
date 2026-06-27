@@ -53,6 +53,26 @@ enum BillingStatus {
   CANCELED
 }
 
+enum UserPlanStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+enum UsageWindowType {
+  FIVE_HOUR
+  WEEKLY
+  MONTHLY
+}
+
+enum CreditTransactionType {
+  USAGE
+  GRANT
+  RESET
+  REFUND
+  ADMIN_ADJUSTMENT
+}
+
 model User {
   id             String          @id @default(cuid())
   email          String          @unique
@@ -84,6 +104,9 @@ model User {
   workspaceLogs WorkspaceLog[]
   workspaceTaskEvents WorkspaceTaskEvent[]
   workspaceSnapshots WorkspaceSnapshot[]
+  userPlans UserPlan[]
+  usageWindows UsageWindow[]
+  creditTransactions CreditTransaction[]
 }
 
 model Account {
@@ -274,6 +297,91 @@ model Billing {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   user                 User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Plan {
+  id                 String      @id @default(cuid())
+  name               String
+  slug               String      @unique
+  description        String?
+  priceMonthly       Int         @default(0)
+  priceYearly        Int         @default(0)
+  currency           String      @default("USD")
+  monthlyCredits     Int         @default(0)
+  weeklyCredits      Int         @default(0)
+  fiveHourCredits    Int         @default(0)
+  maxContextTokens   Int         @default(128000)
+  maxWorkspaceCount  Int         @default(3)
+  maxStorageMb       Int         @default(500)
+  maxParallelTasks   Int         @default(1)
+  priorityLevel      Int         @default(1)
+  allowedModelsJson  Json?
+  featuresJson       Json?
+  isActive           Boolean     @default(true)
+  sortOrder          Int         @default(0)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  userPlans          UserPlan[]
+  usageWindows       UsageWindow[]
+  creditTransactions CreditTransaction[]
+
+  @@index([isActive, sortOrder])
+  @@index([priorityLevel])
+}
+
+model UserPlan {
+  id              String         @id @default(cuid())
+  userId          String
+  planId          String
+  status          UserPlanStatus @default(ACTIVE)
+  startsAt        DateTime       @default(now())
+  endsAt          DateTime?
+  assignedByAdmin Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            Plan           @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+  @@index([planId])
+  @@index([startsAt, endsAt])
+}
+
+model UsageWindow {
+  id           String          @id @default(cuid())
+  userId       String
+  planId       String
+  windowType   UsageWindowType
+  creditsUsed  Int             @default(0)
+  creditsLimit Int             @default(0)
+  startsAt     DateTime
+  endsAt       DateTime
+  resetAt      DateTime
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         Plan            @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, windowType, startsAt])
+  @@index([userId, windowType, resetAt])
+  @@index([planId])
+}
+
+model CreditTransaction {
+  id           String                @id @default(cuid())
+  userId       String
+  planId       String
+  type         CreditTransactionType
+  credits      Int
+  reason       String?
+  metadataJson Json?
+  createdAt    DateTime              @default(now())
+  user         User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan         Plan                  @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([planId])
+  @@index([type])
 }
 
 model ModelConfig {

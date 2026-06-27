@@ -100,6 +100,22 @@ type WorkspaceState = {
   memory: WorkspaceMemory | null;
 };
 
+type UsageWindow = {
+  windowType: "FIVE_HOUR" | "WEEKLY" | "MONTHLY";
+  creditsUsed: number;
+  creditsLimit: number;
+  resetAt: string;
+};
+
+type UsageState = {
+  plan: {
+    name: string;
+    slug: string;
+    maxContextTokens: number;
+  };
+  windows: Record<"FIVE_HOUR" | "WEEKLY" | "MONTHLY", UsageWindow>;
+} | null;
+
 type BottomTab = "TERMINAL" | "OUTPUT" | "PROBLEMS" | "LOGS" | "PREVIEW LOGS" | "GIT";
 type CenterMode = "code" | "preview" | "split";
 type RightTab = "CHAT" | "CHANGES" | "ACTIVITY" | "MEMORY" | "RULES";
@@ -223,6 +239,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [commandQuery, setCommandQuery] = useState("");
   const [terminalOutput, setTerminalOutput] = useState<string[]>(["Managed terminal ready."]);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [usage, setUsage] = useState<UsageState>(null);
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
@@ -328,8 +345,16 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     });
   }
 
+  async function loadUsage() {
+    const response = await fetch("/api/usage", { cache: "no-store" });
+    if (!response.ok) return;
+    const data = await response.json();
+    setUsage(data.usage || null);
+  }
+
   useEffect(() => {
     loadWorkspace().catch((error) => setMessage(error.message));
+    loadUsage().catch(() => undefined);
   }, [status, projectId, showHiddenFiles]);
 
   async function createProject(seedPrompt?: string) {
@@ -424,10 +449,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           }
           if (event.type === "preview_verified" || event.type === "done") {
             await loadWorkspace(state.project.id).catch(() => undefined);
+            await loadUsage().catch(() => undefined);
           }
         }
       }
       await loadWorkspace(state.project.id);
+      await loadUsage().catch(() => undefined);
     } catch (error) {
       if (controller.signal.aborted) setMessage("Task cancelled");
       else {
@@ -436,6 +463,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         setBottomCollapsed(false);
       }
       await loadWorkspace(state.project.id).catch(() => undefined);
+      await loadUsage().catch(() => undefined);
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -1177,6 +1205,39 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <button onClick={loading ? stopTask : () => setPrompt("")} className="rounded-lg border border-[#E5E7EB] px-2 py-1 text-[11px] font-medium dark:border-[#22252D]">{loading ? "Stop" : "New"}</button>
               </div>
               <div className="mt-4 rounded-xl bg-[#F6F7FB] p-3 text-sm leading-6 dark:bg-[#1A1E27]">{activeTask?.prompt || prompt || "Ask Meldex AI to build, fix, or improve this workspace."}</div>
+            </div>
+            <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/50">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold">Usage</div>
+                  <div className="mt-1 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">Plan: {usage?.plan.name || "Loading"}</div>
+                </div>
+                <div className="flex gap-2">
+                  <a href="/settings/billing" className="rounded-lg border border-[#E5E7EB] px-2 py-1 text-[11px] font-medium dark:border-[#22252D]">Manage Plan</a>
+                  <button onClick={() => void loadUsage()} className="rounded-lg border border-[#E5E7EB] px-2 py-1 text-[11px] font-medium dark:border-[#22252D]">Refresh</button>
+                </div>
+              </div>
+              {usage ? (
+                <div className="space-y-2 text-xs">
+                  {[
+                    ["5-hour", usage.windows.FIVE_HOUR],
+                    ["Weekly", usage.windows.WEEKLY],
+                    ["Monthly", usage.windows.MONTHLY],
+                  ].map(([label, window]) => {
+                    const item = window as UsageWindow;
+                    const pct = item.creditsLimit ? Math.min(100, Math.round((item.creditsUsed / item.creditsLimit) * 100)) : 0;
+                    const hit = item.creditsUsed >= item.creditsLimit;
+                    return <div key={String(label)}>
+                      <div className="flex justify-between"><span>{String(label)}</span><span className={hit ? "text-red-500" : "text-[#6B7280] dark:text-[#9CA3AF]"}>{item.creditsUsed.toLocaleString()} / {item.creditsLimit.toLocaleString()}</span></div>
+                      <div className="mt-1 h-1.5 rounded-full bg-[#E5E7EB] dark:bg-[#22252D]"><div className={`h-1.5 rounded-full ${hit ? "bg-red-500" : "bg-[#6D4AFF]"}`} style={{ width: `${pct}%` }} /></div>
+                    </div>;
+                  })}
+                  <div className="flex justify-between pt-1 text-[#6B7280] dark:text-[#9CA3AF]"><span>Context</span><span>{usage.plan.maxContextTokens.toLocaleString()} tokens</span></div>
+                  {Object.values(usage.windows).some((window) => window.creditsUsed >= window.creditsLimit) && (
+                    <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">Limit reached. Try Meldex Plus / Upgrade Plan.</div>
+                  )}
+                </div>
+              ) : <div className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Usage will appear after refresh.</div>}
             </div>
             <div className="mt-5 rounded-2xl border border-[#E5E7EB] bg-white p-4 shadow-sm dark:border-[#22252D] dark:bg-[#0B0D12]/50">
               <div className="mb-4 flex items-center justify-between">

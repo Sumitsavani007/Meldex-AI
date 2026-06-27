@@ -28,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 
-type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "users" | "audit" | "diagnostics";
+type TabId = "overview" | "ai" | "vault" | "integrations" | "runtime" | "plans" | "users" | "audit" | "diagnostics";
 type SettingSource = "ENV" | "VAULT" | "MISSING";
 
 interface SettingRow {
@@ -88,6 +88,44 @@ interface UserRow {
   createdAt: string;
 }
 
+interface PlanRow {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  monthlyCredits: number;
+  weeklyCredits: number;
+  fiveHourCredits: number;
+  maxContextTokens: number;
+  maxWorkspaceCount: number;
+  maxStorageMb: number;
+  maxParallelTasks: number;
+  priorityLevel: number;
+  allowedModelsJson?: string[] | null;
+  featuresJson?: string[] | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+interface UsageWindowRow {
+  windowType: "FIVE_HOUR" | "WEEKLY" | "MONTHLY";
+  creditsUsed: number;
+  creditsLimit: number;
+  resetAt: string;
+}
+
+interface UserPlanDetail {
+  user: { id: string; email: string; name?: string | null };
+  plans: PlanRow[];
+  usage: {
+    plan: PlanRow;
+    windows: Record<"FIVE_HOUR" | "WEEKLY" | "MONTHLY", UsageWindowRow>;
+  };
+}
+
 type Toast = { id: number; tone: "success" | "error" | "info"; message: string };
 
 const groups: Array<{ category: string; label: string; icon: ElementType }> = [
@@ -134,7 +172,7 @@ function cx(...parts: Array<string | false | null | undefined>) {
 function getSection(): TabId {
   if (typeof window === "undefined") return "overview";
   const value = new URLSearchParams(window.location.search).get("section") as TabId | null;
-  return value && ["overview", "ai", "vault", "integrations", "runtime", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
+  return value && ["overview", "ai", "vault", "integrations", "runtime", "plans", "users", "audit", "diagnostics"].includes(value) ? value : "overview";
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "green" | "red" | "amber" | "blue" | "neutral" }) {
@@ -214,12 +252,16 @@ export default function MasterAdminPage() {
   const [settings, setSettings] = useState<SettingRow[]>([]);
   const [vaultOk, setVaultOk] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
+  const [selectedUserPlan, setSelectedUserPlan] = useState<UserPlanDetail | null>(null);
+  const [grantCredits, setGrantCredits] = useState("500");
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({});
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false });
+  const [loading, setLoading] = useState({ overview: true, settings: true, users: false, audit: false, plans: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -274,6 +316,22 @@ export default function MasterAdminPage() {
     }
   }, [pushToast]);
 
+  const fetchPlans = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, plans: true }));
+    try {
+      const res = await fetch("/api/admin/plans", { cache: "no-store" });
+      if (!res.ok) throw new Error("Plans unavailable");
+      const data = await res.json();
+      const rows = data.plans ?? [];
+      setPlans(rows);
+      setEditingPlan((current) => current ?? rows[0] ?? null);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Plans unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, plans: false }));
+    }
+  }, [pushToast]);
+
   const fetchAudit = useCallback(async () => {
     setLoading((prev) => ({ ...prev, audit: true }));
     try {
@@ -301,9 +359,10 @@ export default function MasterAdminPage() {
   }, [fetchOverview, fetchSettings]);
 
   useEffect(() => {
+    if (tab === "plans") fetchPlans();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -444,6 +503,79 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "Role update failed");
     } finally {
       setUpdatingUser(null);
+    }
+  }
+
+  async function savePlan() {
+    if (!editingPlan) return;
+    setSaving((prev) => ({ ...prev, plan: true }));
+    try {
+      const res = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editingPlan),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      const data = await res.json();
+      setPlans((prev) => prev.map((plan) => (plan.id === data.plan.id ? data.plan : plan)).concat(plans.some((plan) => plan.id === data.plan.id) ? [] : [data.plan]));
+      setEditingPlan(data.plan);
+      pushToast("success", "Plan saved. Limits apply immediately.");
+      await fetchPlans();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Plan save failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, plan: false }));
+    }
+  }
+
+  async function resetPlans() {
+    setSaving((prev) => ({ ...prev, resetPlans: true }));
+    try {
+      const res = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resetDefaults: true }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Default plans restored.");
+      setEditingPlan(null);
+      await fetchPlans();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, resetPlans: false }));
+    }
+  }
+
+  async function loadUserPlan(userId: string) {
+    setLoading((prev) => ({ ...prev, userPlan: true }));
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/plan`, { cache: "no-store" });
+      if (!res.ok) throw new Error(await readError(res));
+      setSelectedUserPlan(await res.json());
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "User plan unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, userPlan: false }));
+    }
+  }
+
+  async function updateUserPlan(action: Record<string, unknown>) {
+    if (!selectedUserPlan) return;
+    setSaving((prev) => ({ ...prev, userPlan: true }));
+    try {
+      const res = await fetch(`/api/admin/users/${selectedUserPlan.user.id}/plan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(action),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "User plan updated.");
+      await loadUserPlan(selectedUserPlan.user.id);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "User plan update failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, userPlan: false }));
     }
   }
 
@@ -638,14 +770,133 @@ export default function MasterAdminPage() {
         </>
       )}
 
+      {tab === "plans" && (
+        <>
+          <SectionTitle
+            title="Plans & Credits"
+            description="Create, edit, disable, and reset SaaS plan limits. Changes are read from the database and apply without redeploy."
+            action={<div className="flex gap-2"><IconButton onClick={fetchPlans}><RefreshCw className={cx("size-4", loading.plans && "animate-spin")} />Refresh</IconButton><IconButton onClick={resetPlans} disabled={saving.resetPlans}>{saving.resetPlans ? <SpinnerText label="Resetting" /> : <><RotateCcw className="size-4" />Reset defaults</>}</IconButton></div>}
+          />
+          <div className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+            <Panel className="overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+                <button
+                  onClick={() => setEditingPlan({
+                    id: "",
+                    name: "Custom Plan",
+                    slug: `custom-${Date.now()}`,
+                    description: "",
+                    priceMonthly: 0,
+                    priceYearly: 0,
+                    currency: "USD",
+                    monthlyCredits: 1000,
+                    weeklyCredits: 300,
+                    fiveHourCredits: 50,
+                    maxContextTokens: 128000,
+                    maxWorkspaceCount: 3,
+                    maxStorageMb: 500,
+                    maxParallelTasks: 1,
+                    priorityLevel: 1,
+                    allowedModelsJson: ["qwen/qwen3-coder-30b-a3b-instruct"],
+                    featuresJson: [],
+                    isActive: true,
+                    sortOrder: 99,
+                  })}
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm font-medium hover:bg-slate-50 dark:border-white/[0.1] dark:hover:bg-white/[0.04]"
+                >
+                  Create plan
+                </button>
+              </div>
+              <div className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                {plans.map((plan) => (
+                  <button key={plan.id} onClick={() => setEditingPlan(plan)} className={cx("flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.04]", editingPlan?.id === plan.id && "bg-violet-50 dark:bg-violet-500/10")}>
+                    <span>
+                      <span className="block text-sm font-semibold">{plan.name}</span>
+                      <span className="block text-xs text-slate-500">{plan.monthlyCredits.toLocaleString()} monthly credits</span>
+                    </span>
+                    <Badge tone={plan.isActive ? "green" : "neutral"}>{plan.isActive ? "Active" : "Disabled"}</Badge>
+                  </button>
+                ))}
+                {!plans.length && <div className="p-5 text-sm text-slate-500">{loading.plans ? "Loading plans..." : "No plans yet."}</div>}
+              </div>
+            </Panel>
+
+            <Panel className="p-5">
+              {editingPlan ? (
+                <div className="space-y-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h3 className="text-lg font-semibold">{editingPlan.id ? "Edit Plan" : "Create Plan"}</h3>
+                      <p className="mt-1 text-sm text-slate-500">All limits are dynamic and enforced before AI generation.</p>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={editingPlan.isActive} onChange={(event) => setEditingPlan({ ...editingPlan, isActive: event.target.checked })} />
+                      Active
+                    </label>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {[
+                      ["Name", "name", "text"],
+                      ["Slug", "slug", "text"],
+                      ["Currency", "currency", "text"],
+                    ].map(([label, key, type]) => (
+                      <label key={key} className="grid gap-1 text-sm">
+                        <span className="font-medium">{label}</span>
+                        <input type={type} value={String(editingPlan[key as keyof PlanRow] ?? "")} onChange={(event) => setEditingPlan({ ...editingPlan, [key]: event.target.value })} className="h-10 rounded-md border border-slate-200 bg-white px-3 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                      </label>
+                    ))}
+                    <label className="grid gap-1 text-sm md:col-span-2">
+                      <span className="font-medium">Description</span>
+                      <textarea value={editingPlan.description || ""} onChange={(event) => setEditingPlan({ ...editingPlan, description: event.target.value })} className="min-h-20 rounded-md border border-slate-200 bg-white px-3 py-2 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                    </label>
+                    {[
+                      ["Monthly Price", "priceMonthly"],
+                      ["Yearly Price", "priceYearly"],
+                      ["Monthly Credits", "monthlyCredits"],
+                      ["Weekly Credits", "weeklyCredits"],
+                      ["5-hour Credits", "fiveHourCredits"],
+                      ["Max Context Tokens", "maxContextTokens"],
+                      ["Storage Limit MB", "maxStorageMb"],
+                      ["Workspace Limit", "maxWorkspaceCount"],
+                      ["Parallel Task Limit", "maxParallelTasks"],
+                      ["Priority Level", "priorityLevel"],
+                      ["Sort Order", "sortOrder"],
+                    ].map(([label, key]) => (
+                      <label key={key} className="grid gap-1 text-sm">
+                        <span className="font-medium">{label}</span>
+                        <input type="number" min={0} value={Number(editingPlan[key as keyof PlanRow] ?? 0)} onChange={(event) => setEditingPlan({ ...editingPlan, [key]: Number(event.target.value) })} className="h-10 rounded-md border border-slate-200 bg-white px-3 outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                      </label>
+                    ))}
+                    <label className="grid gap-1 text-sm">
+                      <span className="font-medium">Allowed Models</span>
+                      <textarea value={(editingPlan.allowedModelsJson || []).join("\n")} onChange={(event) => setEditingPlan({ ...editingPlan, allowedModelsJson: event.target.value.split(/\n|,/).map((item) => item.trim()).filter(Boolean) })} className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 font-mono text-xs outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                    </label>
+                    <label className="grid gap-1 text-sm">
+                      <span className="font-medium">Features</span>
+                      <textarea value={(editingPlan.featuresJson || []).join("\n")} onChange={(event) => setEditingPlan({ ...editingPlan, featuresJson: event.target.value.split(/\n|,/).map((item) => item.trim()).filter(Boolean) })} className="min-h-24 rounded-md border border-slate-200 bg-white px-3 py-2 text-xs outline-none dark:border-white/[0.1] dark:bg-black/20" />
+                    </label>
+                  </div>
+                  <div className="flex justify-end">
+                    <IconButton onClick={savePlan} disabled={saving.plan}>{saving.plan ? <SpinnerText label="Saving" /> : <><Save className="size-4" />Save plan</>}</IconButton>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-8 text-center text-sm text-slate-500">Select a plan to edit.</div>
+              )}
+            </Panel>
+          </div>
+        </>
+      )}
+
       {tab === "users" && (
         <>
-          <SectionTitle title="Users" description="View users and update roles. Role changes are owner-only." action={<IconButton onClick={fetchUsers}><RefreshCw className={cx("size-4", loading.users && "animate-spin")} />Refresh</IconButton>} />
+          <SectionTitle title="Users" description="View users, update roles, assign plans, grant credits, and reset usage. Role changes are owner-only." action={<IconButton onClick={fetchUsers}><RefreshCw className={cx("size-4", loading.users && "animate-spin")} />Refresh</IconButton>} />
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
           <Panel className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/[0.08]">
-                  <tr><th className="px-4 py-3">Email</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Provider</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Joined</th></tr>
+                  <tr><th className="px-4 py-3">Email</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Provider</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Plan</th><th className="px-4 py-3">Joined</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
                   {users.map((user) => (
@@ -654,14 +905,47 @@ export default function MasterAdminPage() {
                       <td className="px-4 py-3">{user.name || "-"}</td>
                       <td className="px-4 py-3 text-slate-500">{user.authProvider || "-"}</td>
                       <td className="px-4 py-3"><select value={user.role} disabled={!isOwner || updatingUser === user.id} onChange={(event) => updateRole(user.id, event.target.value as UserRow["role"])} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs dark:border-white/[0.1] dark:bg-black/20"><option value="USER">USER</option><option value="ADMIN">ADMIN</option><option value="OWNER">OWNER</option></select></td>
+                      <td className="px-4 py-3"><button onClick={() => loadUserPlan(user.id)} className="rounded-md border border-slate-200 px-2 py-1 text-xs hover:bg-slate-50 dark:border-white/[0.1] dark:hover:bg-white/[0.04]">Manage</button></td>
                       <td className="px-4 py-3 text-slate-500">{new Date(user.createdAt).toLocaleDateString()}</td>
                     </tr>
                   ))}
-                  {!users.length && <tr><td colSpan={5} className="px-4 py-10 text-center text-slate-500">{loading.users ? "Loading users..." : "No users found."}</td></tr>}
+                  {!users.length && <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">{loading.users ? "Loading users..." : "No users found."}</td></tr>}
                 </tbody>
               </table>
             </div>
           </Panel>
+          <Panel className="p-4">
+            <h3 className="text-sm font-semibold">User Plan</h3>
+            {!selectedUserPlan ? (
+              <p className="mt-3 text-sm text-slate-500">Select Manage on a user to assign plans or adjust usage.</p>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="text-sm font-semibold">{selectedUserPlan.user.email}</p>
+                  <p className="text-xs text-slate-500">Current: {selectedUserPlan.usage.plan.name}</p>
+                </div>
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium">Assign Plan</span>
+                  <select value={selectedUserPlan.usage.plan.id} onChange={(event) => updateUserPlan({ action: "assign", planId: event.target.value })} disabled={saving.userPlan} className="h-10 rounded-md border border-slate-200 bg-white px-3 dark:border-white/[0.1] dark:bg-black/20">
+                    {selectedUserPlan.plans.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+                  </select>
+                </label>
+                <div className="grid gap-2 text-xs">
+                  {(["FIVE_HOUR", "WEEKLY", "MONTHLY"] as const).map((type) => {
+                    const window = selectedUserPlan.usage.windows[type];
+                    const pct = window.creditsLimit ? Math.min(100, Math.round((window.creditsUsed / window.creditsLimit) * 100)) : 0;
+                    return <div key={type} className="rounded-md border border-slate-200 p-3 dark:border-white/[0.1]"><div className="flex justify-between"><span>{type.replace("_", " ")}</span><span>{window.creditsUsed.toLocaleString()} / {window.creditsLimit.toLocaleString()}</span></div><div className="mt-2 h-2 rounded-full bg-slate-100 dark:bg-white/10"><div className="h-2 rounded-full bg-violet-600" style={{ width: `${pct}%` }} /></div><p className="mt-1 text-slate-500">Resets {new Date(window.resetAt).toLocaleString()}</p></div>;
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <input value={grantCredits} onChange={(event) => setGrantCredits(event.target.value)} type="number" min={1} className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-white/[0.1] dark:bg-black/20" />
+                  <IconButton onClick={() => updateUserPlan({ action: "grant", credits: Number(grantCredits), reason: "Master panel grant" })} disabled={saving.userPlan}>Grant</IconButton>
+                </div>
+                <IconButton onClick={() => updateUserPlan({ action: "reset", reason: "Master panel reset" })} disabled={saving.userPlan}><RotateCcw className="size-4" />Reset usage</IconButton>
+              </div>
+            )}
+          </Panel>
+          </div>
         </>
       )}
 
