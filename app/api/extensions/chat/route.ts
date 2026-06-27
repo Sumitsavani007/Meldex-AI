@@ -10,6 +10,7 @@ import { ExtensionTokenError, extractBearerToken, requireExtensionScope, verifyA
 import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
 import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
+import { CHAT_QUALITY_CORPUS } from "@/lib/chat-quality-corpus";
 
 const schema = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant", "system"]), content: z.string() })).min(1),
@@ -47,7 +48,6 @@ export async function POST(req: NextRequest) {
   if (!body.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   const { messages, model, context } = body.data;
-  const lastMessage = messages[messages.length - 1].content;
 
   // Build system context from workspace
   const contextParts: string[] = [];
@@ -62,8 +62,8 @@ export async function POST(req: NextRequest) {
   }
 
   const systemContext = contextParts.length > 0
-    ? `You are Meldex AI coding assistant inside Meldex IDE.\n\n${contextParts.join("\n\n")}`
-    : "You are Meldex AI, a helpful coding assistant.";
+    ? `You are Meldex AI coding assistant inside Meldex IDE.\n\n${CHAT_QUALITY_CORPUS}\n\n${contextParts.join("\n\n")}`
+    : `You are Meldex AI, a helpful coding assistant.\n\n${CHAT_QUALITY_CORPUS}`;
 
   const allMessages = [
     { role: "system" as const, content: systemContext },

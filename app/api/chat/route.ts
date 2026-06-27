@@ -27,6 +27,7 @@ import { resolveConversationContext, buildConversationContext } from "@/lib/conv
 import { ensureConversation, saveMessage } from "@/lib/chat-persistence";
 import { calculateCredits, canUseFeature, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest } from "@/lib/plans-credits";
 import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
+import { CHAT_QUALITY_CORPUS } from "@/lib/chat-quality-corpus";
 
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
@@ -38,7 +39,9 @@ For Gujarati questions:
 Be direct: give the answer first, then explain if needed.
 For factual questions, try to answer directly from available knowledge/search context. Do not tell the user to Google it.
 If you are not sure, say that you could not verify it clearly and give what you can verify.
-Do NOT create files or run commands unless the user explicitly asks.`;
+Do NOT create files or run commands unless the user explicitly asks.
+
+${CHAT_QUALITY_CORPUS}`;
 
 const AGENT_SYSTEM_PROMPT = `You are Meldex AI Coding Agent.
 Your job is to create, edit, and fix project files when the user asks for coding or build tasks.
