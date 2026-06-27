@@ -16,17 +16,36 @@ function sessions() {
   }
 }
 
+function cookieMap(header = "") {
+  return Object.fromEntries(
+    header.split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const index = part.indexOf("=");
+        if (index === -1) return [part, ""];
+        return [part.slice(0, index), decodeURIComponent(part.slice(index + 1))];
+      }),
+  );
+}
+
+function proxyCookieName(workspaceId) {
+  return `meldex_ide_${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
 function resolveSession(reqUrl) {
   const url = new URL(reqUrl, "http://127.0.0.1");
   const match = url.pathname.match(/^\/ide\/([^/]+)(\/.*)?$/);
   if (!match) return { status: 404, error: "IDE route not found" };
   const workspaceId = decodeURIComponent(match[1]);
-  const token = url.searchParams.get("tkn") || "";
+  const cookies = cookieMap(this?.headers?.cookie || "");
+  const token = url.searchParams.get("tkn") || cookies[proxyCookieName(workspaceId)] || "";
   const session = sessions()[workspaceId];
   if (!session || session.token !== token) return { status: 401, error: "Invalid IDE session" };
   if (new Date(session.expiresAt).getTime() <= Date.now()) return { status: 401, error: "IDE session expired" };
-  const upstreamPath = match[2] || "/";
-  return { session, upstreamPath: `${upstreamPath}${url.search}` };
+  const shouldSetCookie = url.searchParams.has("tkn");
+  url.searchParams.delete("tkn");
+  return { session, workspaceId, shouldSetCookie, upstreamPath: `${url.pathname}${url.search}` };
 }
 
 function sendError(res, status, message) {
@@ -35,7 +54,7 @@ function sendError(res, status, message) {
 }
 
 function proxyHttp(req, res) {
-  const resolved = resolveSession(req.url);
+  const resolved = resolveSession.call(req, req.url);
   if (!resolved.session) return sendError(res, resolved.status, resolved.error);
   const options = {
     host: "127.0.0.1",
@@ -52,6 +71,17 @@ function proxyHttp(req, res) {
   const upstream = http.request(options, (upstreamRes) => {
     const headers = { ...upstreamRes.headers };
     delete headers["content-security-policy"];
+    if (headers.location?.startsWith("/")) {
+      headers.location = `/ide/${encodeURIComponent(resolved.workspaceId)}${headers.location}`;
+    }
+    if (resolved.shouldSetCookie) {
+      const authCookie = `${proxyCookieName(resolved.workspaceId)}=${encodeURIComponent(resolved.session.token)}; Path=/ide/${encodeURIComponent(resolved.workspaceId)}/; HttpOnly; Secure; SameSite=Lax; Max-Age=7200`;
+      headers["set-cookie"] = Array.isArray(headers["set-cookie"])
+        ? [...headers["set-cookie"], authCookie]
+        : headers["set-cookie"]
+          ? [headers["set-cookie"], authCookie]
+          : [authCookie];
+    }
     res.writeHead(upstreamRes.statusCode || 502, headers);
     upstreamRes.pipe(res);
   });
@@ -62,7 +92,7 @@ function proxyHttp(req, res) {
 const server = http.createServer(proxyHttp);
 
 server.on("upgrade", (req, socket, head) => {
-  const resolved = resolveSession(req.url);
+  const resolved = resolveSession.call(req, req.url);
   if (!resolved.session) {
     socket.write(`HTTP/1.1 ${resolved.status} Unauthorized\r\nConnection: close\r\n\r\n${resolved.error}`);
     socket.destroy();

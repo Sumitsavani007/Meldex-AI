@@ -55,17 +55,17 @@ async function docker(args: string[]) {
   return execFileAsync("docker", args, { timeout: 60_000, maxBuffer: 1024 * 1024 * 4 });
 }
 
-async function containerIsRunning(name: string) {
+async function containerIsRunning(name: string, workspaceId: string) {
   try {
-    const { stdout } = await docker(["inspect", "-f", "{{.State.Running}} {{.State.Restarting}}", name]);
-    return stdout.trim() === "true false";
+    const { stdout } = await docker(["inspect", "-f", "{{.State.Running}} {{.State.Restarting}} {{json .Config.Cmd}}", name]);
+    return stdout.trim().startsWith("true false") && stdout.includes(`"/ide/${workspaceId}"`);
   } catch {
     return false;
   }
 }
 
 async function ensureOpenVSCodeContainer(session: IdeSession) {
-  if (await containerIsRunning(session.containerName)) return;
+  if (await containerIsRunning(session.containerName, session.workspaceId)) return;
   await docker(["rm", "-f", session.containerName]).catch(() => undefined);
   await mkdir(session.workspacePath, { recursive: true });
   await docker([
@@ -77,6 +77,7 @@ async function ensureOpenVSCodeContainer(session: IdeSession) {
     "-p", `127.0.0.1:${session.port}:3000`,
     "-v", `${session.workspacePath}:/home/workspace:cached`,
     "gitpod/openvscode-server:latest",
+    "--server-base-path", `/ide/${session.workspaceId}`,
   ]);
 }
 
