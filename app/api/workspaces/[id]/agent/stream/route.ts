@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { prisma } from "@/lib/prisma";
-import { calculateCredits, checkParallelTaskLimit, createUserNotification, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
@@ -58,6 +58,10 @@ export async function POST(
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const agentGate = await canUseFeature(session.user.id, "agent_runs");
+    if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    const memoryGate = await canUseFeature(session.user.id, "memory");
+    const previewGate = await canUseFeature(session.user.id, "preview_runtime");
     const parallelCheck = await checkParallelTaskLimit(session.user.id);
     if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
     const activeModel = await getActiveGenerationModel();
@@ -67,7 +71,7 @@ export async function POST(
       model: activeModel.model,
       inputTokens: promptTokens,
       toolCalls: 2,
-      memoryReads: 1,
+      memoryReads: memoryGate.ok ? 1 : 0,
     });
     const creditCheck = await precheckUserAiRequest({
       userId: session.user.id,
@@ -137,7 +141,7 @@ export async function POST(
           });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("tool_start", "Reading workspace");
-          const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.data.prompt);
+          const context = await buildWorkspaceContext(project.id, project.storagePath, memoryGate.ok ? session.user.id : undefined, body.data.prompt);
           const contextTokens = Math.ceil([
             body.data.prompt,
             context.projectFiles.join("\n"),
@@ -153,13 +157,13 @@ export async function POST(
           });
           if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length });
-          await send("memory_loaded", context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task" : "Loaded workspace memory", {
-            relatedTaskCount: context.memoryContext.relatedTaskCount,
-            reusedStyle: context.memoryContext.reusedStyle,
-            avoidedIssue: context.memoryContext.avoidedIssue,
+          await send("memory_loaded", memoryGate.ok ? (context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task" : "Loaded workspace memory") : "Workspace memory disabled by plan", {
+            relatedTaskCount: memoryGate.ok ? context.memoryContext.relatedTaskCount : 0,
+            reusedStyle: memoryGate.ok ? context.memoryContext.reusedStyle : false,
+            avoidedIssue: memoryGate.ok ? context.memoryContext.avoidedIssue : false,
           });
-          if (context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
-          if (context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
+          if (memoryGate.ok && context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
+          if (memoryGate.ok && context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
           const orchestration = await runWorkspaceOrchestration({
             workspaceId: project.id,
             taskId: task.id,
@@ -280,6 +284,7 @@ export async function POST(
           }
 
           await send("server_starting", "Starting preview");
+          if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);
           const verification = await verifyStaticPreview(session.user.id, project.id);
           await send("server_ready", "Preview URL ready", { url: verification.url });
           await send(verification.verified ? "preview_verified" : "error", verification.message, verification);
@@ -334,7 +339,7 @@ export async function POST(
             qualityScore,
             previewVerified: verification.verified,
           });
-          const memory = await updateWorkspaceMemorySnapshot({
+          const memory = memoryGate.ok ? await updateWorkspaceMemorySnapshot({
             userId: session.user.id,
             projectId: project.id,
             prompt: body.data.prompt,
@@ -347,8 +352,8 @@ export async function POST(
             errors: verification.verified ? [] : [verification.message],
             fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
             commands: ["static-preview-verify"],
-          });
-          await send("memory_updated", "Updated workspace memory", { recentTasks: memory.recentTasks.length, knownIssues: memory.knownIssues.length });
+          }) : null;
+          if (memory) await send("memory_updated", "Updated workspace memory", { recentTasks: memory.recentTasks.length, knownIssues: memory.knownIssues.length });
           const learning = await recordWorkspaceLearning({
             userId: session.user.id,
             projectId: project.id,
@@ -371,8 +376,8 @@ export async function POST(
             fileReads: context.relevantFiles.length,
             fileWrites: changedFiles.length,
             previewRuns: 1,
-            memoryReads: 1,
-            memoryWrites: 1,
+            memoryReads: memoryGate.ok ? 1 : 0,
+            memoryWrites: memoryGate.ok ? 1 : 0,
             retries,
             autofixes,
           });

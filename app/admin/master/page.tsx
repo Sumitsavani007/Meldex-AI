@@ -212,6 +212,17 @@ interface PaymentEventRow {
   user?: { id: string; email: string; name?: string | null } | null;
 }
 
+interface FeatureFlagRow {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  category: string;
+  isActive: boolean;
+  defaultEnabled: boolean;
+  planFeatures: Array<{ id: string; planId: string; featureId: string; enabled: boolean; limitInt?: number | null; plan: PlanRow }>;
+}
+
 interface AnalyticsData {
   range: { key: string; start: string; end: string };
   revenue: {
@@ -423,6 +434,7 @@ export default function MasterAdminPage() {
   const [vaultOk, setVaultOk] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [plans, setPlans] = useState<PlanRow[]>([]);
+  const [features, setFeatures] = useState<FeatureFlagRow[]>([]);
   const [editingPlan, setEditingPlan] = useState<PlanRow | null>(null);
   const [usageConfigs, setUsageConfigs] = useState<ModelUsageConfigRow[]>([]);
   const [editingUsageConfig, setEditingUsageConfig] = useState<ModelUsageConfigRow | null>(null);
@@ -439,7 +451,7 @@ export default function MasterAdminPage() {
   const [testing, setTesting] = useState<Record<string, boolean>>({});
   const [edits, setEdits] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
-  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, billing: false, usagePricing: false, userPlan: false });
+  const [loading, setLoading] = useState({ overview: true, analytics: false, settings: true, users: false, audit: false, plans: false, features: false, billing: false, usagePricing: false, userPlan: false });
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -523,6 +535,21 @@ export default function MasterAdminPage() {
     }
   }, [pushToast]);
 
+  const fetchFeatures = useCallback(async () => {
+    setLoading((prev) => ({ ...prev, features: true }));
+    try {
+      const res = await fetch("/api/admin/features", { cache: "no-store" });
+      if (!res.ok) throw new Error("Features unavailable");
+      const data = await res.json();
+      setFeatures(data.features ?? []);
+      if (data.plans?.length) setPlans(data.plans);
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Features unavailable");
+    } finally {
+      setLoading((prev) => ({ ...prev, features: false }));
+    }
+  }, [pushToast]);
+
   const fetchUsagePricing = useCallback(async () => {
     setLoading((prev) => ({ ...prev, usagePricing: true }));
     try {
@@ -583,13 +610,16 @@ export default function MasterAdminPage() {
   }, [fetchOverview, fetchSettings]);
 
   useEffect(() => {
-    if (tab === "plans") fetchPlans();
+    if (tab === "plans") {
+      fetchPlans();
+      fetchFeatures();
+    }
     if (tab === "analytics") fetchAnalytics();
     if (tab === "billing") fetchUpgradeRequests();
     if (tab === "usage-pricing") fetchUsagePricing();
     if (tab === "users") fetchUsers();
     if (tab === "audit") fetchAudit();
-  }, [tab, fetchPlans, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
+  }, [tab, fetchPlans, fetchFeatures, fetchAnalytics, fetchUpgradeRequests, fetchUsagePricing, fetchUsers, fetchAudit]);
 
   const settingMap = useMemo(() => new Map(settings.map((setting) => [setting.key, setting])), [settings]);
   const stats = overview?.stats ?? { users: 0, projects: 0, conversations: 0, messages: 0, vaultKeys: 0 };
@@ -752,6 +782,44 @@ export default function MasterAdminPage() {
       pushToast("error", err instanceof Error ? err.message : "Plan save failed");
     } finally {
       setSaving((prev) => ({ ...prev, plan: false }));
+    }
+  }
+
+  async function updatePlanFeature(featureId: string, planId: string, enabled: boolean, limitInt?: number | null) {
+    const key = `feature-${featureId}-${planId}`;
+    setSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updatePlanFeature", featureId, planId, enabled, limitInt: limitInt ?? null }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Plan feature updated.");
+      await fetchFeatures();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Feature update failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [key]: false }));
+    }
+  }
+
+  async function updateFeatureFlag(featureId: string, data: { isActive?: boolean; defaultEnabled?: boolean }) {
+    const key = `feature-${featureId}`;
+    setSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      const res = await fetch("/api/admin/features", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateFeatureFlag", featureId, ...data }),
+      });
+      if (!res.ok) throw new Error(await readError(res));
+      pushToast("success", "Feature flag updated.");
+      await fetchFeatures();
+    } catch (err) {
+      pushToast("error", err instanceof Error ? err.message : "Feature flag update failed");
+    } finally {
+      setSaving((prev) => ({ ...prev, [key]: false }));
     }
   }
 
@@ -1383,6 +1451,76 @@ export default function MasterAdminPage() {
               )}
             </Panel>
           </div>
+          <Panel className="mt-4 overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-white/[0.08]">
+              <div>
+                <h3 className="text-sm font-semibold">Plan Features</h3>
+                <p className="text-xs text-slate-500">Enable or disable SaaS capabilities by plan. Runtime gates read this matrix from the database.</p>
+              </div>
+              <IconButton onClick={fetchFeatures}><RefreshCw className={cx("size-4", loading.features && "animate-spin")} />Refresh features</IconButton>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-sm">
+                <thead className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/[0.08]">
+                  <tr>
+                    <th className="px-4 py-3">Feature</th>
+                    <th className="px-4 py-3">Global</th>
+                    {plans.map((plan) => <th key={plan.id} className="px-4 py-3">{plan.name}</th>)}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200 dark:divide-white/[0.08]">
+                  {features.map((feature) => (
+                    <tr key={feature.id}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{feature.name}</div>
+                        <div className="font-mono text-[11px] text-slate-500">{feature.key} · {feature.category}</div>
+                        {feature.description && <div className="mt-1 max-w-sm text-xs text-slate-500">{feature.description}</div>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-2">
+                          <label className="inline-flex items-center gap-2 text-xs">
+                            <input type="checkbox" checked={feature.isActive} disabled={saving[`feature-${feature.id}`]} onChange={(event) => updateFeatureFlag(feature.id, { isActive: event.target.checked })} />
+                            Active
+                          </label>
+                          <label className="inline-flex items-center gap-2 text-xs">
+                            <input type="checkbox" checked={feature.defaultEnabled} disabled={saving[`feature-${feature.id}`]} onChange={(event) => updateFeatureFlag(feature.id, { defaultEnabled: event.target.checked })} />
+                            Default
+                          </label>
+                        </div>
+                      </td>
+                      {plans.map((plan) => {
+                        const mapping = feature.planFeatures.find((item) => item.planId === plan.id);
+                        const enabled = mapping?.enabled ?? feature.defaultEnabled;
+                        const limitInt = mapping?.limitInt ?? null;
+                        const saveKey = `feature-${feature.id}-${plan.id}`;
+                        return (
+                          <td key={plan.id} className="px-4 py-3 align-top">
+                            <div className="space-y-2">
+                              <label className="inline-flex items-center gap-2 text-xs">
+                                <input type="checkbox" checked={enabled} disabled={saving[saveKey]} onChange={(event) => updatePlanFeature(feature.id, plan.id, event.target.checked, limitInt)} />
+                                {enabled ? "Enabled" : "Disabled"}
+                              </label>
+                              {["parallel_tasks", "storage", "workspace", "pro_models"].includes(feature.key) && (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  defaultValue={limitInt ?? ""}
+                                  placeholder="Limit"
+                                  onBlur={(event) => updatePlanFeature(feature.id, plan.id, enabled, event.target.value ? Number(event.target.value) : null)}
+                                  className="h-8 w-24 rounded-md border border-slate-200 bg-white px-2 text-xs dark:border-white/[0.1] dark:bg-black/20"
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                  {!features.length && <tr><td colSpan={plans.length + 2} className="px-4 py-10 text-center text-slate-500">{loading.features ? "Loading features..." : "No feature flags found."}</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         </>
       )}
 

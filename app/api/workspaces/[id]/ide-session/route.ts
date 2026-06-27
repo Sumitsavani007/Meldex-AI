@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
 import { getOwnedWorkspaceProject } from "@/lib/ai-workspace";
 import { ensureOpenVSCodeSession } from "@/lib/openvscode-manager";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export async function POST(
   try {
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const gate = await canUseFeature(session.user.id, "ide");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const ideSession = await ensureOpenVSCodeSession({ userId: session.user.id, project });
     return NextResponse.json({
       url: ideSession.url,

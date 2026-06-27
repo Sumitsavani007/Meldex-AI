@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { ensureWorkspaceProject, listOwnedWorkspaceProjects } from "@/lib/ai-workspace";
-import { checkWorkspaceCreateLimit } from "@/lib/plans-credits";
+import { checkWorkspaceCreateLimit, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +32,10 @@ export async function POST(request: Request) {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspaces:create:${session.user.id}`, 30);
     const body = createSchema.parse(await request.json().catch(() => ({})));
     const limit = await checkWorkspaceCreateLimit(session.user.id);
-    if (!limit.ok) return NextResponse.json(limit, { status: 402, headers: { "Cache-Control": "no-store" } });
+    if (!limit.ok) {
+      const body = limit.code === "FEATURE_NOT_ALLOWED" ? featureBlockedResponse(limit) : limit;
+      return NextResponse.json(body, { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
     const project = await ensureWorkspaceProject(session.user.id, body.name || "Untitled Workspace", body.description || "AI-generated workspace project");
     return NextResponse.json({ project }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (err) {

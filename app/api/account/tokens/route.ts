@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/security";
 import { createExtensionApiToken, maskExtensionToken, type ExtensionScope } from "@/lib/extension-auth";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 const createSchema = z.object({
   name: z.string().min(1).max(80).default("Meldex Extension"),
@@ -79,6 +80,12 @@ export async function POST(req: NextRequest) {
   try {
     checkRateLimit(`token-create:${session.user.id}`, 10, 60_000);
     const body = createSchema.parse(await req.json().catch(() => ({})));
+    const apiGate = await canUseFeature(session.user.id, "api_access");
+    if (!apiGate.ok) return NextResponse.json(featureBlockedResponse(apiGate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    if (body.scopes.includes("benchmark")) {
+      const benchmarkGate = await canUseFeature(session.user.id, "benchmark");
+      if (!benchmarkGate.ok) return NextResponse.json(featureBlockedResponse(benchmarkGate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
     const expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000);
     const raw = await createExtensionApiToken(session.user.id, body.name, {
       expiresAt,

@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ExtensionTokenError, extractBearerToken, verifyAnyExtensionToken } from "@/lib/extension-auth";
 import { getConfig } from "@/lib/runtime-config";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ export async function GET(req: NextRequest) {
 
   try {
     const user = await verifyAnyExtensionToken(token);
+    for (const key of ["api_access", "vscode_extension"] as const) {
+      const gate = await canUseFeature(user.userId, key);
+      if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
     const [model, apiKey] = await Promise.all([
       getConfig("OPENROUTER_MODEL", "qwen/qwen3-coder"),
       getConfig("OPENROUTER_API_KEY"),

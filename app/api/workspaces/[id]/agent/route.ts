@@ -21,7 +21,7 @@ import {
 } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
 import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
-import { calculateCredits, checkParallelTaskLimit, createUserNotification, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
+import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,11 +43,15 @@ export async function POST(
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-agent:${session.user.id}`, 12);
     const body = schema.parse(await request.json());
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const agentGate = await canUseFeature(session.user.id, "agent_runs");
+    if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    const memoryGate = await canUseFeature(session.user.id, "memory");
+    const previewGate = await canUseFeature(session.user.id, "preview_runtime");
     const parallelCheck = await checkParallelTaskLimit(session.user.id);
     if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
     const activeModel = await getActiveGenerationModel();
     const promptTokens = Math.ceil(body.prompt.length / 4);
-    const preEstimate = await calculateCredits({ provider: activeModel.provider, model: activeModel.model, inputTokens: promptTokens, toolCalls: 2, memoryReads: 1 });
+    const preEstimate = await calculateCredits({ provider: activeModel.provider, model: activeModel.model, inputTokens: promptTokens, toolCalls: 2, memoryReads: memoryGate.ok ? 1 : 0 });
     const creditCheck = await precheckUserAiRequest({
       userId: session.user.id,
       estimatedCredits: preEstimate.credits,
@@ -99,7 +103,7 @@ export async function POST(
       },
     });
 
-    const context = await buildWorkspaceContext(project.id, project.storagePath, session.user.id, body.prompt);
+    const context = await buildWorkspaceContext(project.id, project.storagePath, memoryGate.ok ? session.user.id : undefined, body.prompt);
     const contextTokens = Math.ceil([
       body.prompt,
       context.projectFiles.join("\n"),
@@ -120,8 +124,8 @@ export async function POST(
         projectId: project.id,
         taskId: task.id,
         event: "memory_loaded",
-        message: context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task." : "Loaded workspace memory.",
-        metadata: { relatedTaskCount: context.memoryContext.relatedTaskCount, reusedStyle: context.memoryContext.reusedStyle, avoidedIssue: context.memoryContext.avoidedIssue },
+        message: memoryGate.ok ? (context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task." : "Loaded workspace memory.") : "Workspace memory disabled by plan.",
+        metadata: { relatedTaskCount: memoryGate.ok ? context.memoryContext.relatedTaskCount : 0, reusedStyle: memoryGate.ok ? context.memoryContext.reusedStyle : false, avoidedIssue: memoryGate.ok ? context.memoryContext.avoidedIssue : false },
       },
     });
     let response: WorkspaceAgentResponse;
@@ -223,6 +227,7 @@ export async function POST(
       });
     }
 
+    if (!previewGate.ok) return NextResponse.json(featureBlockedResponse(previewGate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const verification = await verifyStaticPreview(session.user.id, project.id);
     const qualityScore = Math.max(0, Math.min(100, 68 + (verification.verified ? 20 : 0) + Math.min(12, changedFiles.length * 2)));
     const preview = await prisma.workspacePreview.create({
@@ -272,7 +277,7 @@ export async function POST(
       where: { id: project.id },
       data: { qualityScore, lastPreviewUrl: verification.url },
     });
-    const memory = await updateWorkspaceMemorySnapshot({
+    const memory = memoryGate.ok ? await updateWorkspaceMemorySnapshot({
       userId: session.user.id,
       projectId: project.id,
       prompt: body.prompt,
@@ -285,7 +290,7 @@ export async function POST(
       errors: verification.verified ? [] : [verification.message],
       fixes: verification.verified ? [`Verified preview for ${changedFiles.length} changed file(s).`] : [],
       commands: ["static-preview-verify"],
-    });
+    }) : null;
     const tokenUsage = usageFromCompletion(response.usage);
     const finalCredit = await calculateCredits({
       provider: response.provider || activeModel.provider,
@@ -295,8 +300,8 @@ export async function POST(
       fileReads: context.relevantFiles.length,
       fileWrites: changedFiles.length,
       previewRuns: 1,
-      memoryReads: 1,
-      memoryWrites: 1,
+      memoryReads: memoryGate.ok ? 1 : 0,
+      memoryWrites: memoryGate.ok ? 1 : 0,
       retries,
       autofixes,
     });

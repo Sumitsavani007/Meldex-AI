@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
 import { memGetAll, memSet, memDelete } from "@/lib/memory-brain";
 import { z } from "zod";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 // GET /api/memory — get all memory for current user
 export async function GET() {
   const { session, error } = await requireAuth();
   if (error) return error;
+
+  const gate = await canUseFeature(session.user.id, "memory");
+  if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
 
   const memory = await memGetAll(session.user.id);
   return NextResponse.json({ memory });
@@ -22,6 +26,9 @@ export async function POST(request: Request) {
   const { session, error } = await requireAuth();
   if (error) return error;
 
+  const gate = await canUseFeature(session.user.id, "memory");
+  if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
+
   const body = setSchema.safeParse(await request.json());
   if (!body.success) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -35,6 +42,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const { session, error } = await requireAuth();
   if (error) return error;
+
+  const gate = await canUseFeature(session.user.id, "memory");
+  if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
 
   const { searchParams } = new URL(request.url);
   const key = searchParams.get("key");

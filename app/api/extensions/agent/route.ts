@@ -10,6 +10,7 @@ import { ExtensionTokenError, extractBearerToken, requireExtensionScope, verifyA
 import { generateChatCompletion, ModelRouterError } from "@/lib/model-router";
 import { getNumberSetting } from "@/lib/runtime-config";
 import { modelErrorStatus, toSafeProviderError } from "@/lib/provider-health";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 const schema = z.object({
   task: z.string().min(1).max(12000),
@@ -95,6 +96,10 @@ export async function POST(req: NextRequest) {
   try {
     user = await verifyAnyExtensionToken(token);
     requireExtensionScope(user, "agent");
+    for (const key of ["api_access", "vscode_extension", "agent_runs"] as const) {
+      const gate = await canUseFeature(user.userId, key);
+      if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
+    }
   } catch (err) {
     const code = err instanceof ExtensionTokenError ? err.code : "token_invalid";
     return NextResponse.json({ error: err instanceof Error ? err.message : "Invalid or expired token", code }, { status: 401 });

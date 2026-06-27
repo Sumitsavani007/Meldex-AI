@@ -5,6 +5,7 @@ import { requireAuth } from "@/lib/role-guard";
 import { createStoredZip } from "@/lib/simple-zip";
 import { getOwnedWorkspaceProject, resolveProjectFile } from "@/lib/ai-workspace";
 import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,6 +32,8 @@ export async function GET(
   try {
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const gate = await canUseFeature(session.user.id, "download_project");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const files = await collectFiles(project.storagePath);
     const zip = createStoredZip(files);
     return new NextResponse(zip, {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ExtensionTokenError, extractBearerToken, requireExtensionScope, verifyAnyExtensionToken } from "@/lib/extension-auth";
 import { testOpenRouterHealth } from "@/lib/provider-health";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 const NO_CACHE = { "Cache-Control": "no-store, no-cache", "Pragma": "no-cache" };
 
@@ -11,6 +12,10 @@ export async function GET(req: Request) {
   try {
     const user = await verifyAnyExtensionToken(token);
     requireExtensionScope(user, "model-health");
+    for (const key of ["api_access", "vscode_extension"] as const) {
+      const gate = await canUseFeature(user.userId, key);
+      if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: NO_CACHE });
+    }
   } catch (err) {
     const code = err instanceof ExtensionTokenError ? err.code : "token_invalid";
     return NextResponse.json({ error: err instanceof Error ? err.message : "Invalid or expired token", code }, { status: 401, headers: NO_CACHE });

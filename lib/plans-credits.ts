@@ -126,6 +126,26 @@ export type PlanLimitType =
   | "storage"
   | "parallel_tasks";
 
+export const FEATURE_FLAGS = [
+  { key: "workspace", name: "Workspace", category: "workspace", description: "Open and use Meldex workspaces.", minimumPriority: 1 },
+  { key: "ide", name: "IDE", category: "workspace", description: "Open the native Meldex IDE.", minimumPriority: 2 },
+  { key: "vscode_extension", name: "VS Code Extension", category: "extension", description: "Use Meldex from the VS Code extension.", minimumPriority: 2 },
+  { key: "chat", name: "Chat", category: "ai", description: "Use Meldex chat.", minimumPriority: 1 },
+  { key: "agent_runs", name: "Agent Runs", category: "ai", description: "Run the AI coding agent.", minimumPriority: 1 },
+  { key: "pro_models", name: "Pro Models", category: "ai", description: "Use premium/pro model selections.", minimumPriority: 3 },
+  { key: "memory", name: "Context Memory", category: "ai", description: "Read, write, and edit workspace memory.", minimumPriority: 2 },
+  { key: "preview_runtime", name: "Preview Runtime", category: "workspace", description: "Start, verify, and refresh previews.", minimumPriority: 1 },
+  { key: "download_project", name: "Download Project", category: "workspace", description: "Export a workspace as a ZIP.", minimumPriority: 2 },
+  { key: "deploy", name: "Deploy", category: "deployment", description: "Deploy generated projects.", minimumPriority: 3 },
+  { key: "parallel_tasks", name: "Parallel Tasks", category: "limits", description: "Run parallel AI tasks.", minimumPriority: 2 },
+  { key: "storage", name: "Storage", category: "limits", description: "Use plan storage allocation.", minimumPriority: 1 },
+  { key: "api_access", name: "API Access", category: "api", description: "Use API and token access.", minimumPriority: 2 },
+  { key: "benchmark", name: "Benchmark", category: "api", description: "Run Meldex benchmarks.", minimumPriority: 3 },
+  { key: "team_features", name: "Team Features", category: "team", description: "Use team collaboration features.", minimumPriority: 4 },
+] as const;
+
+export type FeatureKey = typeof FEATURE_FLAGS[number]["key"];
+
 export type PlanLimitError = {
   ok: false;
   code: "PLAN_LIMIT_EXCEEDED";
@@ -137,6 +157,10 @@ export type PlanLimitError = {
   recommendedPlan?: { id: string; name: string; slug: string } | null;
   legacyCode?: string;
 };
+
+export type FeatureAccessResult =
+  | { ok: true; featureKey: FeatureKey; enabled: true; source: "override" | "plan" | "default"; plan: Plan; limitInt?: number | null }
+  | { ok: false; code: "FEATURE_NOT_ALLOWED"; featureKey: FeatureKey; message: string; currentUsage: 0; limit: 0; recommendedPlan?: { id: string; name: string; slug: string } | null; plan: Plan };
 
 function startOfMonth(now: Date) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
@@ -224,6 +248,52 @@ export async function seedDefaultModelUsageConfigs({ overwrite = false } = {}) {
     where: { provider_model: { provider: data.provider, model: data.model } },
     update: overwrite ? data : { isActive: true },
     create: { id: "model_usage_openrouter_qwen3_coder", ...data },
+  });
+}
+
+export async function seedDefaultFeatureFlags() {
+  const plans = await listPlans();
+  const flags = [];
+  for (const feature of FEATURE_FLAGS) {
+    const flag = await prisma.featureFlag.upsert({
+      where: { key: feature.key },
+      update: { name: feature.name, description: feature.description, category: feature.category, isActive: true },
+      create: {
+        key: feature.key,
+        name: feature.name,
+        description: feature.description,
+        category: feature.category,
+        isActive: true,
+        defaultEnabled: feature.minimumPriority <= 1,
+      },
+    });
+    flags.push(flag);
+    for (const plan of plans) {
+      await prisma.planFeature.upsert({
+        where: { planId_featureId: { planId: plan.id, featureId: flag.id } },
+        update: {},
+        create: {
+          planId: plan.id,
+          featureId: flag.id,
+          enabled: plan.priorityLevel >= feature.minimumPriority,
+          limitInt:
+            feature.key === "parallel_tasks" ? plan.maxParallelTasks :
+            feature.key === "storage" ? plan.maxStorageMb :
+            feature.key === "workspace" ? plan.maxWorkspaceCount :
+            feature.key === "pro_models" ? plan.maxContextTokens :
+            null,
+        },
+      });
+    }
+  }
+  return flags;
+}
+
+export async function listPlanFeatures() {
+  await seedDefaultFeatureFlags();
+  return prisma.featureFlag.findMany({
+    include: { planFeatures: { include: { plan: true } } },
+    orderBy: [{ category: "asc" }, { name: "asc" }],
   });
 }
 
@@ -386,6 +456,86 @@ async function recommendPlan(currentPriority: number, limitType: PlanLimitType, 
   }) || plans.find((plan) => plan.isActive && plan.priorityLevel > currentPriority) || null;
 }
 
+async function recommendPlanForFeature(currentPriority: number, featureKey: FeatureKey) {
+  const plans = await listPlans();
+  const feature = await prisma.featureFlag.findUnique({ where: { key: featureKey } });
+  if (!feature) return plans.find((plan) => plan.isActive && plan.priorityLevel > currentPriority) || null;
+  const matches = await prisma.planFeature.findMany({
+    where: { featureId: feature.id, enabled: true, plan: { isActive: true, priorityLevel: { gt: currentPriority } } },
+    include: { plan: true },
+  });
+  return matches.sort((a, b) => a.plan.priorityLevel - b.plan.priorityLevel)[0]?.plan || plans.find((plan) => plan.isActive && plan.priorityLevel > currentPriority) || null;
+}
+
+export async function canUseFeature(userId: string, featureKey: FeatureKey): Promise<FeatureAccessResult> {
+  await seedDefaultFeatureFlags();
+  const summary = await getUserPlanLimits(userId);
+  const feature = await prisma.featureFlag.findUnique({
+    where: { key: featureKey },
+    include: {
+      planFeatures: { where: { planId: summary.plan.id } },
+      userOverrides: {
+        where: {
+          userId,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+        take: 1,
+      },
+    },
+  });
+  if (!feature || !feature.isActive) {
+    return {
+      ok: false,
+      code: "FEATURE_NOT_ALLOWED",
+      featureKey,
+      message: "This feature is not available right now.",
+      currentUsage: 0,
+      limit: 0,
+      recommendedPlan: null,
+      plan: summary.plan,
+    };
+  }
+  const override = feature.userOverrides[0];
+  if (override) {
+    if (override.enabled) return { ok: true, featureKey, enabled: true, source: "override", plan: summary.plan, limitInt: null };
+    return {
+      ok: false,
+      code: "FEATURE_NOT_ALLOWED",
+      featureKey,
+      message: `${feature.name} is disabled for your account.`,
+      currentUsage: 0,
+      limit: 0,
+      recommendedPlan: await recommendPlanForFeature(summary.plan.priorityLevel, featureKey),
+      plan: summary.plan,
+    };
+  }
+  const planFeature = feature.planFeatures[0];
+  const enabled = planFeature ? planFeature.enabled : feature.defaultEnabled;
+  if (enabled) return { ok: true, featureKey, enabled: true, source: planFeature ? "plan" : "default", plan: summary.plan, limitInt: planFeature?.limitInt ?? null };
+  return {
+    ok: false,
+    code: "FEATURE_NOT_ALLOWED",
+    featureKey,
+    message: `${feature.name} is not included in your current Meldex plan.`,
+    currentUsage: 0,
+    limit: 0,
+    recommendedPlan: await recommendPlanForFeature(summary.plan.priorityLevel, featureKey),
+    plan: summary.plan,
+  };
+}
+
+export function featureBlockedResponse(result: Extract<FeatureAccessResult, { ok: false }>) {
+  return {
+    error: result.message,
+    code: result.code,
+    limitType: "feature",
+    featureKey: result.featureKey,
+    currentUsage: result.currentUsage,
+    limit: result.limit,
+    recommendedPlan: result.recommendedPlan,
+  };
+}
+
 async function planLimitError(input: {
   summary: UsageSummary;
   limitType: PlanLimitType;
@@ -434,6 +584,19 @@ export async function checkUserCreditLimit(userId: string, estimatedCredits: num
 export async function precheckUserAiRequest(input: { userId: string; estimatedCredits: number; model?: string; provider?: string; estimatedContextTokens?: number }) {
   const summary = await getUserPlanLimits(input.userId);
   const model = input.model || (await getActiveGenerationModel()).model;
+  if (!DEFAULT_ALLOWED_MODELS.includes(model)) {
+    const proModelGate = await canUseFeature(input.userId, "pro_models");
+    if (!proModelGate.ok) {
+      return planLimitError({
+        summary,
+        limitType: "model",
+        message: "Pro model access is not included in your current Meldex plan.",
+        currentUsage: 1,
+        limit: 0,
+        legacyCode: "MODEL_NOT_ALLOWED",
+      });
+    }
+  }
   const allowed = summary.allowedModels.map(String);
   if (allowed.length && !allowed.includes(model)) {
     return planLimitError({
@@ -462,34 +625,42 @@ export async function precheckUserAiRequest(input: { userId: string; estimatedCr
 }
 
 export async function checkWorkspaceCreateLimit(userId: string) {
+  const feature = await canUseFeature(userId, "workspace");
+  if (!feature.ok) return feature;
   const summary = await getUserPlanLimits(userId);
   const currentUsage = await prisma.workspaceProject.count({ where: { userId, deletedAt: null } });
-  if (currentUsage < summary.plan.maxWorkspaceCount) return { ok: true as const, summary, currentUsage };
+  const limit = typeof feature.limitInt === "number" ? feature.limitInt : summary.plan.maxWorkspaceCount;
+  if (currentUsage < limit) return { ok: true as const, summary, currentUsage };
   return planLimitError({
     summary,
     limitType: "workspace_count",
     message: "You’ve reached your workspace limit.",
     currentUsage,
-    limit: summary.plan.maxWorkspaceCount,
+    limit,
     needed: currentUsage + 1,
   });
 }
 
 export async function checkParallelTaskLimit(userId: string) {
+  const feature = await canUseFeature(userId, "parallel_tasks");
+  if (!feature.ok) return feature;
   const summary = await getUserPlanLimits(userId);
   const currentUsage = await prisma.workspaceTask.count({ where: { userId, status: { in: ["QUEUED", "RUNNING"] } } });
-  if (currentUsage < summary.plan.maxParallelTasks) return { ok: true as const, summary, currentUsage };
+  const limit = typeof feature.limitInt === "number" ? feature.limitInt : summary.plan.maxParallelTasks;
+  if (currentUsage < limit) return { ok: true as const, summary, currentUsage };
   return planLimitError({
     summary,
     limitType: "parallel_tasks",
     message: "You’ve reached your parallel task limit.",
     currentUsage,
-    limit: summary.plan.maxParallelTasks,
+    limit,
     needed: currentUsage + 1,
   });
 }
 
 export async function checkStorageLimit(userId: string, additionalBytes = 0) {
+  const feature = await canUseFeature(userId, "storage");
+  if (!feature.ok) return feature;
   const summary = await getUserPlanLimits(userId);
   const aggregate = await prisma.workspaceFile.aggregate({
     where: { userId, deletedAt: null },
@@ -497,13 +668,14 @@ export async function checkStorageLimit(userId: string, additionalBytes = 0) {
   });
   const currentBytes = (aggregate._sum.sizeBytes || 0) + additionalBytes;
   const currentMb = Math.ceil(currentBytes / 1024 / 1024);
-  if (currentMb <= summary.plan.maxStorageMb) return { ok: true as const, summary, currentUsage: currentMb };
+  const limit = typeof feature.limitInt === "number" ? feature.limitInt : summary.plan.maxStorageMb;
+  if (currentMb <= limit) return { ok: true as const, summary, currentUsage: currentMb };
   return planLimitError({
     summary,
     limitType: "storage",
     message: "You’ve reached your workspace storage limit.",
     currentUsage: currentMb,
-    limit: summary.plan.maxStorageMb,
+    limit,
     needed: currentMb,
   });
 }

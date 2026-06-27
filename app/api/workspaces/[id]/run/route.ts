@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/role-guard";
 import { checkRateLimit } from "@/lib/security";
 import { getOwnedWorkspaceProject, verifyStaticPreview } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,8 @@ export async function POST(
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-run:${session.user.id}`, 30);
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const gate = await canUseFeature(session.user.id, "preview_runtime");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const verification = await verifyStaticPreview(session.user.id, project.id);
     const run = await prisma.workspaceRun.create({
       data: {

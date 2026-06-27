@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { getOwnedWorkspaceProject, readWorkspaceMemorySnapshot, type WorkspaceMemorySnapshot } from "@/lib/ai-workspace";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,8 @@ export async function GET(
   if (error) return error;
   const { id } = await params;
   try {
+    const gate = await canUseFeature(session.user.id, "memory");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const { memory } = await readWorkspaceMemorySnapshot(session.user.id, id);
     return NextResponse.json({ memory }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
@@ -90,6 +93,8 @@ export async function PATCH(
   if (error) return error;
   const { id } = await params;
   try {
+    const gate = await canUseFeature(session.user.id, "memory");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const body = patchSchema.parse(await request.json().catch(() => ({})));
     const { memory } = await readWorkspaceMemorySnapshot(session.user.id, id);
     const next = { ...memory, [body.key]: cleanValue(body.value), updatedAt: new Date().toISOString() };
@@ -108,6 +113,8 @@ export async function DELETE(
   if (error) return error;
   const { id } = await params;
   try {
+    const gate = await canUseFeature(session.user.id, "memory");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const body = deleteSchema.parse(await request.json().catch(() => ({})));
     const { memory } = await readWorkspaceMemorySnapshot(session.user.id, id);
     const next: WorkspaceMemorySnapshot = body.clear

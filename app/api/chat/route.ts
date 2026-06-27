@@ -25,7 +25,7 @@ import { buildProjectContext } from "@/lib/project-brain";
 import { lookupFact } from "@/lib/knowledge-brain";
 import { resolveConversationContext, buildConversationContext } from "@/lib/conversation-brain";
 import { ensureConversation, saveMessage } from "@/lib/chat-persistence";
-import { calculateCredits, createUserNotification, getActiveGenerationModel, precheckUserAiRequest } from "@/lib/plans-credits";
+import { calculateCredits, canUseFeature, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest } from "@/lib/plans-credits";
 
 const CHAT_SYSTEM_PROMPT = `You are Meldex AI, a friendly and knowledgeable assistant.
 Answer questions clearly and naturally — like ChatGPT, not like a search engine.
@@ -60,6 +60,14 @@ export async function POST(request: Request) {
 
     if (!body.messages.length) {
       return NextResponse.json({ error: "No chat messages were provided." }, { status: 400 });
+    }
+
+    const chatGate = await canUseFeature(userId, "chat");
+    if (!chatGate.ok) {
+      return NextResponse.json({
+        ...featureBlockedResponse(chatGate),
+        actions: ["Upgrade to Meldex Plus", "View Usage", "Try again after reset"],
+      }, { status: 402, headers: { "Cache-Control": "no-store" } });
     }
 
     const userMessages = body.messages.filter((m) => m.role !== "system");

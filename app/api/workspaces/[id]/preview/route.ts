@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/role-guard";
 import { findStaticPreviewEntry, getOwnedWorkspaceProject, resolveProjectFile, verifyStaticPreview } from "@/lib/ai-workspace";
 import { prisma } from "@/lib/prisma";
+import { canUseFeature, featureBlockedResponse } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,6 +151,8 @@ export async function GET(
     const { searchParams } = new URL(request.url);
     const verifyOnly = searchParams.get("verify") === "1";
     if (verifyOnly) {
+      const gate = await canUseFeature(session.user.id, "preview_runtime");
+      if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
       const verification = await verifyStaticPreview(session.user.id, id);
       return NextResponse.json(verification, { headers: { "Cache-Control": "no-store" } });
     }
@@ -188,6 +191,8 @@ export async function POST(
   try {
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const gate = await canUseFeature(session.user.id, "preview_runtime");
+    if (!gate.ok) return NextResponse.json(featureBlockedResponse(gate), { status: 402, headers: { "Cache-Control": "no-store" } });
     const body = actionSchema.parse(await request.json().catch(() => ({})));
 
     if (body.action === "stop") {
