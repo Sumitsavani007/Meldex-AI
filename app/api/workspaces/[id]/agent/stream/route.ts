@@ -12,6 +12,7 @@ import {
   createWorkspaceTaskEvent,
   deleteProjectFile,
   getOwnedWorkspaceProject,
+  isStaticWebsitePrompt,
   normalizeWorkspaceFileActions,
   offlineStaticWorkspace,
   readProjectFile,
@@ -142,12 +143,34 @@ export async function POST(
           await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
           });
+          if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
+            const fallback = offlineStaticWorkspace(body.data.prompt);
+            response = {
+              ...fallback,
+              summary: `${response.summary || "The model returned no file actions."} Meldex generated safe static workspace files as an autofix.`,
+              warnings: [...(response.warnings || []), "Model returned no file actions; static workspace autofix generated required files."],
+            };
+            files = normalizeWorkspaceFileActions(fallback.files || [], body.data.prompt);
+            await send("debugger_fix_applied", "Debugger generated required static files after zero file extraction", {
+              fixed: files.length > 0,
+              files: files.map((file) => ({ path: file.path, operation: file.operation })),
+            });
+          }
           let reviewer = reviewWorkspaceFiles(files, orchestration.classification);
           if (reviewer.status === "block") {
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
             const fixPrompt = `${body.data.prompt}\n\nTARGETED FIX REQUIRED:\n${reviewer.findings.join("\n")}\nReturn complete corrected index.html, style.css, script.js, and README.md only.`;
             const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction);
             files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
+            if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
+              const fallback = offlineStaticWorkspace(body.data.prompt);
+              response = {
+                ...fallback,
+                summary: `${fixResponse.summary || response.summary || "Targeted regeneration returned no file actions."} Meldex generated safe static workspace files as an autofix.`,
+                warnings: [...(fixResponse.warnings || response.warnings || []), "Targeted regeneration returned no file actions; static workspace autofix generated required files."],
+              };
+              files = normalizeWorkspaceFileActions(fallback.files || [], body.data.prompt);
+            }
             reviewer = reviewWorkspaceFiles(files, orchestration.classification);
             await send("debugger_fix_applied", "Debugger regenerated a targeted file fix", {
               fixed: reviewer.status !== "block",

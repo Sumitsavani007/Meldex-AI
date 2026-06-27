@@ -877,13 +877,32 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
   return { projectId, projectFiles: files.slice(0, 80), relevantFiles: relevant, memory, memoryContext };
 }
 
-function coerceWorkspaceAgentResponse(value: unknown): WorkspaceAgentResponse {
+function parseNestedWorkspaceResponse(value: unknown, depth = 0): WorkspaceAgentResponse | null {
+  if (depth > 2 || typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text || !/[{[]/.test(text)) return null;
+  const first = text.indexOf("{");
+  const last = text.lastIndexOf("}");
+  if (first === -1 || last <= first) return null;
+  try {
+    const parsed = coerceWorkspaceAgentResponse(JSON.parse(text.slice(first, last + 1)), depth + 1);
+    return parsed.files?.length ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function coerceWorkspaceAgentResponse(value: unknown, depth = 0): WorkspaceAgentResponse {
   const raw = (value || {}) as {
     plan?: unknown;
     files?: unknown;
     commands?: unknown;
     summary?: unknown;
     warnings?: unknown;
+    result?: unknown;
+    output?: unknown;
+    content?: unknown;
+    message?: unknown;
   };
   const files = Array.isArray(raw.files) ? raw.files.map((item) => {
     const file = (item || {}) as Record<string, unknown>;
@@ -894,6 +913,12 @@ function coerceWorkspaceAgentResponse(value: unknown): WorkspaceAgentResponse {
       description: typeof file.description === "string" ? file.description : undefined,
     } satisfies WorkspaceFileAction;
   }).filter((file) => file.path) : [];
+  if (!files.length && depth < 2) {
+    const nested = [raw.summary, raw.result, raw.output, raw.content, raw.message]
+      .map((item) => parseNestedWorkspaceResponse(item, depth))
+      .find((item): item is WorkspaceAgentResponse => Boolean(item?.files?.length));
+    if (nested) return nested;
+  }
 
   return {
     plan: Array.isArray(raw.plan) ? raw.plan.map((item) => String(item)).slice(0, 10) : undefined,
