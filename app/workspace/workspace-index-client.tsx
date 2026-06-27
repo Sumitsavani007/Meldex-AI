@@ -37,6 +37,14 @@ const quickPrompts = [
   "Build an ecommerce homepage",
 ];
 
+function prewarmIdeSession(projectId: string) {
+  return fetch(`/api/workspaces/${projectId}/ide-session`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
 function WorkspaceProjectCard({
   project,
   onArchive,
@@ -143,7 +151,11 @@ export function WorkspaceIndexClient() {
     const response = await fetch("/api/workspaces", { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to load workspaces");
-    setProjects(data.projects || []);
+    const loadedProjects = data.projects || [];
+    setProjects(loadedProjects);
+    loadedProjects.slice(0, 3).forEach((project: ProjectCardData) => {
+      void prewarmIdeSession(project.id);
+    });
   }
 
   useEffect(() => {
@@ -162,6 +174,7 @@ export function WorkspaceIndexClient() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create workspace");
       setStatusText("Workspace created");
+      void prewarmIdeSession(data.project.id);
       router.push(`/workspace/${data.project.id}/ide`);
     } catch (error) {
       setStatusText(error instanceof Error ? error.message : "Failed to create workspace");

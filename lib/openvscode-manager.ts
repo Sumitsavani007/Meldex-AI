@@ -28,6 +28,7 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 2;
 const SESSION_FILE = process.env.MELDEX_IDE_SESSION_FILE || path.join(os.tmpdir(), "meldex-openvscode-sessions.json");
 const IDE_PORT_BASE = Number(process.env.MELDEX_IDE_PORT_BASE || 41000);
 const IDE_PORT_SPAN = Number(process.env.MELDEX_IDE_PORT_SPAN || 12000);
+const IDE_CONTAINER_VERSION = "native-v3";
 
 function workspacePort(workspaceId: string) {
   const digest = crypto.createHash("sha256").update(workspaceId).digest();
@@ -75,7 +76,11 @@ async function configureWorkspaceDefaults(workspacePath: string) {
 }
 
 async function applyMeldexBranding(containerName: string) {
-  const script = `
+  await docker(["exec", "-u", "0", containerName, "sh", "-lc", meldexBrandingScript()]).catch(() => undefined);
+}
+
+function meldexBrandingScript() {
+  return `
 for file in /home/.openvscode-server/product.json /home/openvscode-server/.openvscode-server/product.json; do
   [ -f "$file" ] || continue
   sed -i \
@@ -90,13 +95,13 @@ for file in /home/.openvscode-server/product.json /home/openvscode-server/.openv
     "$file"
 done
 `;
-  await docker(["exec", "-u", "0", containerName, "sh", "-lc", script]).catch(() => undefined);
 }
 
 async function containerIsRunning(name: string, workspaceId: string) {
   try {
-    const { stdout } = await docker(["inspect", "-f", "{{.State.Running}} {{.State.Restarting}} {{json .Config.Cmd}}", name]);
-    return stdout.trim().startsWith("true false") && stdout.includes(`"/ide/${workspaceId}"`);
+    const { stdout } = await docker(["inspect", "-f", `{{.State.Running}} {{.State.Restarting}} {{index .Config.Labels "com.meldex.ide.version"}} {{json .Config.Cmd}}`, name]);
+    const output = stdout.trim();
+    return output.startsWith(`true false ${IDE_CONTAINER_VERSION}`) && output.includes(`/ide/${workspaceId}`);
   } catch {
     return false;
   }
@@ -110,16 +115,21 @@ async function ensureOpenVSCodeContainer(session: IdeSession) {
   }
   await docker(["rm", "-f", session.containerName]).catch(() => undefined);
   await mkdir(session.workspacePath, { recursive: true });
+  const startupScript = `${meldexBrandingScript()}
+exec /home/.openvscode-server/bin/openvscode-server --host 0.0.0.0 --without-connection-token --server-base-path /ide/${session.workspaceId} /home/workspace
+`;
   await docker([
     "run",
     "-d",
     "--name", session.containerName,
     "--init",
     "--restart", "unless-stopped",
+    "--label", `com.meldex.ide.version=${IDE_CONTAINER_VERSION}`,
     "-p", `127.0.0.1:${session.port}:3000`,
     "-v", `${session.workspacePath}:/home/workspace:cached`,
+    "--entrypoint", "sh",
     "gitpod/openvscode-server:latest",
-    "--server-base-path", `/ide/${session.workspaceId}`,
+    "-lc", startupScript,
   ]);
   await applyMeldexBranding(session.containerName);
 }

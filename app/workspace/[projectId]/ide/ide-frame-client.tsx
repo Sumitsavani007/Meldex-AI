@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, CheckCircle2, ExternalLink, FileCode2, Loader2, Paperclip, RefreshCw, Send, Square, WifiOff } from "lucide-react";
+import { ArrowLeft, Bot, CheckCircle2, ExternalLink, FileCode2, Loader2, Paperclip, RefreshCw, Send, Square, WifiOff, X } from "lucide-react";
 
 type IdeSessionResponse = {
   url: string;
@@ -43,6 +43,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
   const [lastPrompt, setLastPrompt] = useState("");
   const [activeTab, setActiveTab] = useState<"chat" | "activity" | "files">("chat");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     const response = await fetch(`/api/workspaces/${projectId}`, { cache: "no-store" });
@@ -163,6 +164,10 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
           </div>
           <div className="flex items-center gap-2 text-xs text-[#9CA3AF]">
             {session?.expiresAt ? <span className="hidden sm:inline">Session expires {new Date(session.expiresAt).toLocaleTimeString()}</span> : null}
+            <button onClick={() => setAiPanelOpen((open) => !open)} className="inline-flex items-center gap-2 rounded-lg border border-[#2A2E39] px-3 py-1.5 text-sm font-medium text-[#D1D5DB] hover:bg-[#1A1E27]" title="Open Meldex AI chat">
+              <Bot className="size-4 text-[#A78BFA]" />
+              Meldex AI
+            </button>
             {session?.url ? (
               <a href={session.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-[#7C5CFF] px-3 py-1.5 text-sm font-medium text-white">
                 Open full tab
@@ -255,7 +260,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
           )}
         </div>
       </section>
-      <aside className="hidden w-[360px] shrink-0 border-l border-[#22252D] bg-[#111318] xl:flex xl:flex-col">
+      {aiPanelOpen ? <aside className="fixed inset-y-0 right-0 z-30 flex w-[min(360px,100vw)] shrink-0 flex-col border-l border-[#22252D] bg-[#111318] shadow-2xl shadow-black/40 xl:static xl:z-auto xl:shadow-none">
         <div className="flex h-11 items-center justify-between border-b border-[#22252D] px-4">
           <div className="flex items-center gap-2">
             <Bot className="size-4 text-[#A78BFA]" />
@@ -270,6 +275,9 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
                 <Square className="size-4" />
               </button>
             ) : null}
+            <button onClick={() => setAiPanelOpen(false)} className="grid size-8 place-items-center rounded-lg text-[#9CA3AF] hover:bg-[#1A1E27]" title="Close Meldex AI">
+              <X className="size-4" />
+            </button>
           </div>
         </div>
         <div className="flex border-b border-[#22252D] px-3 pt-2">
@@ -374,7 +382,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
             </div>
           </div>
         </div>
-      </aside>
+      </aside> : null}
     </main>
   );
 }
