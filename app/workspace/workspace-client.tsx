@@ -224,6 +224,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [aiSettingsTab, setAiSettingsTab] = useState("General");
   const [sendShortcut, setSendShortcut] = useState("Enter");
+  const [selectedAiModel, setSelectedAiModel] = useState("MelDex 1.0");
   const [workMode, setWorkMode] = useState("local");
   const [centerMode, setCenterMode] = useState<CenterMode>("split");
   const [splitRatio, setSplitRatio] = useState(52);
@@ -502,7 +503,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       setMessage(data.error || "Unable to open file");
       return;
     }
-    if (centerMode === "preview") setCenterMode("code");
+    setCenterMode("code");
+    setPreviewFullscreen(false);
+    setEditorFullscreen(false);
     setSelectedFile(filePath);
     setEditorContent(data.content || "");
     setSavedEditorContent(data.content || "");
@@ -742,6 +745,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     else setCenterMode("preview");
   }
 
+  function selectPreviewDevice(device: "Desktop" | "Tablet" | "Mobile") {
+    setPreviewDevice(device);
+    if (device === "Desktop") setPreviewMode("1280px");
+    if (device === "Tablet") setPreviewMode("768px");
+    if (device === "Mobile") setPreviewMode("390px");
+  }
+
   function toggleAiPanel() {
     setRightCollapsed((value) => !value);
     if (rightCollapsed) setActiveRightTab("CHAT");
@@ -885,6 +895,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     return !query || event.type.toLowerCase().includes(query) || event.message.toLowerCase().includes(query);
   });
   const previewWidth = previewMode === "1440px" ? 1440 : previewMode === "1280px" ? 1280 : previewMode === "768px" ? 768 : previewMode === "390px" ? 390 : previewDevice === "Mobile" ? 390 : previewDevice === "Tablet" ? 768 : 1180;
+  const previewFrameWidth = previewMode === "Responsive" && previewDevice === "Desktop" ? "100%" : previewRotated && previewDevice !== "Desktop" ? `${Math.min(1180, Math.max(previewWidth, 760))}px` : `${previewWidth}px`;
   const memoryItems = [
     state.memory?.projectSummary ? `Summary: ${state.memory.projectSummary}` : "",
     ...(state.memory?.recentDecisions || []).map((item) => `Decision: ${item}`),
@@ -1095,7 +1106,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
             <div className="mx-2 flex h-8 min-w-0 flex-1 items-center gap-2 rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] px-3 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#0B0D12] dark:text-[#9CA3AF]"><Globe2 className="size-3.5" /><span className="truncate">{previewFullUrl || "https://meldex.workspace/preview"}</span></div>
             <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span>
-            <select value={previewDevice} onChange={(event) => setPreviewDevice(event.target.value as typeof previewDevice)} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>
+            <select value={previewDevice} onChange={(event) => selectPreviewDevice(event.target.value as typeof previewDevice)} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>
             <select value={previewMode} onChange={(event) => setPreviewMode(event.target.value as typeof previewMode)} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Responsive</option><option>1440px</option><option>1280px</option><option>768px</option><option>390px</option></select>
             <select value={previewZoom} onChange={(event) => setPreviewZoom(Number(event.target.value))} className="h-8 rounded-lg border border-[#E5E7EB] bg-white px-2 text-[12px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option value={75}>75%</option><option value={90}>90%</option><option value={100}>100%</option><option value={125}>125%</option></select>
             <button onClick={() => setPreviewRotated((value) => !value)} disabled={previewDevice === "Desktop"} title={previewDevice === "Desktop" ? "Rotate is available for tablet/mobile preview" : "Rotate device"} className="grid size-8 place-items-center rounded-lg border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]"><RotateCcw className="size-4" /></button>
@@ -1161,11 +1172,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} title="Refresh preview" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
                 {previewReady ? <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" title="Open preview" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><ArrowUpRight className="size-3.5" /></a> : <button disabled title="Preview is not ready" className="grid size-7 place-items-center rounded-lg opacity-40"><ArrowUpRight className="size-3.5" /></button>}
                 <button onClick={copyPreviewUrl} disabled={!previewReady} title="Copy preview URL" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]">{copiedPreview ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}</button>
-                {centerMode === "split" && <select value={previewDevice} onChange={(event) => setPreviewDevice(event.target.value as typeof previewDevice)} className="h-7 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[11px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>}
+                {centerMode === "split" && <select value={previewDevice} onChange={(event) => selectPreviewDevice(event.target.value as typeof previewDevice)} className="h-7 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[11px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>}
                 {centerMode === "split" && <select value={previewZoom} onChange={(event) => setPreviewZoom(Number(event.target.value))} className="h-7 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[11px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option value={75}>75%</option><option value={90}>90%</option><option value={100}>100%</option><option value={125}>125%</option></select>}
               </div>
               <div className="min-h-0 flex-1 overflow-auto bg-[#edf0f7] p-4 dark:bg-black">
-                <div className="mx-auto h-full origin-top overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 dark:bg-black dark:ring-white/10" style={{ width: previewMode === "Responsive" ? "100%" : previewRotated && previewDevice !== "Desktop" ? `${Math.min(1180, Math.max(previewWidth, 760))}px` : `${previewWidth}px`, maxWidth: "100%", transform: `scale(${previewZoom / 100})`, transformOrigin: "top center" }}>
+                <div className="mx-auto h-full origin-top overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 dark:bg-black dark:ring-white/10" style={{ width: previewFrameWidth, maxWidth: "100%", transform: `scale(${previewZoom / 100})`, transformOrigin: "top center" }}>
                   {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-b-xl bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,0.18),transparent_36%),linear-gradient(180deg,#0B0D12,#111318)] p-10 text-white"><div className="max-w-2xl text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#7C5CFF] shadow-xl shadow-violet-500/25"><Sparkles className="size-6" /></div><p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-200">The Ultimate AI Coding Platform</p><h2 className="text-5xl font-bold tracking-tight">Build Anything<br />with <span className="text-[#7C5CFF]">AI Power</span></h2><p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#D1D5DB]">Meldex AI combines agents, preview, memory, and code generation into one production workspace.</p><button onClick={() => void runAgent()} className="mt-8 rounded-xl bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25"><Play className="mr-2 inline size-4" /> Start Building</button></div></div>}
                 </div>
               </div>
@@ -1324,9 +1335,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((sendShortcut === "Enter" && event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-[14px] leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask for follow-up changes..." />
               <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
                 <div className="flex min-w-0 items-center gap-2">
-                  <button disabled title="Attach context is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg opacity-45"><Plus className="size-4" /></button>
-                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#E5E7EB] px-3 text-amber-700 dark:border-[#2A2E39] dark:text-amber-300" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
-                  <button className="flex h-8 items-center gap-1 rounded-full border border-[#E5E7EB] px-3 text-[#6B7280] dark:border-[#2A2E39] dark:text-[#D1D5DB]" onClick={() => void loadUsage()} title="Refresh model and usage state"><RefreshCw className="size-3.5" /> {usage?.plan.slug || "5.5"}</button>
+                  <button className="flex h-8 items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3 text-amber-700 transition hover:bg-amber-50 dark:border-[#2A2E39] dark:text-amber-300 dark:hover:bg-amber-500/10" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
+                  <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-8 rounded-full border border-[#E5E7EB] bg-white px-3 text-[12px] font-medium text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
+                    <option>MelDex 1.0</option>
+                  </select>
                 </div>
                 <button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="grid size-9 shrink-0 place-items-center rounded-full bg-[#111827] text-white shadow-sm transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-45 dark:bg-white dark:text-[#0B0D12]">{loading ? <Square className="size-4 fill-current" /> : <Play className="size-4" />}</button>
               </div>
