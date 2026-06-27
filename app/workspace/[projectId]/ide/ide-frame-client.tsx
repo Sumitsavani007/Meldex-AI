@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, CheckCircle2, ExternalLink, FileCode2, Loader2, Paperclip, RefreshCw, Send, Square, WifiOff, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Bot, CheckCircle2, Circle, Copy, ExternalLink, FileCode2, Loader2, Paperclip, RefreshCw, Send, Square, WifiOff, X } from "lucide-react";
 
 type IdeSessionResponse = {
   url: string;
@@ -15,7 +15,19 @@ type IdeFrameClientProps = {
   projectCreatedAt: string;
 };
 
-const progressSteps = ["Preparing workspace", "Starting Meldex IDE", "Connecting", "Ready"];
+const progressSteps = ["Preparing workspace", "Starting Meldex IDE", "Connecting", "Loading files", "Ready"];
+const codexSteps = [
+  { id: "understanding", label: "Understanding request", events: ["intent_detected", "task_classified"] },
+  { id: "reading", label: "Reading workspace", events: ["workspace_read", "read_workspace"] },
+  { id: "memory", label: "Loading memory", events: ["memory_loaded"] },
+  { id: "planning", label: "Planning changes", events: ["planner_done", "tool_plan_ready", "confidence_scored"] },
+  { id: "designing", label: "Designing UI", events: ["designer_done", "architect_done"] },
+  { id: "editing", label: "Editing files", events: ["qwen_generation_started", "file_extracted", "file_created", "file_updated", "diff_ready"] },
+  { id: "reviewing", label: "Reviewing code", events: ["reviewer_done", "security_reviewed", "performance_reviewed"] },
+  { id: "preview", label: "Starting preview", events: ["preview_started", "preview_ready"] },
+  { id: "verified", label: "Preview verified", events: ["preview_verified"] },
+  { id: "done", label: "Done", events: ["finalized", "done", "memory_updated", "learning_updated"] },
+];
 
 type StreamEvent = {
   sequence: number;
@@ -30,6 +42,25 @@ type WorkspaceSummary = {
   tasks?: Array<{ id: string; status: string; prompt: string; events?: StreamEvent[]; diffs?: Array<{ path: string; added: number; removed: number }> }>;
 };
 
+function stepState(stepIndex: number, events: StreamEvent[], running: boolean, failed: boolean) {
+  if (failed) return stepIndex === 0 ? "failed" : "pending";
+  const eventTypes = new Set(events.map((event) => event.type));
+  let doneIndex = -1;
+  codexSteps.forEach((step, index) => {
+    if (step.events.some((event) => eventTypes.has(event))) doneIndex = index;
+  });
+  if (stepIndex <= doneIndex) return "done";
+  if (running && stepIndex === doneIndex + 1) return "active";
+  return "pending";
+}
+
+function normalizePreviewUrl(projectId: string, url?: string | null) {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("/")) return url;
+  return `/api/workspaces/${projectId}/preview`;
+}
+
 export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: IdeFrameClientProps) {
   const [session, setSession] = useState<IdeSessionResponse | null>(null);
   const [error, setError] = useState("");
@@ -43,7 +74,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
   const [lastPrompt, setLastPrompt] = useState("");
   const [activeTab, setActiveTab] = useState<"chat" | "activity" | "files">("chat");
   const [abortController, setAbortController] = useState<AbortController | null>(null);
-  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+  const [aiPanelOpen, setAiPanelOpen] = useState(true);
 
   const loadWorkspace = useCallback(async () => {
     const response = await fetch(`/api/workspaces/${projectId}`, { cache: "no-store" });
@@ -147,9 +178,15 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
     setAgentMessage("Stopped");
   }
 
+  function copyText(value: string) {
+    void navigator.clipboard?.writeText(value);
+  }
+
   const files = workspace?.tree?.filter((node) => node.type !== "directory").slice(0, 12) || [];
   const lastTask = workspace?.tasks?.[0];
   const changedFiles = lastTask?.diffs || [];
+  const failed = /fail|error|unable/i.test(agentMessage);
+  const previewUrl = normalizePreviewUrl(projectId, workspace?.project?.lastPreviewUrl);
 
   return (
     <main className="flex h-screen min-h-0 bg-[#0B0D12] text-white">
@@ -283,7 +320,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
         <div className="flex border-b border-[#22252D] px-3 pt-2">
           {(["chat", "activity", "files"] as const).map((tab) => (
             <button key={tab} onClick={() => setActiveTab(tab)} className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide ${activeTab === tab ? "border-b-2 border-[#7C5CFF] text-white" : "text-[#9CA3AF] hover:text-white"}`}>
-              {tab}
+              {tab === "chat" ? "Meldex AI" : tab}
             </button>
           ))}
         </div>
@@ -291,24 +328,73 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
           {activeTab === "chat" ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-[#22252D] bg-[#0B0D12] p-4">
-                <p className="text-sm text-[#D1D5DB]">{agentMessage}</p>
-                <div className="mt-3 flex items-center gap-2 text-xs text-[#9CA3AF]">
-                  <CheckCircle2 className="size-3.5 text-emerald-400" />
-                  <span>{running ? "Streaming from Meldex backend" : "Connected to workspace agent"}</span>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">Meldex AI</p>
+                    <p className="mt-1 text-sm text-[#D1D5DB]">{running ? "Working" : agentMessage}</p>
+                  </div>
+                  <span className="rounded-full border border-[#2A2E39] px-2 py-1 text-[11px] font-semibold text-[#C4B5FD]">Qwen3-Coder</span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[#9CA3AF]">
+                  {failed ? <AlertCircle className="size-3.5 text-red-300" /> : running ? <Loader2 className="size-3.5 animate-spin text-[#A78BFA]" /> : <CheckCircle2 className="size-3.5 text-emerald-400" />}
+                  <span>{running ? "Streaming real workspace events" : "Connected to workspace agent"}</span>
+                  <button onClick={() => lastPrompt && void runAgent(lastPrompt)} disabled={running || !lastPrompt} className="rounded-md border border-[#2A2E39] px-2 py-1 text-[#D1D5DB] disabled:cursor-not-allowed disabled:opacity-40" title={lastPrompt ? "Retry last prompt" : "Retry is available after a prompt runs"}>Retry</button>
+                  <button disabled title="Continue is available after a paused agent run" className="cursor-not-allowed rounded-md border border-[#2A2E39] px-2 py-1 text-[#6B7280]">Continue</button>
                 </div>
               </div>
-              <div className="space-y-2">
-                {events.slice(-8).map((event) => (
-                  <div key={`${event.sequence}-${event.type}`} className="rounded-xl border border-[#22252D] bg-[#0B0D12] px-3 py-2">
-                    <p className="text-xs uppercase tracking-wide text-[#7C5CFF]">{event.type.replaceAll("_", " ")}</p>
-                    <p className="mt-1 text-sm text-[#D1D5DB]">{event.message}</p>
-                  </div>
-                ))}
+              <div className="rounded-2xl border border-[#22252D] bg-[#0B0D12] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Progress</p>
+                <div className="mt-3 space-y-2">
+                  {codexSteps.map((step, index) => {
+                    const state = stepState(index, events, running, failed);
+                    return (
+                      <div key={step.id} className="flex items-center gap-3 text-sm">
+                        {state === "done" ? <CheckCircle2 className="size-4 text-emerald-400" /> : state === "active" ? <Loader2 className="size-4 animate-spin text-[#A78BFA]" /> : state === "failed" ? <AlertCircle className="size-4 text-red-300" /> : <Circle className="size-4 text-[#4B5563]" />}
+                        <span className={state === "pending" ? "text-[#6B7280]" : "text-[#D1D5DB]"}>{step.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+              <div className="rounded-2xl border border-[#22252D] bg-[#0B0D12] p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Changed files</p>
+                  <span className="text-xs text-[#6B7280]">{changedFiles.length} file(s)</span>
+                </div>
+                <div className="mt-3 space-y-1">
+                  {(changedFiles.length ? changedFiles : files.slice(0, 4).map((file) => ({ path: file.path, added: 0, removed: 0 }))).map((file) => (
+                    <div key={file.path} className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm text-[#D1D5DB] hover:bg-[#1A1E27]">
+                      <span className="truncate">{file.path}</span>
+                      <span className="shrink-0 text-xs"><span className="text-emerald-300">+{file.added}</span> <span className="text-red-300">-{file.removed}</span></span>
+                    </div>
+                  ))}
+                  {!changedFiles.length && !files.length ? <p className="text-sm text-[#6B7280]">Files appear after Meldex AI edits this workspace.</p> : null}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-[#22252D] bg-[#0B0D12] p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#9CA3AF]">Preview</p>
+                <p className="mt-2 truncate text-sm text-[#D1D5DB]">{previewUrl || "Not generated yet"}</p>
+                <div className="mt-3 flex gap-2">
+                  {previewUrl ? (
+                    <>
+                      <a href={previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A2E39] px-3 py-1.5 text-xs font-semibold text-[#D1D5DB] hover:bg-[#1A1E27]"><ExternalLink className="size-3.5" /> Open</a>
+                      <button onClick={() => copyText(new URL(previewUrl, window.location.origin).toString())} className="inline-flex items-center gap-1.5 rounded-lg border border-[#2A2E39] px-3 py-1.5 text-xs font-semibold text-[#D1D5DB] hover:bg-[#1A1E27]"><Copy className="size-3.5" /> Copy</button>
+                    </>
+                  ) : (
+                    <button disabled title="Preview is available after files are generated" className="cursor-not-allowed rounded-lg border border-[#2A2E39] px-3 py-1.5 text-xs font-semibold text-[#6B7280]">Open preview</button>
+                  )}
+                </div>
+              </div>
+              {failed ? (
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-100">
+                  {agentMessage}
+                  <button onClick={() => lastPrompt && void runAgent(lastPrompt)} disabled={!lastPrompt || running} className="mt-3 rounded-lg bg-red-400 px-3 py-1.5 text-xs font-semibold text-red-950 disabled:opacity-40">Retry</button>
+                </div>
+              ) : null}
             </div>
           ) : activeTab === "activity" ? (
             <div className="space-y-2">
-              {(lastTask?.events || events).slice(-20).map((event) => (
+              {(lastTask?.events || events).slice(-24).map((event) => (
                 <div key={`${event.sequence}-${event.type}`} className="flex gap-3 rounded-xl px-2 py-2 hover:bg-[#1A1E27]">
                   <span className="mt-1 size-2 rounded-full bg-emerald-400" />
                   <div>
@@ -328,6 +414,7 @@ export function IdeFrameClient({ projectId, projectName, projectCreatedAt }: Ide
                     <div key={file.path} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-[#D1D5DB] hover:bg-[#1A1E27]">
                       <FileCode2 className="size-4 text-[#A78BFA]" />
                       <span className="truncate">{file.path}</span>
+                      <button onClick={() => copyText(file.path)} className="ml-auto rounded-md border border-[#2A2E39] px-2 py-1 text-xs text-[#D1D5DB] hover:bg-[#0B0D12]" title="Copy file path">Copy</button>
                     </div>
                   ))}
                   {!files.length ? <p className="rounded-xl border border-[#22252D] p-3 text-sm text-[#6B7280]">No files yet.</p> : null}

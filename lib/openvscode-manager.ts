@@ -28,7 +28,7 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 2;
 const SESSION_FILE = process.env.MELDEX_IDE_SESSION_FILE || path.join(os.tmpdir(), "meldex-openvscode-sessions.json");
 const IDE_PORT_BASE = Number(process.env.MELDEX_IDE_PORT_BASE || 41000);
 const IDE_PORT_SPAN = Number(process.env.MELDEX_IDE_PORT_SPAN || 12000);
-const IDE_CONTAINER_VERSION = "native-v3";
+const IDE_CONTAINER_VERSION = "native-v4";
 
 function workspacePort(workspaceId: string) {
   const digest = crypto.createHash("sha256").update(workspaceId).digest();
@@ -58,20 +58,34 @@ async function docker(args: string[]) {
 
 async function configureWorkspaceDefaults(workspacePath: string) {
   const settingsPath = path.join(workspacePath, ".vscode", "settings.json");
+  const userSettingsPath = path.join(workspacePath, ".meldex-ide-server", "data", "User", "settings.json");
   let settings: Record<string, unknown> = {};
   try {
     settings = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>;
   } catch {
     settings = {};
   }
+  const meldexSettings = {
+    "telemetry.telemetryLevel": "off",
+    "workbench.startupEditor": "none",
+    "workbench.welcomePage.walkthroughs.openOnInstall": false,
+    "workbench.editor.restoreViewState": true,
+    "workbench.colorTheme": settings["workbench.colorTheme"] || "Default Dark Modern",
+    "window.title": "Meldex IDE - ${activeFolderShort}${separator}${activeEditorShort}",
+    "chat.commandCenter.enabled": false,
+    "chat.emptyState.enabled": false,
+    "update.showReleaseNotes": false,
+    "extensions.ignoreRecommendations": true,
+  };
   await mkdir(path.dirname(settingsPath), { recursive: true });
   await writeFile(settingsPath, JSON.stringify({
     ...settings,
-    "telemetry.telemetryLevel": "off",
-    "workbench.startupEditor": "none",
-    "window.title": "Meldex IDE - ${activeFolderShort}${separator}${activeEditorShort}",
-    "workbench.editor.restoreViewState": true,
-    "workbench.colorTheme": settings["workbench.colorTheme"] || "Default Dark Modern",
+    ...meldexSettings,
+  }, null, 2));
+  await mkdir(path.dirname(userSettingsPath), { recursive: true });
+  await writeFile(userSettingsPath, JSON.stringify({
+    ...meldexSettings,
+    "workbench.layoutControl.enabled": false,
   }, null, 2));
 }
 
@@ -92,6 +106,28 @@ for file in /home/.openvscode-server/product.json /home/openvscode-server/.openv
     -e 's/"serverDataFolderName": "[^"]*"/"serverDataFolderName": ".meldex-ide-server"/' \
     -e 's/"urlProtocol": "[^"]*"/"urlProtocol": "meldex-ide"/' \
     -e 's/"licenseName": "[^"]*"/"licenseName": "Meldex"/' \
+    "$file"
+done
+for file in /home/.openvscode-server/out/nls.messages.js /home/.openvscode-server/out/nls.messages.json; do
+  [ -f "$file" ] || continue
+  sed -i \
+    -e 's/OpenVSCode Server/Meldex IDE/g' \
+    -e 's/OpenVSCode/Meldex IDE/g' \
+    -e 's/Visual Studio Code/Meldex IDE/g' \
+    -e 's/Code OSS/Meldex IDE/g' \
+    -e 's/VS Code Web/Meldex IDE/g' \
+    -e 's/VS Code/Meldex IDE/g' \
+    -e 's/Editing evolved/Build with Meldex AI/g' \
+    -e 's/Setup Meldex IDE Web/Build with Meldex AI/g' \
+    -e 's/Setup Meldex IDE/Build with Meldex AI/g' \
+    -e 's/Get Started with Meldex IDE for the Web/Build with Meldex AI/g' \
+    -e 's/Get Started with Meldex IDE/Build with Meldex AI/g' \
+    -e 's/Get started with Meldex IDE/Build with Meldex AI/g' \
+    -e 's/Ask @vscode/Ask Meldex AI/g' \
+    -e 's/Build with agent mode/Build with Meldex AI/g' \
+    -e 's/Create Project/Open workspace files/g' \
+    -e "s/Let's get started/Build with Meldex AI/g" \
+    -e 's/Show welcome page on startup/Show Meldex onboarding on startup/g' \
     "$file"
 done
 `;
@@ -116,7 +152,7 @@ async function ensureOpenVSCodeContainer(session: IdeSession) {
   await docker(["rm", "-f", session.containerName]).catch(() => undefined);
   await mkdir(session.workspacePath, { recursive: true });
   const startupScript = `${meldexBrandingScript()}
-exec /home/.openvscode-server/bin/openvscode-server --host 0.0.0.0 --without-connection-token --server-base-path /ide/${session.workspaceId} /home/workspace
+exec /home/.openvscode-server/bin/openvscode-server --host 0.0.0.0 --without-connection-token --skip-welcome --disable-telemetry --server-base-path /ide/${session.workspaceId} /home/workspace
 `;
   await docker([
     "run",
