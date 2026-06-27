@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
+import { isInternalWorkspaceFile, isUserVisibleWorkspaceFile } from "@/lib/workspace-file-visibility";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -194,6 +194,11 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [leftWidth, setLeftWidth] = useState(320);
   const [rightWidth, setRightWidth] = useState(360);
   const [fileSearch, setFileSearch] = useState("");
+  const [showHiddenFiles, setShowHiddenFiles] = useState(false);
+  const [showChangedOnly, setShowChangedOnly] = useState(false);
+  const [sortMode, setSortMode] = useState<"name" | "type">("name");
+  const [explorerMenuOpen, setExplorerMenuOpen] = useState(false);
+  const [activityFilter, setActivityFilter] = useState("");
   const [activeRightTab, setActiveRightTab] = useState<RightTab>("CHAT");
   const [centerMode, setCenterMode] = useState<CenterMode>("split");
   const [splitRatio, setSplitRatio] = useState(52);
@@ -221,7 +226,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const abortRef = useRef<AbortController | null>(null);
   const loadingRef = useRef(false);
   const activeTask = state.tasks[0];
-  const files = useMemo(() => flatten(state.tree).filter((node) => node.type === "file" && isUserVisibleWorkspaceFile(node.path)), [state.tree]);
+  const files = useMemo(() => flatten(state.tree).filter((node) => node.type === "file" && (showHiddenFiles || isUserVisibleWorkspaceFile(node.path))), [showHiddenFiles, state.tree]);
   const selectedNode = files.find((file) => file.path === selectedFile);
   const fileDirty = Boolean(selectedFile && editorContent !== savedEditorContent);
   const editorLanguage = selectedFile.endsWith(".html") ? "html" : selectedFile.endsWith(".css") ? "css" : selectedFile.endsWith(".json") ? "json" : selectedFile.endsWith(".md") ? "markdown" : selectedFile.endsWith(".ts") || selectedFile.endsWith(".tsx") ? "typescript" : selectedFile.endsWith(".js") || selectedFile.endsWith(".jsx") ? "javascript" : "plaintext";
@@ -230,19 +235,24 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     const prune = (nodes: TreeNode[]): TreeNode[] => nodes
       .map((node) => {
         if (node.type === "file") {
-          if (!isUserVisibleWorkspaceFile(node.path)) return null;
+          if (!showHiddenFiles && !isUserVisibleWorkspaceFile(node.path)) return null;
+          if (showChangedOnly && !node.status) return null;
           return !query || node.path.toLowerCase().includes(query) || node.name.toLowerCase().includes(query) ? node : null;
         }
         const children = prune(node.children || []);
         const selfMatches = !query || node.path.toLowerCase().includes(query) || node.name.toLowerCase().includes(query);
-        if (!isUserVisibleWorkspaceFile(node.path)) return null;
+        if (!showHiddenFiles && !isUserVisibleWorkspaceFile(node.path)) return null;
         if (!children.length && !selfMatches) return null;
         if (!children.length && !query) return null;
         return { ...node, children };
       })
       .filter(Boolean) as TreeNode[];
-    return prune(state.tree);
-  }, [fileSearch, state.tree]);
+    const sortTree = (nodes: TreeNode[]): TreeNode[] => [...nodes].sort((a, b) => {
+      if (sortMode === "type") return Number(b.type === "folder") - Number(a.type === "folder") || (a.language || "").localeCompare(b.language || "") || a.name.localeCompare(b.name);
+      return Number(b.type === "folder") - Number(a.type === "folder") || a.name.localeCompare(b.name);
+    }).map((node) => ({ ...node, children: node.children ? sortTree(node.children) : undefined }));
+    return sortTree(prune(state.tree));
+  }, [fileSearch, showChangedOnly, showHiddenFiles, sortMode, state.tree]);
   const changed = liveDiffs.length ? liveDiffs : activeTask?.diffs || [];
   const hasPreviewFile = files.some((file) => file.path === "index.html");
   const previewVersion = [
@@ -291,7 +301,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       setState((current) => ({ ...current, projects: data.projects || [] }));
       return;
     }
-    const response = await fetch(`/api/workspaces/${id}`, { cache: "no-store" });
+    const response = await fetch(`/api/workspaces/${id}${showHiddenFiles ? "?showHidden=1" : ""}`, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to load workspace");
     setState({
@@ -320,7 +330,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   useEffect(() => {
     loadWorkspace().catch((error) => setMessage(error.message));
-  }, [status, projectId]);
+  }, [status, projectId, showHiddenFiles]);
 
   async function createProject(seedPrompt?: string) {
     setLoading(true);
@@ -651,6 +661,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       if (saved.previewDevice) setPreviewDevice(saved.previewDevice);
       if (saved.previewMode) setPreviewMode(saved.previewMode);
       if (saved.previewZoom) setPreviewZoom(Number(saved.previewZoom));
+      if (typeof (saved as { showHiddenFiles?: unknown }).showHiddenFiles === "boolean") setShowHiddenFiles(Boolean((saved as { showHiddenFiles?: boolean }).showHiddenFiles));
       if (saved.activeFile && files.some((file) => file.path === saved.activeFile)) void openFile(saved.activeFile);
     } catch {}
   }, [state.project?.id]);
@@ -664,8 +675,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       previewDevice,
       previewMode,
       previewZoom,
+      showHiddenFiles,
     }));
-  }, [centerMode, splitRatio, selectedFile, previewDevice, previewMode, previewZoom, state.project?.id]);
+  }, [centerMode, splitRatio, selectedFile, previewDevice, previewMode, previewZoom, showHiddenFiles, state.project?.id]);
 
   useEffect(() => {
     if (!fileDirty || !selectedFile) return;
@@ -685,9 +697,27 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setMessage("Layout reset");
   }
 
-  function openTerminal(tab: BottomTab = "TERMINAL") {
+  function toggleBottom(tab: BottomTab) {
+    if (!bottomCollapsed && bottomTab === tab) {
+      setBottomCollapsed(true);
+      return;
+    }
     setBottomTab(tab);
     setBottomCollapsed(false);
+  }
+
+  function togglePreviewMode() {
+    if (centerMode === "preview") setCenterMode("code");
+    else setCenterMode("preview");
+  }
+
+  function toggleAiPanel() {
+    setRightCollapsed((value) => !value);
+    if (rightCollapsed) setActiveRightTab("CHAT");
+  }
+
+  function toggleExplorer() {
+    setLeftCollapsed((value) => !value);
   }
 
   function dismissOnboarding() {
@@ -755,10 +785,74 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     window.addEventListener("mouseup", onUp);
   }
 
+  function collapseAllFolders() {
+    setOpenFolders({});
+    setMessage("Explorer collapsed");
+  }
+
+  function expandAllFolders() {
+    const next: Record<string, boolean> = {};
+    flatten(state.tree).forEach((node) => {
+      if (node.type === "folder") next[node.path] = true;
+    });
+    setOpenFolders(next);
+    setMessage("Explorer expanded");
+  }
+
+  function revealActiveFile() {
+    if (!selectedFile) {
+      setMessage("Open a file first");
+      return;
+    }
+    const parts = selectedFile.split("/");
+    const next = { ...openFolders };
+    parts.slice(0, -1).reduce((current, part) => {
+      const path = current ? `${current}/${part}` : part;
+      next[path] = true;
+      return path;
+    }, "");
+    setOpenFolders(next);
+    setFileSearch("");
+    setMessage(`Revealed ${selectedFile}`);
+  }
+
+  function toggleShowHiddenFiles() {
+    setShowHiddenFiles((value) => !value);
+  }
+
+  async function copySelectedPath() {
+    if (!selectedFile) return;
+    await navigator.clipboard?.writeText(selectedFile);
+    setMessage("Path copied");
+  }
+
+  async function exportTaskHistory() {
+    if (!state.tasks.length) {
+      setMessage("No task history to export");
+      return;
+    }
+    const blob = new Blob([JSON.stringify(state.tasks, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${state.project?.slug || "workspace"}-task-history.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setMessage("Task history exported");
+  }
+
+  function clearWorkspaceCacheNotice() {
+    setMessage("Workspace cache is stored internally and hidden from the project explorer.");
+  }
+
 
   const conversationEvents = [...(activeTask?.events || []), ...streamEvents]
     .sort((a, b) => a.sequence - b.sequence)
     .filter((event, index, list) => list.findIndex((item) => item.type === event.type && item.message === event.message) === index);
+  const filteredActivityEvents = conversationEvents.filter((event) => {
+    const query = activityFilter.trim().toLowerCase();
+    return !query || event.type.toLowerCase().includes(query) || event.message.toLowerCase().includes(query);
+  });
   const eventTypes = new Set(conversationEvents.map((event) => event.type));
   const checklist = [
     ["Understanding request", eventTypes.has("intent_detected") || eventTypes.has("task_classified")],
@@ -798,6 +892,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   ].filter((command) => command.label.toLowerCase().includes(commandQuery.toLowerCase()));
   const renderExplorerNode = (node: TreeNode, depth = 0): ReactNode => {
     const badge = statusLabel(node.status);
+    const internal = isInternalWorkspaceFile(node.path);
     if (node.type === "file") {
       const fileIcon = fileIconFor(node.name);
       const Icon = fileIcon.Icon;
@@ -810,7 +905,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             setContextMenu({ x: event.clientX, y: event.clientY, node });
           }}
           onClick={() => openFile(node.path)}
-          className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition ${
+          className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] transition ${internal ? "opacity-55" : ""} ${
             selectedFile === node.path
               ? "bg-[#6D4AFF]/10 text-[#6D4AFF] dark:bg-[#7C5CFF]/18 dark:text-white"
               : "text-[#374151] hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"
@@ -819,6 +914,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
         >
           <Icon className={`size-4 shrink-0 ${fileIcon.color}`} />
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          {internal && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300">Internal</span>}
           {badge && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-300">{badge}</span>}
         </button>
       );
@@ -833,7 +929,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             setContextMenu({ x: event.clientX, y: event.clientY, node });
           }}
           onClick={() => setOpenFolders((current) => ({ ...current, [node.path]: !open }))}
-          className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#374151] transition duration-200 hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]"
+          className={`flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-[#374151] transition duration-200 hover:bg-[#F6F7FB] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27] ${internal ? "opacity-55" : ""}`}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
           <ChevronRight className={`size-3.5 shrink-0 text-[#6B7280] transition ${open ? "rotate-90" : ""}`} />
@@ -841,6 +937,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             {open ? <FolderOpen className="size-3.5" /> : <Folder className="size-3.5" />}
           </span>
           <span className="min-w-0 flex-1 truncate">{node.name}</span>
+          {internal && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-300">Internal</span>}
         </button>
         <AnimatePresence initial={false}>
           {open && (
@@ -860,7 +957,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   };
 
   return (
-    <div onClick={() => setContextMenu(null)} className="h-screen overflow-hidden bg-[#f6f7fb] font-sans text-[13px] text-[#111827] antialiased transition-colors dark:bg-[#0B0D12] dark:text-white">
+    <div onClick={() => { setContextMenu(null); setExplorerMenuOpen(false); }} className="h-screen overflow-hidden bg-[#f6f7fb] font-sans text-[13px] text-[#111827] antialiased transition-colors dark:bg-[#0B0D12] dark:text-white">
       <main className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[var(--workspace-left)_minmax(620px,1fr)_var(--workspace-right)]" style={{ "--workspace-left": leftCollapsed || previewFullscreen || editorFullscreen ? "0px" : `${leftWidth}px`, "--workspace-right": rightCollapsed || previewFullscreen || editorFullscreen ? "0px" : `${rightWidth}px` } as React.CSSProperties}>
         <aside className={`relative min-h-0 border-r border-[#E5E7EB] bg-white/92 shadow-[8px_0_40px_rgba(15,23,42,0.04)] backdrop-blur-xl dark:border-[#22252D] dark:bg-[#111318]/95 ${leftCollapsed || previewFullscreen || editorFullscreen ? "hidden" : "hidden lg:flex lg:flex-col"}`}>
           <div className="flex h-12 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]">
@@ -873,7 +970,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 <div className="text-sm font-semibold">Meldex</div>
               </div>
             </div>
-            <button onClick={() => setCommandPaletteOpen(true)} className="grid size-8 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Explorer actions">
+            <button onClick={(event) => { event.stopPropagation(); setExplorerMenuOpen((value) => !value); }} className="grid size-8 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Explorer actions">
               <MoreHorizontal className="size-4" />
             </button>
           </div>
@@ -887,11 +984,60 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <Search className="size-3.5" />
               <input value={fileSearch} onChange={(event) => setFileSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-[#9CA3AF]" placeholder="Search files" />
             </div>
+            {showHiddenFiles && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] leading-4 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                Internal files are shown. Editing them may break the IDE.
+              </div>
+            )}
 
             <div className="space-y-0.5">
-              {visibleTree.length ? visibleTree.map((node) => renderExplorerNode(node)) : <div className="rounded-lg border border-dashed border-[#E5E7EB] p-3 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:text-[#9CA3AF]">No files yet. Run a prompt to generate the workspace.</div>}
+              {visibleTree.length ? visibleTree.map((node) => renderExplorerNode(node)) : <div className="rounded-lg border border-dashed border-[#E5E7EB] p-3 text-[12px] text-[#6B7280] dark:border-[#22252D] dark:text-[#9CA3AF]">No project files yet. Ask Meldex AI to create your app.</div>}
             </div>
           </div>
+
+          {explorerMenuOpen && (
+            <div className="absolute right-3 top-11 z-40 w-72 overflow-hidden rounded-xl border border-[#E5E7EB] bg-white py-2 text-[12px] shadow-2xl dark:border-[#22252D] dark:bg-[#111318]" onClick={(event) => event.stopPropagation()}>
+              {[
+                ["New File", () => void createWorkspaceFile()],
+                ["New Folder", () => void createWorkspaceFolder()],
+                ["Save Current File", () => void saveCurrentFile(), !selectedFile || !fileDirty, "Open and edit a file first"],
+                ["Save All", () => void saveCurrentFile(), !fileDirty, "No unsaved editor changes"],
+                ["Rename Selected", () => selectedNode && void renameFile(selectedNode), !selectedNode, "Select a file first"],
+                ["Delete Selected", () => selectedNode && void deleteFile(selectedNode), !selectedNode, "Select a file first"],
+                ["Duplicate Selected", () => selectedNode && void duplicateFile(selectedNode), !selectedNode, "Select a file first"],
+                ["Copy Path", () => void copySelectedPath(), !selectedFile, "Select a file first"],
+                ["Upload File", () => setMessage("Upload is not available in this release"), true, "Upload is not available in this release"],
+                ["Download Selected File", () => selectedNode && void downloadFile(selectedNode), !selectedNode, "Select a file first"],
+                ["Download Project ZIP", downloadProjectZip, !state.project, "Open a workspace first"],
+                ["Refresh Explorer", () => void loadWorkspace()],
+                ["Reveal Active File", revealActiveFile, !selectedFile, "Open a file first"],
+                ["Collapse All", collapseAllFolders],
+                ["Expand All", expandAllFolders],
+                ["Project Settings", () => setMessage("Project settings are managed from workspace settings."), true, "Project settings are not available in this release"],
+                [showHiddenFiles ? "Hide Internal Files" : "Show Hidden Files", toggleShowHiddenFiles],
+                [sortMode === "name" ? "Sort by Type" : "Sort by Name", () => setSortMode(sortMode === "name" ? "type" : "name")],
+                [showChangedOnly ? "Show All Files" : "Show Changed Files Only", () => setShowChangedOnly((value) => !value)],
+                ["Export Task History", () => void exportTaskHistory(), !state.tasks.length, "No task history yet"],
+                ["Clear Workspace Cache", clearWorkspaceCacheNotice],
+                ["Command Palette", () => setCommandPaletteOpen(true)],
+              ].map(([label, action, disabled, reason]) => (
+                <button
+                  key={String(label)}
+                  disabled={Boolean(disabled)}
+                  title={disabled ? String(reason) : String(label)}
+                  onClick={() => {
+                    if (disabled || typeof action !== "function") return;
+                    action();
+                    setExplorerMenuOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-[#F6F7FB] disabled:cursor-not-allowed disabled:opacity-45 dark:hover:bg-[#1A1E27]"
+                >
+                  <span>{String(label)}</span>
+                  {disabled ? <span className="max-w-[130px] truncate text-[10px] text-[#6B7280] dark:text-[#9CA3AF]">{String(reason)}</span> : null}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="shrink-0 border-t border-[#E5E7EB] dark:border-[#22252D]">
             <button disabled title="Outline appears after symbol indexing is available" className="flex h-10 w-full cursor-not-allowed items-center gap-2 px-4 text-left text-[12px] font-semibold uppercase tracking-[0.08em] text-[#9CA3AF] opacity-70"><ChevronRight className="size-3.5" /> Outline</button>
@@ -917,16 +1063,18 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </button>
               ))}
             </div>
-            <button onClick={() => setLeftCollapsed((value) => !value)} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">{leftCollapsed ? "Show Files" : "Hide Files"}</button>
-            <button onClick={() => setRightCollapsed((value) => !value)} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">{rightCollapsed ? "Show Agent" : "Hide Agent"}</button>
-            <button onClick={() => openTerminal("TERMINAL")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Terminal</button>
-            <button onClick={resetLayout} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Reset</button>
+            <button onClick={toggleExplorer} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${leftCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>Explorer</button>
+            <button onClick={togglePreviewMode} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${centerMode === "preview" ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Preview</button>
+            <button onClick={toggleAiPanel} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${rightCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>AI</button>
+            {(["TERMINAL", "OUTPUT", "PROBLEMS", "LOGS", "GIT"] as const).map((tab) => (
+              <button key={tab} onClick={() => toggleBottom(tab)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${!bottomCollapsed && bottomTab === tab ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>{tab === "PROBLEMS" ? "Problems" : tab === "TERMINAL" ? "Terminal" : tab.charAt(0) + tab.slice(1).toLowerCase()}</button>
+            ))}
+            <button onClick={() => setCommandPaletteOpen((value) => !value)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${commandPaletteOpen ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Search</button>
+            <button onClick={resetLayout} className="ml-auto rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Reset</button>
             <button onClick={() => router.push("/workspace")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Workspaces</button>
-            <button onClick={() => setCommandPaletteOpen(true)} className="ml-auto rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Command</button>
-            <button onClick={downloadProjectZip} disabled={!state.project} className="grid size-9 place-items-center rounded-xl border border-[#E5E7EB] bg-white text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Download Project ZIP"><Download className="size-4" /></button>
           </div>
 
-          {(centerMode !== "code" || previewFullscreen) && <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
+          {(centerMode === "preview" || previewFullscreen) && <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
             <button disabled title="Preview history is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4 rotate-180" /></button>
             <button disabled title="Preview history is not available in this release" className="grid size-8 cursor-not-allowed place-items-center rounded-lg text-[#9CA3AF]"><ChevronRight className="size-4" /></button>
             <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} className="grid size-8 place-items-center rounded-lg text-[#6B7280] hover:bg-[#F6F7FB] disabled:opacity-40 dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-4 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
@@ -978,7 +1126,15 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             {centerMode === "split" && !previewFullscreen && !editorFullscreen ? <div onMouseDown={startSplitResize} className="mx-2 h-full w-1 cursor-col-resize rounded-full bg-transparent hover:bg-[#6D4AFF]/70" /> : null}
             {(centerMode === "preview" || centerMode === "split" || previewFullscreen) && !editorFullscreen && (
             <div className={`mx-auto flex h-full min-h-0 flex-col rounded-xl border border-[#E5E7EB] bg-white shadow-[0_24px_90px_rgba(15,23,42,0.10)] dark:border-[#22252D] dark:bg-[#111318] dark:shadow-[0_24px_90px_rgba(0,0,0,0.38)] ${previewFullscreen ? "fixed inset-3 z-40 max-w-none" : ""}`} style={centerMode === "split" && !previewFullscreen ? { width: `${100 - splitRatio}%` } : { width: "100%", maxWidth: centerMode === "preview" ? "none" : 1180 }}>
-              <div className="flex h-10 shrink-0 items-center justify-between border-b border-[#E5E7EB] px-4 dark:border-[#22252D]"><div className="flex items-center gap-2 text-sm font-semibold"><Globe2 className="size-4 text-[#6D4AFF]" /> Live Preview</div><div className="flex items-center gap-2 text-[12px]"><span className={`rounded-full px-2 py-1 ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span><button onClick={copyPreviewUrl} disabled={!previewReady} className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]">{copiedPreview ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}</button></div></div>
+              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[#E5E7EB] px-3 dark:border-[#22252D]">
+                <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold"><Globe2 className="size-4 shrink-0 text-[#6D4AFF]" /><span className="truncate">{previewFullUrl || "Live Preview"}</span></div>
+                <span className={`rounded-full px-2 py-1 text-[11px] ${statusTone}`}>{state.preview?.httpStatus ? `HTTP ${state.preview.httpStatus}` : previewStatus}</span>
+                <button onClick={refreshPreview} disabled={!state.project || previewAction !== "idle"} title="Refresh preview" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]"><RefreshCw className={`size-3.5 ${previewAction === "refreshing" ? "animate-spin" : ""}`} /></button>
+                {previewReady ? <a href={previewDisplayUrl} target="_blank" rel="noopener noreferrer" title="Open preview" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27]"><ArrowUpRight className="size-3.5" /></a> : <button disabled title="Preview is not ready" className="grid size-7 place-items-center rounded-lg opacity-40"><ArrowUpRight className="size-3.5" /></button>}
+                <button onClick={copyPreviewUrl} disabled={!previewReady} title="Copy preview URL" className="grid size-7 place-items-center rounded-lg hover:bg-[#F6F7FB] disabled:opacity-40 dark:hover:bg-[#1A1E27]">{copiedPreview ? <CheckCircle2 className="size-3.5" /> : <Copy className="size-3.5" />}</button>
+                {centerMode === "split" && <select value={previewDevice} onChange={(event) => setPreviewDevice(event.target.value as typeof previewDevice)} className="h-7 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[11px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option>Desktop</option><option>Tablet</option><option>Mobile</option></select>}
+                {centerMode === "split" && <select value={previewZoom} onChange={(event) => setPreviewZoom(Number(event.target.value))} className="h-7 rounded-lg border border-[#E5E7EB] bg-white px-1.5 text-[11px] outline-none dark:border-[#22252D] dark:bg-[#111318]"><option value={75}>75%</option><option value={90}>90%</option><option value={100}>100%</option><option value={125}>125%</option></select>}
+              </div>
               <div className="min-h-0 flex-1 overflow-auto bg-[#edf0f7] p-4 dark:bg-black">
                 <div className="mx-auto h-full origin-top overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-black/5 transition-all duration-200 dark:bg-black dark:ring-white/10" style={{ width: previewMode === "Responsive" ? "100%" : previewRotated && previewDevice !== "Desktop" ? `${Math.min(1180, Math.max(previewWidth, 760))}px` : `${previewWidth}px`, maxWidth: "100%", transform: `scale(${previewZoom / 100})`, transformOrigin: "top center" }}>
                   {previewReady ? <iframe key={previewUrl} src={previewUrl} className="h-full w-full rounded-b-xl bg-white" sandbox="allow-scripts allow-forms" /> : <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,0.18),transparent_36%),linear-gradient(180deg,#0B0D12,#111318)] p-10 text-white"><div className="max-w-2xl text-center"><div className="mx-auto mb-5 grid size-12 place-items-center rounded-2xl bg-[#7C5CFF] shadow-xl shadow-violet-500/25"><Sparkles className="size-6" /></div><p className="mb-4 text-xs font-semibold uppercase tracking-[0.18em] text-violet-200">The Ultimate AI Coding Platform</p><h2 className="text-5xl font-bold tracking-tight">Build Anything<br />with <span className="text-[#7C5CFF]">AI Power</span></h2><p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#D1D5DB]">Meldex AI combines agents, preview, memory, and code generation into one production workspace.</p><button onClick={() => void runAgent()} className="mt-8 rounded-xl bg-[#7C5CFF] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/25"><Play className="mr-2 inline size-4" /> Start Building</button></div></div>}
@@ -1074,7 +1230,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </div>
               </div>
             )}
-            {activeRightTab === "ACTIVITY" && <div className="space-y-2">{conversationEvents.length ? conversationEvents.map((event) => <div key={`${event.sequence}-${event.type}`} className="rounded-lg border border-[#E5E7EB] p-3 text-xs dark:border-[#22252D]"><div className="font-semibold">{event.type.replaceAll("_", " ")}</div><div className="mt-1 text-[#6B7280] dark:text-[#9CA3AF]">{event.message}</div></div>) : <div className="text-[#6B7280]">Activity appears during generation.</div>}</div>}
+            {activeRightTab === "ACTIVITY" && <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={activityFilter} onChange={(event) => setActivityFilter(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Filter events" /></div>
+                <button onClick={() => void navigator.clipboard?.writeText(filteredActivityEvents.map((event) => `${event.type}: ${event.message}`).join("\n"))} disabled={!filteredActivityEvents.length} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs disabled:opacity-45 dark:border-[#22252D]">Copy</button>
+              </div>
+              {filteredActivityEvents.length ? filteredActivityEvents.map((event) => <div key={`${event.sequence}-${event.type}`} className="rounded-lg border border-[#E5E7EB] p-3 text-xs dark:border-[#22252D]"><div className="font-semibold">{event.type.replaceAll("_", " ")}</div><div className="mt-1 text-[#6B7280] dark:text-[#9CA3AF]">{event.message}</div></div>) : <div className="text-[#6B7280]">Activity appears during generation.</div>}
+            </div>}
             {activeRightTab === "MEMORY" && <div className="space-y-3"><div className="flex h-8 items-center gap-2 rounded-lg border border-[#E5E7EB] px-2 dark:border-[#22252D]"><Search className="size-3.5" /><input value={memorySearch} onChange={(event) => setMemorySearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-xs outline-none" placeholder="Search memory" /></div><button onClick={async () => { if (!state.project || !window.confirm("Clear workspace memory?")) return; const response = await fetch(`/api/workspaces/${state.project.id}/memory`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clear: true }) }); setMessage(response.ok ? "Memory cleared" : "Memory clear failed"); await loadWorkspace(state.project.id); }} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 dark:border-red-500/30">Clear memory</button>{memoryItems.length ? memoryItems.map((item) => <div key={item} className="rounded-lg bg-[#F6F7FB] p-3 text-xs dark:bg-[#1A1E27]">{item}</div>) : <div className="text-[#6B7280]">No matching memory.</div>}</div>}
           </div>
           <div className="shrink-0 border-t border-[#E5E7EB] p-4 dark:border-[#22252D]"><div className="rounded-xl border border-[#E5E7EB] bg-[#F6F7FB] p-3 shadow-sm transition focus-within:border-[#6D4AFF] dark:border-[#22252D] dark:bg-[#0B0D12] dark:focus-within:border-[#7C5CFF]"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask Meldex AI to build, fix, or improve..." /><div className="mt-3 flex items-center justify-between text-[12px] text-[#6B7280] dark:text-[#9CA3AF]"><div className="flex items-center gap-3"><button disabled title="Attach context is not available in this release" className="flex cursor-not-allowed items-center gap-1 opacity-45"><Upload className="size-3.5" /> Add context</button><button disabled title="Voice input is not available in this release" className="cursor-not-allowed opacity-45"><Mic className="size-3.5" /></button></div><button onClick={() => loading ? stopTask() : void runAgent()} disabled={!loading && !prompt.trim()} className="grid size-9 place-items-center rounded-lg bg-[#6D4AFF] text-white shadow-lg shadow-violet-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-45">{loading ? <Square className="size-4" /> : <Play className="size-4" />}</button></div></div></div>

@@ -14,7 +14,7 @@ const updateSchema = z.object({
 });
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { session, error } = await requireAuth();
@@ -22,8 +22,10 @@ export async function GET(
   try {
     const { id } = await params;
     const project = await getOwnedWorkspaceProject(session.user.id, id);
+    const { searchParams } = new URL(request.url);
+    const includeHidden = searchParams.get("showHidden") === "1";
     const [tree, tasks, preview, memorySnapshot] = await Promise.all([
-      listProjectTree(project.id),
+      listProjectTree(project.id, { includeHidden }),
       prisma.workspaceTask.findMany({
         where: { projectId: project.id },
         orderBy: { createdAt: "desc" },

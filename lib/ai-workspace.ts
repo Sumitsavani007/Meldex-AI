@@ -455,13 +455,13 @@ export async function listOwnedWorkspaceProjects(userId: string) {
   });
 }
 
-async function walkTree(root: string, relativePath = ""): Promise<WorkspaceTreeNode[]> {
+async function walkTree(root: string, relativePath = "", options: { includeHidden?: boolean } = {}): Promise<WorkspaceTreeNode[]> {
   const { absolute } = resolveProjectFile(root, relativePath);
   const entries = await readdir(absolute, { withFileTypes: true }).catch(() => []);
   const nodes = await Promise.all(entries
     .filter((entry) => {
       const child = path.join(relativePath, entry.name).split(path.sep).join("/");
-      return isUserVisibleWorkspaceFile(child);
+      return options.includeHidden || isUserVisibleWorkspaceFile(child);
     })
     .sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
     .map(async (entry) => {
@@ -472,16 +472,16 @@ async function walkTree(root: string, relativePath = ""): Promise<WorkspaceTreeN
         type: entry.isDirectory() ? "folder" : "file",
         language: entry.isDirectory() ? undefined : extension(entry.name),
       };
-      if (entry.isDirectory()) node.children = await walkTree(root, child);
+      if (entry.isDirectory()) node.children = await walkTree(root, child, options);
       return node;
     }));
   return nodes;
 }
 
-export async function listProjectTree(projectId: string) {
+export async function listProjectTree(projectId: string, options: { includeHidden?: boolean } = {}) {
   const project = await prisma.workspaceProject.findFirst({ where: { id: projectId, deletedAt: null } });
   if (!project) throw new Error("Workspace project not found");
-  const tree = await walkTree(project.storagePath);
+  const tree = await walkTree(project.storagePath, "", options);
   const fileRecords = await prisma.workspaceFile.findMany({ where: { projectId, deletedAt: null } });
   const statusMap = new Map(fileRecords.map((file) => [file.path, file.status]));
   const idMap = new Map(fileRecords.map((file) => [file.path, file.id]));

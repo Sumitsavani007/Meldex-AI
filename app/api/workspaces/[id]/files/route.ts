@@ -36,7 +36,8 @@ export async function GET(
       const content = await readProjectFile(session.user.id, id, filePath);
       return NextResponse.json({ path: filePath, content }, { headers: { "Cache-Control": "no-store" } });
     }
-    const tree = await listProjectTree(id);
+    const includeHidden = searchParams.get("showHidden") === "1";
+    const tree = await listProjectTree(id, { includeHidden });
     return NextResponse.json({ tree }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to read workspace files" }, { status: 400 });
