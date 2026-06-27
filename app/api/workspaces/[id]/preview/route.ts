@@ -47,8 +47,75 @@ function previewAssetUrl(projectId: string, entryPath: string, assetPath: string
   return `/api/workspaces/${projectId}/preview?file=${encodeURIComponent(relative)}`;
 }
 
-function rewritePreviewHtml(projectId: string, entryPath: string, html: string) {
-  return html
+function resolvePreviewAssetPath(entryPath: string, assetPath: string) {
+  const cleanAsset = assetPath.split("#")[0]?.split("?")[0] || "";
+  const entryDir = path.posix.dirname(entryPath);
+  return cleanAsset.startsWith("/")
+    ? cleanAsset.replace(/^\/+/, "")
+    : path.posix.join(entryDir === "." ? "" : entryDir, cleanAsset);
+}
+
+function escapeInlineScript(content: string) {
+  return content.replace(/<\/script/gi, "<\\/script");
+}
+
+async function readSmallTextAsset(storagePath: string, relativePath: string, maxBytes = 750_000) {
+  const { absolute } = resolveProjectFile(storagePath, relativePath);
+  const buffer = await readFile(absolute);
+  if (buffer.byteLength > maxBytes) return null;
+  return buffer.toString("utf8");
+}
+
+async function inlinePreviewAssets(projectId: string, storagePath: string, entryPath: string, html: string) {
+  let rewritten = html;
+  rewritten = rewritten.replace(
+    /<link\b([^>]*?)href=["']([^"']+)["']([^>]*?)>/gi,
+    (match, before: string, value: string, after: string) => {
+      const attrs = `${before} ${after}`;
+      if (!isPreviewLocalAsset(value) || !/rel=["'][^"']*stylesheet/i.test(attrs)) return match;
+      return `<!-- meldex-inline-css:${resolvePreviewAssetPath(entryPath, value)} -->`;
+    }
+  );
+  rewritten = rewritten.replace(
+    /<script\b([^>]*?)src=["']([^"']+)["']([^>]*)>\s*<\/script>/gi,
+    (match, before: string, value: string) => {
+      if (!isPreviewLocalAsset(value)) return match;
+      return `<!-- meldex-inline-js:${resolvePreviewAssetPath(entryPath, value)} -->`;
+    }
+  );
+
+  const cssMarkers = [...rewritten.matchAll(/<!-- meldex-inline-css:([^>]+?) -->/g)];
+  for (const marker of cssMarkers) {
+    const markerText = marker[0];
+    const relative = marker[1];
+    const css = await readSmallTextAsset(storagePath, relative).catch(() => null);
+    rewritten = rewritten.replace(
+      markerText,
+      css === null
+        ? `<link rel="stylesheet" href="${previewAssetUrl(projectId, entryPath, relative)}">`
+        : `<style data-meldex-preview="${relative}">\n${rewritePreviewCss(projectId, relative, css)}\n</style>`
+    );
+  }
+
+  const jsMarkers = [...rewritten.matchAll(/<!-- meldex-inline-js:([^>]+?) -->/g)];
+  for (const marker of jsMarkers) {
+    const markerText = marker[0];
+    const relative = marker[1];
+    const js = await readSmallTextAsset(storagePath, relative).catch(() => null);
+    rewritten = rewritten.replace(
+      markerText,
+      js === null
+        ? `<script src="${previewAssetUrl(projectId, entryPath, relative)}"></script>`
+        : `<script data-meldex-preview="${relative}">\n${escapeInlineScript(js)}\n</script>`
+    );
+  }
+
+  return rewritten;
+}
+
+async function rewritePreviewHtml(projectId: string, storagePath: string, entryPath: string, html: string) {
+  const inlined = await inlinePreviewAssets(projectId, storagePath, entryPath, html);
+  return inlined
     .replace(/\b(href|src)=["']([^"']+)["']/gi, (match, attr: string, value: string) => {
       if (!isPreviewLocalAsset(value)) return match;
       return `${attr}="${previewAssetUrl(projectId, entryPath, value)}"`;
@@ -97,7 +164,7 @@ export async function GET(
       "Cache-Control": "no-store",
     });
     if (type.startsWith("text/html")) {
-      body = rewritePreviewHtml(id, filePath, fileBuffer.toString("utf8"));
+      body = await rewritePreviewHtml(id, project.storagePath, filePath, fileBuffer.toString("utf8"));
       headers.set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob: https:; font-src 'self' data: https:; frame-ancestors 'self'");
       headers.set("X-Frame-Options", "SAMEORIGIN");
     } else if (type.startsWith("text/css")) {
