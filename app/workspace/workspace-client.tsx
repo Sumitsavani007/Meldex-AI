@@ -746,11 +746,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setMessage("Layout reset");
   }
 
-  function togglePreviewMode() {
-    if (centerMode === "preview") setCenterMode("code");
-    else setCenterMode("preview");
-  }
-
   function selectPreviewDevice(device: "Desktop" | "Tablet" | "Mobile") {
     setPreviewDevice(device);
     if (device === "Desktop") setPreviewMode("1280px");
@@ -761,10 +756,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   function toggleAiPanel() {
     setRightCollapsed((value) => !value);
     if (rightCollapsed) setActiveRightTab("CHAT");
-  }
-
-  function toggleExplorer() {
-    setLeftCollapsed((value) => !value);
   }
 
   function dismissOnboarding() {
@@ -1098,12 +1089,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </button>
               ))}
             </div>
-            <button onClick={toggleExplorer} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${leftCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>Explorer</button>
-            <button onClick={togglePreviewMode} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${centerMode === "preview" ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Preview</button>
+            <button onClick={() => setBottomCollapsed((value) => !value)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${!bottomCollapsed ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Terminal</button>
             <button onClick={toggleAiPanel} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${rightCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>AI</button>
             <button onClick={() => setCommandPaletteOpen((value) => !value)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${commandPaletteOpen ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Search</button>
             <button onClick={resetLayout} className="ml-auto rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Reset</button>
-            <button onClick={() => router.push("/workspace")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Workspaces</button>
           </div>
 
           {(centerMode === "preview" || previewFullscreen) && <div className="flex h-12 shrink-0 items-center gap-2 border-b border-[#E5E7EB] bg-white/88 px-4 dark:border-[#22252D] dark:bg-[#111318]/88">
@@ -1341,7 +1330,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
                 <div className="flex min-w-0 items-center gap-2">
                   <button className="flex h-8 items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3 text-amber-700 transition hover:bg-amber-50 dark:border-[#2A2E39] dark:text-amber-300 dark:hover:bg-amber-500/10" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
-                  <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-8 min-w-[122px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 pr-7 text-[12px] font-medium text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
+                  <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-9 w-[142px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[12px] font-semibold leading-none text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#F3F4F6] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
                     <option>MelDex 1.0</option>
                   </select>
                 </div>
