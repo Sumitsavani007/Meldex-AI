@@ -30,6 +30,14 @@ Date: 2026-06-27
 
 - Build and lint passed.
 
+## Live Verification
+
+- Authenticated IDE route renders the native Meldex shell.
+- Run/Send produced a real stream task and completed with `SUCCEEDED`.
+- Preview endpoint returned HTTP 200.
+- Preview CSS/JS asset controls resolve through `?file=...` URLs and return correct content types.
+- Workspace list, preview copy/open/refresh, file open/copy, activity, files, memory, and disabled reason states are present in the native shell.
+
 ## Remaining Issues
 
 - Drag/drop and multi-select are not yet implemented in the native shell. They are not exposed as visible fake controls.
