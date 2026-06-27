@@ -500,10 +500,12 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       setMessage(data.error || "Unable to open file");
       return;
     }
+    if (centerMode === "preview") setCenterMode("code");
     setSelectedFile(filePath);
     setEditorContent(data.content || "");
     setSavedEditorContent(data.content || "");
     setOpenTabs((current) => current.includes(filePath) ? current : [...current, filePath]);
+    setMessage(`Opened ${filePath}`);
   }
 
   async function createWorkspaceFile(filePath?: string, content = "") {
@@ -731,15 +733,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setPreviewFullscreen(false);
     setEditorFullscreen(false);
     setMessage("Layout reset");
-  }
-
-  function toggleBottom(tab: BottomTab) {
-    if (!bottomCollapsed && bottomTab === tab) {
-      setBottomCollapsed(true);
-      return;
-    }
-    setBottomTab(tab);
-    setBottomCollapsed(false);
   }
 
   function togglePreviewMode() {
@@ -1089,9 +1082,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
             <button onClick={toggleExplorer} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${leftCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>Explorer</button>
             <button onClick={togglePreviewMode} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${centerMode === "preview" ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Preview</button>
             <button onClick={toggleAiPanel} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${rightCollapsed ? "border-[#E5E7EB] dark:border-[#22252D]" : "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]"}`}>AI</button>
-            {(["TERMINAL", "OUTPUT", "PROBLEMS", "LOGS", "GIT"] as const).map((tab) => (
-              <button key={tab} onClick={() => toggleBottom(tab)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${!bottomCollapsed && bottomTab === tab ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>{tab === "PROBLEMS" ? "Problems" : tab === "TERMINAL" ? "Terminal" : tab.charAt(0) + tab.slice(1).toLowerCase()}</button>
-            ))}
             <button onClick={() => setCommandPaletteOpen((value) => !value)} className={`rounded-lg border px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:hover:bg-[#1A1E27] ${commandPaletteOpen ? "border-[#6D4AFF]/40 bg-[#6D4AFF]/8 text-[#6D4AFF]" : "border-[#E5E7EB] dark:border-[#22252D]"}`}>Search</button>
             <button onClick={resetLayout} className="ml-auto rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Reset</button>
             <button onClick={() => router.push("/workspace")} className="rounded-lg border border-[#E5E7EB] px-3 py-2 text-xs font-medium hover:bg-[#F6F7FB] dark:border-[#22252D] dark:hover:bg-[#1A1E27]">Workspaces</button>
@@ -1130,7 +1120,20 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                     <button onClick={() => setEditorFullscreen((value) => !value)} className="grid size-8 place-items-center rounded-lg text-[#6B7280] hover:bg-white dark:text-[#9CA3AF] dark:hover:bg-[#1A1E27]" title="Fullscreen editor"><Maximize2 className="size-4" /></button>
                   </div>
                 </div>
-                <div className="h-[calc(100%-2.5rem)]">
+                {selectedFile && (
+                  <div className="flex h-8 items-center justify-between border-b border-[#E5E7EB] bg-white px-3 text-[11px] text-[#6B7280] dark:border-[#22252D] dark:bg-[#111318] dark:text-[#9CA3AF]">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileCode2 className="size-3.5 shrink-0 text-[#6D4AFF]" />
+                      <span className="truncate font-medium text-[#374151] dark:text-[#D1D5DB]">{selectedFile}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <span>{editorLanguage}</span>
+                      <span>{editorContent.split("\n").length} lines</span>
+                      <span>{fileDirty ? "unsaved" : "saved"}</span>
+                    </div>
+                  </div>
+                )}
+                <div className={selectedFile ? "h-[calc(100%-4.5rem)]" : "h-[calc(100%-2.5rem)]"}>
                   {selectedFile ? (
                     <MonacoEditor
                       key={selectedFile}
@@ -1138,7 +1141,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                       value={editorContent}
                       theme={typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "vs-dark" : "light"}
                       onChange={(value) => setEditorContent(value || "")}
-                      options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", automaticLayout: true, scrollBeyondLastLine: false, wordWrap: "on" }}
+                      loading={<div className="flex h-full items-center justify-center text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading {selectedFile}...</div>}
+                      options={{ minimap: { enabled: false }, fontSize: 13, lineNumbers: "on", automaticLayout: true, scrollBeyondLastLine: false, wordWrap: "on", renderLineHighlight: "all", padding: { top: 12, bottom: 12 } }}
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-sm text-[#6B7280] dark:text-[#9CA3AF]">Select a file to open the code editor.</div>
