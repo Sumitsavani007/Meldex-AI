@@ -1376,7 +1376,7 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
     looksLikeRawModelDump(html.content) ||
     hasUnresolvedTemplatePlaceholder(html.content);
 
-  if (invalidHtml) return staticFallbackFiles(prompt, "invalid or missing HTML entry");
+  if (invalidHtml) return [];
 
   let htmlContent = html.content || "";
   htmlContent = htmlContent
@@ -1393,9 +1393,7 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
   const interactionsRequired = staticInteractionsRequired(prompt, htmlContent);
   const hasCss = nextFiles.some((file) => file.path === "style.css" && file.operation !== "delete" && (file.content || "").trim().length >= 500 && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
   const hasJs = nextFiles.some((file) => file.path === "script.js" && file.operation !== "delete" && (file.content || "").trim().length >= (interactionsRequired ? 200 : 40) && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
-  const fallback = staticFallbackFiles(prompt, "missing required static asset");
-  if (!hasCss) nextFiles.push(fallback.find((file) => file.path === "style.css")!);
-  if (!hasJs) nextFiles.push(fallback.find((file) => file.path === "script.js")!);
+  if (!hasCss || !hasJs) return nextFiles;
   nextFiles = [...new Map(nextFiles.map((file) => [file.path, file])).values()];
 
   const invalidContent = nextFiles.some((file) =>
@@ -1403,8 +1401,7 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
     /\.(html|css|js)$/i.test(file.path) &&
     (looksLikeRawModelDump(file.content || "") || hasUnresolvedTemplatePlaceholder(file.content || ""))
   );
-  const completenessIssues = staticFileCompletenessIssues(nextFiles, prompt);
-  const finalFiles = invalidContent || completenessIssues.length ? staticFallbackFiles(prompt, invalidContent ? "raw model dump or unresolved placeholder detected" : completenessIssues.join("; ")) : nextFiles;
+  const finalFiles = invalidContent ? [] : nextFiles;
   return onlyStaticCoreFilesRequested(prompt) ? finalFiles.filter((file) => allowedCoreFiles.has(file.path)) : finalFiles;
 }
 
@@ -1771,21 +1768,14 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     };
   }
 
-  if (isStaticWebsitePrompt(raw)) {
-    return {
-      plan: ["Recover static website output", "Create required static files", "Verify preview"],
-      files: staticFallbackFiles(raw, "model response could not be parsed"),
-      commands: ["static-preview-verify"],
-      summary: "Recovered a static website from an unparseable model response.",
-      warnings: ["Model response was not parseable as strict JSON; generated safe static files instead."],
-    };
-  }
-
   return {
     plan: ["Read model response"],
     files: [],
     commands: [],
-    summary: looksLikeRawModelDump(raw) ? "The model returned an unparseable response with no safe file actions." : safeMemoryText(raw, 600),
+    summary: looksLikeRawModelDump(raw) || isStaticWebsitePrompt(raw)
+      ? "The model returned an unparseable response with no safe file actions."
+      : safeMemoryText(raw, 600),
+    warnings: ["Model response was not parseable as strict JSON and no files were saved."],
   };
 }
 

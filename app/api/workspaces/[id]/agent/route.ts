@@ -10,7 +10,6 @@ import {
   createWorkspaceSnapshot,
   getOwnedWorkspaceProject,
   isStaticWebsitePrompt,
-  offlineStaticWorkspace,
   providerErrorResponse,
   readProjectFile,
   normalizeWorkspaceFileActions,
@@ -164,9 +163,8 @@ export async function POST(
     }
     let response: WorkspaceAgentResponse;
     let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
-    let offlineMode = false;
     const retries = 0;
-    let autofixes = 0;
+    const autofixes = 0;
     try {
       response = await askWorkspaceAgent(body.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent" });
       for (const runtimeEvent of response.runtimeV4?.events || []) {
@@ -194,22 +192,10 @@ export async function POST(
           metadata: providerFailure,
         },
       });
-      if (!providerFailure.offlineAvailable) throw providerError;
-      response = offlineStaticWorkspace(body.prompt);
-      offlineMode = true;
-      await prisma.workspaceLog.create({
-        data: {
-          userId: session.user.id,
-          projectId: project.id,
-          taskId: task.id,
-          event: "offline_mode",
-          message: "Offline Workspace Mode created starter files so the workspace remains usable.",
-          metadata: { providerFailure },
-        },
-      });
+      throw providerError;
     }
     const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
-    let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.prompt);
+    const files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.prompt);
     if (response.runtimeV4?.reflection) {
       await prisma.workspaceLog.create({
         data: {
@@ -223,25 +209,18 @@ export async function POST(
       });
     }
     if (!files.length && isStaticWebsitePrompt(body.prompt)) {
-      autofixes += 1;
-      const fallback = offlineStaticWorkspace(body.prompt);
-      response = {
-        ...fallback,
-        summary: `${response.summary || "The model returned no file actions."} Meldex generated safe static workspace files as an autofix.`,
-        warnings: [...(response.warnings || []), "Model returned no file actions; static workspace autofix generated required files."],
-      };
-      files = normalizeWorkspaceFileActions(fallback.files || [], body.prompt);
       await prisma.workspaceLog.create({
         data: {
           userId: session.user.id,
           projectId: project.id,
           taskId: task.id,
           level: "warn",
-          event: "file_extraction_autofix",
-          message: "Debugger generated required static files after zero file extraction.",
-          metadata: { files: files.map((file) => ({ path: file.path, operation: file.operation })) },
+          event: "invalid_model_output",
+          message: "Model returned no valid file actions; no files were saved.",
+          metadata: { promptType: "static_website", guard: "no_fake_static_recovery" },
         },
       });
+      throw new Error("Model returned no valid file actions; no files were saved.");
     }
     const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
 
@@ -316,9 +295,7 @@ export async function POST(
       },
     });
 
-    const summary = offlineMode
-      ? `${response.summary || "Offline Workspace Mode created starter files."} Provider reason: ${providerFailure?.userMessage || "Provider unavailable."}`
-      : response.summary || (changedFiles.length ? "Done — workspace task completed and preview checked." : "No file edits were returned.");
+    const summary = response.summary || (changedFiles.length ? "Done — workspace task completed and preview checked." : "No file edits were returned.");
     const updatedTask = await prisma.workspaceTask.update({
       where: { id: task.id },
       data: {
@@ -406,7 +383,6 @@ export async function POST(
       preview,
       verification,
       qualityScore,
-      offlineMode,
       providerFailure,
       memory,
       usage,

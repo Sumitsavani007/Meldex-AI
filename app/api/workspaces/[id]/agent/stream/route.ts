@@ -24,7 +24,6 @@ import {
   readProjectFile,
   syncWorkspaceFile,
   staticFileCompletenessIssues,
-  staticFallbackFiles,
   updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
@@ -542,7 +541,7 @@ export async function POST(
           let response: WorkspaceAgentResponse;
           const offlineMode = false;
           let retries = 0;
-          let autofixes = 0;
+          const autofixes = 0;
           try {
             await send("qwen_generation_started", "Qwen generation started", {
               classification: orchestration.classification,
@@ -755,39 +754,22 @@ ${targetContext}`;
           if (fastStaticPath && !patchMode) {
             const completenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
             if (completenessIssues.length) {
-              autofixes += 1;
-              await send("file_completeness_repair", "Completing required static files", { issues: completenessIssues });
-              files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, completenessIssues.join("; ")), body.data.prompt);
-              response = {
-                ...response,
-                files,
-                warnings: [...(response.warnings || []), `Static file completeness repair applied: ${completenessIssues.join("; ")}`],
-              };
+              await send("invalid_model_output", "Model output was incomplete; no files were saved", {
+                issues: completenessIssues,
+                guard: "no_fake_static_recovery",
+              });
+              throw new Error(`Model output was incomplete: ${completenessIssues.join("; ")}`);
             } else {
               await send("file_completeness_verified", "Required static files verified", { files: ["index.html", "style.css", "script.js"] });
             }
           }
           if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
-            if (!response.rawContent?.trim()) {
-              await send("invalid_model_output", "Model returned no valid file actions; no files were saved", {
-                promptType: "static_website",
-                guard: "provider_error_save_guard",
-              });
-              throw new Error("Model returned no valid file actions; no files were saved.");
-            }
-            autofixes += 1;
-            const fallbackFiles = staticFallbackFiles(body.data.prompt, "provider returned no extractable file actions after successful response");
-            files = normalizeWorkspaceFileActions(fallbackFiles, body.data.prompt);
-            response = {
-              ...response,
-              files,
-              summary: response.summary || "Provider returned a valid response; Meldex repaired it into complete static files.",
-              warnings: [...(response.warnings || []), "Provider response had no extractable file actions; static file repair generated required files."],
-            };
-            await send("debugger_fix_applied", "Debugger generated required static files after successful but non-file model response", {
-              fixed: files.length > 0,
-              files: files.map((file) => ({ path: file.path, operation: file.operation })),
+            await send("invalid_model_output", "Model returned no valid file actions; no files were saved", {
+              promptType: "static_website",
+              guard: "no_fake_static_recovery",
+              hasRawContent: Boolean(response.rawContent?.trim()),
             });
+            throw new Error("Model returned no valid file actions; no files were saved.");
           }
           let leakCheck = patchMode ? { ok: true, missingRequiredEntities: [], repairHints: [], findings: [], optionalRequirements: [], repairRecommended: false, domain: "static_edit" } : detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
