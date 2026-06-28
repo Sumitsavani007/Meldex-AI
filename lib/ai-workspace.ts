@@ -61,6 +61,29 @@ export type WorkspaceAgentResponse = {
   };
 };
 
+export type WorkspacePatchAction = {
+  path: string;
+  find: string;
+  replace: string;
+  description?: string;
+};
+
+export type WorkspacePatchResponse = {
+  patches: WorkspacePatchAction[];
+  summary?: string;
+  warnings?: string[];
+  usage?: CompletionUsage;
+  provider?: string;
+  model?: string;
+  rawContent?: string;
+  outputBudget?: {
+    maxTokens: number;
+    category: string;
+    targetRange: string;
+    reason: string;
+  };
+};
+
 export type WorkspaceMemorySnapshot = {
   projectSummary: string;
   architecture: string[];
@@ -1763,6 +1786,82 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
     files: [],
     commands: [],
     summary: looksLikeRawModelDump(raw) ? "The model returned an unparseable response with no safe file actions." : safeMemoryText(raw, 600),
+  };
+}
+
+function parsePatchJson(raw: string): WorkspacePatchResponse {
+  const trimmed = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  try {
+    const parsed = JSON.parse(trimmed) as WorkspacePatchResponse;
+    return {
+      patches: Array.isArray(parsed.patches)
+        ? parsed.patches
+            .filter((patch) => patch && typeof patch.path === "string" && typeof patch.find === "string" && typeof patch.replace === "string")
+            .map((patch) => ({
+              path: safeRelative(patch.path),
+              find: decodeGeneratedContent(patch.find),
+              replace: decodeGeneratedContent(patch.replace),
+              description: patch.description,
+            }))
+        : [],
+      summary: parsed.summary,
+      warnings: parsed.warnings || [],
+    };
+  } catch {
+    return { patches: [], summary: "Model returned an unparseable patch response.", warnings: ["Patch response was not valid JSON."] };
+  }
+}
+
+export async function askWorkspacePatch(
+  prompt: string,
+  targetFiles: Array<{ path: string; content: string }>,
+  runtime?: { userId?: string; taskType?: string }
+): Promise<WorkspacePatchResponse> {
+  const cssOnly = targetFiles.length === 1 && targetFiles[0]?.path === "style.css";
+  const outputBudget = cssOnly
+    ? { maxTokens: 650, category: "style_patch", targetRange: "400-800", reason: "Style-only patch should return a small find/replace patch." }
+    : { maxTokens: 900, category: "small_patch", targetRange: "600-1200", reason: "Small edit patch should avoid full file regeneration." };
+  const fileContext = targetFiles.map((file) => {
+    const content = file.content.length > 6000 ? `${file.content.slice(0, 3000)}\n\n/* ...middle omitted for patch brevity... */\n\n${file.content.slice(-2500)}` : file.content;
+    return `### ${file.path}\n\`\`\`\n${content}\n\`\`\``;
+  }).join("\n\n");
+  const completion = await generateChatCompletionWithUsage({
+    temperature: 0.1,
+    maxTokens: outputBudget.maxTokens,
+    timeoutMs: 60_000,
+    userId: runtime?.userId,
+    taskType: runtime?.taskType || "workspace_patch",
+    messages: [
+      {
+        role: "system",
+        content: `You are Meldex AI patch mode powered by Qwen3-Coder.
+Return JSON only:
+{
+  "patches": [{"path":"relative/file","find":"exact existing snippet","replace":"new snippet","description":"brief"}],
+  "summary":"short summary",
+  "warnings":[]
+}
+Rules:
+- Return patches only, never full files.
+- Each find snippet must be copied exactly from the provided file context.
+- Use the smallest stable snippet that uniquely identifies the change.
+- Do not modify unrelated files.
+- Do not include markdown or explanations.`,
+      },
+      {
+        role: "user",
+        content: `Task:\n${prompt}\n\nTarget files:\n${targetFiles.map((file) => file.path).join(", ")}\n\nExisting content:\n${fileContext}`,
+      },
+    ],
+  });
+  const parsed = parsePatchJson(completion.content);
+  return {
+    ...parsed,
+    usage: completion.usage,
+    provider: completion.provider,
+    model: completion.model,
+    rawContent: completion.content,
+    outputBudget,
   };
 }
 

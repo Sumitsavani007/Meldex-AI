@@ -10,6 +10,7 @@ import { testOpenRouterHealth } from "@/lib/provider-health";
 import { createWorkspaceEventBus } from "@/lib/workspace-event-bus";
 import {
   askWorkspaceAgent,
+  askWorkspacePatch,
   buildWorkspaceContext,
   classifyWorkspaceProviderFailure,
   countDiff,
@@ -27,6 +28,7 @@ import {
   updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
+  type WorkspaceFileAction,
   type WorkspaceAgentResponse,
 } from "@/lib/ai-workspace";
 import {
@@ -159,6 +161,32 @@ function compactProfile(profile: RuntimeProfile) {
   };
 }
 
+function applyFindReplacePatches(
+  targetFiles: Array<{ path: string; content: string }>,
+  patches: Array<{ path: string; find: string; replace: string; description?: string }>
+): WorkspaceFileAction[] {
+  const byPath = new Map(targetFiles.map((file) => [file.path, file.content]));
+  const changed = new Set<string>();
+  for (const patch of patches) {
+    const current = byPath.get(patch.path);
+    if (current === undefined) throw new Error(`Patch target not loaded: ${patch.path}`);
+    if (!patch.find.trim()) throw new Error(`Patch find snippet is empty for ${patch.path}`);
+    if (!current.includes(patch.find)) throw new Error(`Patch find snippet not found in ${patch.path}`);
+    const next = current.replace(patch.find, patch.replace);
+    if (!next.trim()) throw new Error(`Patch would make ${patch.path} empty`);
+    byPath.set(patch.path, next);
+    changed.add(patch.path);
+  }
+  return targetFiles
+    .filter((file) => changed.has(file.path))
+    .map((file) => ({
+      operation: "edit" as const,
+      path: file.path,
+      content: byPath.get(file.path) || "",
+      description: "Applied fast find/replace patch",
+    }));
+}
+
 function planWorkspaceFiles(prompt: string) {
   if (/\bstyle\.css\b/i.test(prompt) && (/\bonly\b|do not change|don'?t change|regenerate style\.css/i.test(prompt))) {
     return {
@@ -172,14 +200,17 @@ function planWorkspaceFiles(prompt: string) {
     };
   }
   if (isStaticEditPrompt(prompt) && !isStaticWebsitePrompt(prompt)) {
+    const styleOnlyEdit = /\b(color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|style|css|glassmorphism|theme|background)\b/i.test(prompt)
+      && !/\b(headline|title|copy|text|faq|accordion|section|add|remove)\b/i.test(prompt);
+    const htmlOnlyEdit = /\b(headline|title|copy|text|faq|accordion|section|hero copy|paragraph)\b/i.test(prompt);
     return {
-      projectType: "static_website_edit",
+      projectType: styleOnlyEdit ? "static_website_style_edit" : "static_website_edit",
       complexity: "small",
       create: [] as string[],
-      modify: /\bfaq|accordion\b/i.test(prompt) ? ["index.html", "script.js", "style.css"] : ["index.html", "style.css"],
+      modify: styleOnlyEdit ? ["style.css"] : htmlOnlyEdit ? ["index.html"] : ["index.html", "style.css"],
       delete: [] as string[],
       dependencies: [] as string[],
-      expectedOutputSize: "small edit: 1200-2500 tokens",
+      expectedOutputSize: styleOnlyEdit ? "style patch: 400-800 tokens" : "small edit patch: 600-1200 tokens",
     };
   }
   if (isStaticWebsitePrompt(prompt)) {
@@ -436,6 +467,7 @@ export async function POST(
           });
           if (!providerSmoke.ok) throw new Error(providerSmoke.userMessage);
           const filePlan = planWorkspaceFiles(body.data.prompt);
+          const patchMode = filePlan.create.length === 0 && filePlan.modify.length > 0 && isStaticEditPrompt(body.data.prompt);
           const orchestration = turboStaticPath
             ? {
                 classification: { type: "website_generation", subtype: fastStaticPath ? "static_site_fast_path" : "static_site_edit_turbo_path", labels: ["static", "turbo_path", "dependency_free"] },
@@ -521,13 +553,115 @@ export async function POST(
             const stopHeartbeat = eventBus.heartbeat([
               "Contacting Qwen3-Coder via Novita...",
               "Waiting for model response...",
-              "Receiving generation...",
-              "Still generating premium layout...",
+              patchMode ? "Receiving patch..." : "Receiving generation...",
+              patchMode ? "Preparing local patch..." : "Still generating premium layout...",
               "Preparing files...",
             ], 2000, "model_stream_progress");
             const modelStartedAt = nowMs();
             try {
-              response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
+              if (patchMode) {
+                await send("patch_mode_selected", "Edit fast patch mode selected", {
+                  targetFiles: filePlan.modify,
+                  contract: "find_replace_patch",
+                });
+                const targetFiles: Array<{ path: string; content: string }> = [];
+                for (const targetPath of filePlan.modify) {
+                  try {
+                    targetFiles.push({ path: targetPath, content: await readProjectFile(session.user.id, project.id, targetPath) });
+                  } catch {}
+                }
+                if (!targetFiles.length) throw new Error("Patch mode could not load target files.");
+                await send("patch_context_loaded", `Loaded ${targetFiles.length} patch target file${targetFiles.length === 1 ? "" : "s"}`, {
+                  targetFiles: targetFiles.map((file) => ({ path: file.path, bytes: Buffer.byteLength(file.content) })),
+                });
+                const patchResponse = await askWorkspacePatch(body.data.prompt, targetFiles, { userId: session.user.id, taskType: "workspace_patch_mode" });
+                await send("patch_response_received", `Received ${patchResponse.patches.length} patch${patchResponse.patches.length === 1 ? "" : "es"}`, {
+                  patches: patchResponse.patches.map((patch) => ({ path: patch.path, findBytes: Buffer.byteLength(patch.find), replaceBytes: Buffer.byteLength(patch.replace) })),
+                  outputBudget: patchResponse.outputBudget,
+                });
+                let patchedFiles: ReturnType<typeof applyFindReplacePatches>;
+                let patchFallbackResponse: WorkspaceAgentResponse | null = null;
+                try {
+                  patchedFiles = applyFindReplacePatches(targetFiles, patchResponse.patches);
+                } catch (patchError) {
+                  await send("patch_apply_failed", patchError instanceof Error ? patchError.message : "Patch apply failed", {
+                    fallback: "targeted_full_file_repair",
+                  });
+                  const targetPaths = targetFiles.map((file) => file.path);
+                  const targetContext = targetFiles
+                    .map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``)
+                    .join("\n\n");
+                  await send("targeted_full_file_repair_started", `Repairing ${targetPaths.join(", ")}`, {
+                    reason: patchError instanceof Error ? patchError.message : "Patch apply failed",
+                    targetFiles: targetPaths,
+                    guard: "targeted_files_only",
+                  });
+                  const fallbackPrompt = `${body.data.prompt}
+
+PATCH MODE FALLBACK:
+- The find/replace patch could not be applied exactly.
+- Return complete final content for ONLY these file(s): ${targetPaths.join(", ")}.
+- Do not return unrelated files.
+- Do not regenerate the full project.
+- Preserve existing content except for the requested small edit.
+
+Current target file content:
+${targetContext}`;
+                  const fallbackRelevantFiles = targetFiles.map((file, index) => ({
+                    ...file,
+                    score: 1 - index * 0.01,
+                    reasons: ["patch_mode_target"],
+                  }));
+                  patchFallbackResponse = await askWorkspaceAgent(fallbackPrompt, { ...context, relevantFiles: fallbackRelevantFiles, memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, {
+                    userId: session.user.id,
+                    taskType: "workspace_patch_fallback",
+                  });
+                  const allowed = new Set(targetPaths);
+                  patchedFiles = normalizeWorkspaceFileActions(Array.isArray(patchFallbackResponse.files) ? patchFallbackResponse.files : [], body.data.prompt)
+                    .filter((file) => allowed.has(file.path));
+                  if (!patchedFiles.length) {
+                    throw new Error(`Patch fallback returned no targeted file edits after patch failure: ${patchError instanceof Error ? patchError.message : "unknown error"}`);
+                  }
+                  await send("targeted_full_file_repair_completed", `Repaired ${patchedFiles.length} targeted file${patchedFiles.length === 1 ? "" : "s"}`, {
+                    files: patchedFiles.map((file) => file.path),
+                    guard: "no_whole_project_regeneration",
+                  });
+                }
+                if (!patchedFiles.length) throw new Error("Patch mode returned no applicable file edits.");
+                await send("patch_applied", `Applied ${patchedFiles.length} patched file${patchedFiles.length === 1 ? "" : "s"}`, {
+                  files: patchedFiles.map((file) => file.path),
+                });
+                const responseUsageSource = patchFallbackResponse || patchResponse;
+                response = {
+                  plan: patchFallbackResponse ? ["Load target file", "Repair targeted file", "Verify preview"] : ["Load target file", "Apply local patch", "Verify preview"],
+                  files: patchedFiles,
+                  commands: ["static-preview-verify"],
+                  summary: patchFallbackResponse?.summary || patchResponse.summary || "Applied fast patch edit.",
+                  warnings: [...(patchResponse.warnings || []), ...(patchFallbackResponse?.warnings || [])],
+                  usage: responseUsageSource.usage,
+                  provider: responseUsageSource.provider,
+                  model: responseUsageSource.model,
+                  rawContent: responseUsageSource.rawContent,
+                  runtimeV4: {
+                    events: [],
+                    scratchpad: null,
+                    graphSummary: null,
+                    rankedFiles: [],
+                    packedContext: { files: targetFiles.length, omitted: 0, charCount: targetFiles.reduce((sum, file) => sum + file.content.length, 0) },
+                    dag: null,
+                    confidence: { score: patchFallbackResponse ? 0.84 : 0.92, decision: "auto_proceed", reason: patchFallbackResponse ? "Targeted full-file fallback after patch miss." : "Fast patch mode." },
+                    reflection: { ok: true, issues: [] },
+                    outputBudget: patchFallbackResponse?.runtimeV4?.outputBudget || patchResponse.outputBudget,
+                    promptCompression: {
+                      enabled: true,
+                      inputChars: targetFiles.reduce((sum, file) => sum + file.content.length, 0),
+                      omitted: patchFallbackResponse ? ["whole_project_regeneration", "workspace_memory"] : ["full_file_regeneration", "workspace_memory", "runtime_v4_prompt"],
+                    },
+                  } as WorkspaceAgentResponse["runtimeV4"],
+                };
+              } else {
+                response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
+              }
             } finally {
               stopHeartbeat();
               timings.modelResponseMs = elapsedMs(modelStartedAt);
