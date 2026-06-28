@@ -155,15 +155,17 @@ async function callOpenAICompatible(
     ...extraHeaders,
   };
 
+  const requestBody: Record<string, unknown> = {
+    model,
+    messages: options.messages,
+    temperature: options.temperature ?? 0.7,
+  };
+  if (typeof options.maxTokens === "number" && options.maxTokens > 0) requestBody.max_tokens = options.maxTokens;
+
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
     headers,
-    body: JSON.stringify({
-      model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(timeout),
   });
 
@@ -254,6 +256,14 @@ async function callAnthropicNative(
     .filter((message) => message.role !== "system")
     .map((message) => ({ role: message.role === "assistant" ? "assistant" : "user", content: message.content }));
 
+  const requestBody: Record<string, unknown> = {
+    model,
+    system: system || undefined,
+    messages,
+    temperature: options.temperature ?? 0.7,
+  };
+  if (typeof options.maxTokens === "number" && options.maxTokens > 0) requestBody.max_tokens = options.maxTokens;
+
   const response = await fetch(`${baseUrl.replace(/\/$/, "")}/messages`, {
     method: "POST",
     headers: {
@@ -261,13 +271,7 @@ async function callAnthropicNative(
       "x-api-key": apiKey,
       "anthropic-version": "2023-06-01",
     },
-    body: JSON.stringify({
-      model,
-      system: system || undefined,
-      messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(timeout),
   });
 
@@ -296,22 +300,6 @@ async function callAnthropicNative(
     estimated: false,
   } : estimateTokensFromMessages(options.messages, content);
   return { content, provider: "anthropic", model, usage };
-}
-
-function affordableMaxTokens(reason: string, requested?: number) {
-  const match = reason.match(/can only afford\s+(\d+)/i);
-  if (!match) return null;
-  const affordable = Number(match[1]);
-  if (!Number.isFinite(affordable) || affordable < 64) return null;
-  const next = Math.max(64, affordable - 16);
-  if (requested && next >= requested) return null;
-  return next;
-}
-
-function shouldRetryWithReducedTokens(options: CompletionOptions, reducedMaxTokens: number) {
-  const taskType = options.taskType || "";
-  if (/workspace_agent|workspace_patch/i.test(taskType) && reducedMaxTokens < 900) return false;
-  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -359,16 +347,6 @@ async function callOpenRouter(options: CompletionOptions): Promise<CompletionRes
         }
       }
 
-      const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
-      if (reducedMaxTokens && shouldRetryWithReducedTokens(options, reducedMaxTokens)) {
-        return callOpenAICompatible(
-          baseUrl,
-          apiKey,
-          primaryModel,
-          { ...options, maxTokens: reducedMaxTokens },
-          extraHeaders
-        );
-      }
     }
     if (!(err instanceof ModelRouterError) || err.code !== "rate_limit") throw err;
 
@@ -433,21 +411,7 @@ async function callConfiguredProvider(config: Awaited<ReturnType<typeof resolveP
     "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://meldex.newsyfly.com",
     "X-Title": "Meldex AI",
   } : undefined;
-  let result: CompletionResult;
-  try {
-    result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs }, extraHeaders);
-  } catch (err) {
-    if (err instanceof ModelRouterError && err.code === "insufficient_credits") {
-      const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
-      if (reducedMaxTokens && shouldRetryWithReducedTokens(options, reducedMaxTokens)) {
-        result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs, maxTokens: reducedMaxTokens }, extraHeaders);
-      } else {
-        throw err;
-      }
-    } else {
-      throw err;
-    }
-  }
+  const result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs }, extraHeaders);
   return { ...result, provider, model };
 }
 

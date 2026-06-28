@@ -312,7 +312,6 @@ export async function POST(
       provider: activeModel.provider,
       model: activeModel.model,
       inputTokens: promptTokens,
-      outputTokens: initialOutputBudget.maxTokens,
       toolCalls: 2,
       memoryReads: memoryGate.ok ? 1 : 0,
     });
@@ -321,7 +320,6 @@ export async function POST(
       estimatedCredits: preEstimate.credits,
       provider: activeModel.provider,
       model: activeModel.model,
-      estimatedContextTokens: promptTokens,
     });
     if (!creditCheck.ok) {
       await createUserNotification({
@@ -450,7 +448,6 @@ export async function POST(
             estimatedCredits: preEstimate.credits,
             provider: activeModel.provider,
             model: activeModel.model,
-            estimatedContextTokens: contextTokens,
           });
           if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length, elapsedMs: timings.workspaceReadMs });

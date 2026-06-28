@@ -53,7 +53,7 @@ export type WorkspaceAgentResponse = {
     confidence: unknown;
     reflection: unknown;
     outputBudget?: {
-      maxTokens: number;
+      maxTokens?: number;
       category: string;
       targetRange: string;
       reason: string;
@@ -77,7 +77,7 @@ export type WorkspacePatchResponse = {
   model?: string;
   rawContent?: string;
   outputBudget?: {
-    maxTokens: number;
+    maxTokens?: number;
     category: string;
     targetRange: string;
     reason: string;
@@ -1858,15 +1858,14 @@ export async function askWorkspacePatch(
 ): Promise<WorkspacePatchResponse> {
   const cssOnly = targetFiles.length === 1 && targetFiles[0]?.path === "style.css";
   const outputBudget = cssOnly
-    ? { maxTokens: 650, category: "style_patch", targetRange: "400-800", reason: "Style-only patch should return a small find/replace patch." }
-    : { maxTokens: 900, category: "small_patch", targetRange: "600-1200", reason: "Small edit patch should avoid full file regeneration." };
+    ? { category: "style_patch", targetRange: "provider_default", reason: "No app-side max token cap is applied." }
+    : { category: "small_patch", targetRange: "provider_default", reason: "No app-side max token cap is applied." };
   const fileContext = targetFiles.map((file) => {
     const content = file.content.length > 6000 ? `${file.content.slice(0, 3000)}\n\n/* ...middle omitted for patch brevity... */\n\n${file.content.slice(-2500)}` : file.content;
     return `### ${file.path}\n\`\`\`\n${content}\n\`\`\``;
   }).join("\n\n");
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.1,
-    maxTokens: outputBudget.maxTokens,
     timeoutMs: 60_000,
     userId: runtime?.userId,
     taskType: runtime?.taskType || "workspace_patch",
@@ -1998,7 +1997,6 @@ Output contract:
     : `${dominanceBlock}\n\n${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files list only:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || (taskIsolation.standaloneGeneration ? "(old generated file content intentionally isolated for this new task)" : "(empty workspace)")}`;
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
-    maxTokens: outputBudget.maxTokens,
     timeoutMs: 120_000,
     userId: runtime?.userId,
     taskType: runtime?.taskType || "workspace_agent",
@@ -2038,7 +2036,6 @@ Output contract:
 }
 
 export function estimateWorkspaceOutputBudget(prompt: string) {
-  const lower = prompt.toLowerCase();
   const newStaticGeneration = isNewStaticGenerationPrompt(prompt);
   const explicitLargeApp = /\b(full[- ]stack|large app|multi[- ]page|dashboard|admin|backend|api|database|auth|next\.?js|react|vite|typescript|tsx|e[- ]commerce app|saas app)\b/i.test(prompt);
   const landingPage = isStaticWebsitePrompt(prompt) && /\b(landing|website|site|homepage|hero)\b/i.test(prompt);
@@ -2047,57 +2044,50 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
   if (explicitLargeApp) {
     return {
-      maxTokens: /\b(scaffold|full[- ]stack|multi[- ]page|large app)\b/i.test(prompt) ? 8600 : 7000,
       category: "large_app",
-      targetRange: "7000-9000",
-      reason: "Prompt asks for an app or framework-level project.",
+      targetRange: "provider_default",
+      reason: "No app-side max token cap is applied.",
     };
   }
   if (smallStaticEdit) {
     if (/\bstyle\.css\b/i.test(prompt) && (/\bonly\b|do not change|don'?t change|regenerate style\.css/i.test(prompt))) {
       return {
-        maxTokens: 1200,
         category: "style_only_edit",
-        targetRange: "900-1400",
-        reason: "Style-only edit should not request a full-page budget.",
+        targetRange: "provider_default",
+        reason: "No app-side max token cap is applied.",
       };
     }
     return {
-      maxTokens: /\bfaq|accordion\b/i.test(prompt) ? 1400 : 900,
       category: "small_edit",
-      targetRange: "700-1500",
-      reason: "Small static edit should avoid large output budgets.",
+      targetRange: "provider_default",
+      reason: "No app-side max token cap is applied.",
     };
   }
   if (premiumStatic) {
     return {
-      maxTokens: 3200,
       category: "premium_static_page",
-      targetRange: "2800-3400",
-      reason: "Premium static website uses a compact turbo budget to reduce provider timeouts.",
+      targetRange: "provider_default",
+      reason: "No app-side max token cap is applied.",
     };
   }
   if (landingPage) {
     return {
-      maxTokens: 4400,
       category: "landing_page",
-      targetRange: "4000-6000",
-      reason: "Landing page needs complete sections while staying below large-project budgets.",
+      targetRange: "provider_default",
+      reason: "No app-side max token cap is applied.",
     };
   }
   if (isStaticWebsitePrompt(prompt)) {
     return {
-      maxTokens: lower.includes("simple") ? 3000 : 3800,
       category: "static_landing_page",
-      targetRange: "3000-4000",
-      reason: "Static landing page fast path keeps output compact and quick.",
+      targetRange: "provider_default",
+      reason: "No app-side max token cap is applied.",
     };
   }
   return {
-    maxTokens: 4200,
     category: "standard_workspace_task",
-    targetRange: "3500-5000",
-    reason: "Default workspace task budget.",
+    targetRange: "provider_default",
+    reason: "No app-side max token cap is applied.",
   };
 }
 

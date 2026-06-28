@@ -65,7 +65,6 @@ export async function POST(
       estimatedCredits: preEstimate.credits,
       provider: activeModel.provider,
       model: activeModel.model,
-      estimatedContextTokens: promptTokens,
     });
     if (!creditCheck.ok) {
       await createUserNotification({
@@ -123,7 +122,6 @@ export async function POST(
       estimatedCredits: preEstimate.credits,
       provider: activeModel.provider,
       model: activeModel.model,
-      estimatedContextTokens: contextTokens,
     });
     if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
     await prisma.workspaceLog.create({
