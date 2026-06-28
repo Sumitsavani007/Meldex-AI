@@ -199,7 +199,10 @@ function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileActio
 <body>
   <header class="site-header">
     <a class="brand" href="#top" aria-label="Tasty Gujarat home"><span>TG</span>Tasty Gujarat</a>
-    <nav aria-label="Primary navigation">
+    <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
+    <nav class="nav-links" aria-label="Primary navigation">
       <a href="#dishes">Dishes</a>
       <a href="#how">How it works</a>
       <a href="#plans">Plans</a>
@@ -214,6 +217,11 @@ function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileActio
         <p class="eyebrow">Ahmedabad to your doorstep</p>
         <h1>Premium Gujarati meals delivered hot, fast, and full of ghar jaisi taste.</h1>
         <p class="lede">Tasty Gujarat brings curated thalis, farsan, sweets, and festive family packs from trusted local kitchens in a dark, premium delivery experience.</p>
+        <div class="hero-badges" aria-label="Food quality badges">
+          <span>Pure veg</span>
+          <span>Jain options</span>
+          <span>Festival specials</span>
+        </div>
         <div class="hero-actions">
           <button class="primary-btn" type="button" data-scroll="#dishes">Explore dishes</button>
           <button class="secondary-btn" type="button" data-scroll="#how">How it works</button>
@@ -226,6 +234,8 @@ function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileActio
       </div>
       <div class="hero-visual" aria-label="Gujarati thali preview">
         <div class="glow"></div>
+        <div class="floating-card card-one"><strong>Live order</strong><span>Kathiyawadi Thali · 18 min</span></div>
+        <div class="floating-card card-two"><strong>Chef picked</strong><span>Fresh fafda jalebi combo</span></div>
         <div class="thali-card">
           <div class="dish large">થેપલા</div>
           <div class="dish">ઢોકળા</div>
@@ -287,6 +297,13 @@ function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileActio
         <div class="faq-panel">Yes, Tasty Gujarat focuses on pure vegetarian Gujarati food with Jain options where available.</div>
       </div>
     </section>
+
+    <section class="final-cta reveal" aria-labelledby="final-title">
+      <p class="eyebrow">Tonight's dinner is sorted</p>
+      <h2 id="final-title">Bring Gujarat's favorite kitchens to your table in one tap.</h2>
+      <p>Order snacks, thalis, sweets, and family packs with premium delivery, real-time tracking, and trusted vegetarian kitchens.</p>
+      <button class="primary-btn" type="button" data-scroll="#plans">Start with a plan</button>
+    </section>
   </main>
 
   <footer>© 2026 Tasty Gujarat. Premium Gujarati food, delivered with love.</footer>
@@ -314,7 +331,10 @@ body {
     radial-gradient(circle at 15% 8%, rgba(255, 179, 71, 0.22), transparent 28rem),
     radial-gradient(circle at 86% 18%, rgba(255, 92, 122, 0.18), transparent 24rem),
     linear-gradient(180deg, #100b13 0%, var(--bg) 44%, #0d0b08 100%);
+  background-size: 120% 120%, 120% 120%, 100% 100%;
   color: var(--text);
+  overflow-x: hidden;
+  animation: backgroundDrift 16s ease-in-out infinite alternate;
 }
 .site-header {
   position: sticky; top: 0; z-index: 20;
@@ -328,26 +348,46 @@ body {
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 850; letter-spacing: -0.03em; }
 .brand span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 12px; background: linear-gradient(135deg, var(--saffron), var(--rose)); color: #180b05; }
 nav { display: flex; gap: 22px; color: var(--muted); font-size: 14px; }
+nav a { position: relative; padding: 8px 0; }
+nav a::after { content: ""; position: absolute; left: 0; right: 0; bottom: 2px; height: 1px; transform: scaleX(0); transform-origin: left; background: linear-gradient(90deg, var(--saffron), var(--rose)); transition: transform .22s ease; }
 nav a:hover { color: var(--text); }
+nav a:hover::after { transform: scaleX(1); }
 button { font: inherit; }
+.menu-toggle {
+  display: none; width: 42px; height: 42px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255,255,255,.06); cursor: pointer;
+}
+.menu-toggle span { display: block; width: 18px; height: 2px; margin: 4px auto; border-radius: 99px; background: var(--text); transition: transform .2s ease, opacity .2s ease; }
+.menu-toggle.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+.menu-toggle.open span:nth-child(2) { opacity: 0; }
+.menu-toggle.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 .header-cta, .primary-btn, .secondary-btn, .plan button {
   border: 1px solid var(--border); border-radius: 999px; padding: 12px 18px; cursor: pointer;
-  color: var(--text); background: rgba(255,255,255,.06); transition: transform .2s ease, border-color .2s ease, background .2s ease;
+  color: var(--text); background: rgba(255,255,255,.06); transition: transform .2s ease, border-color .2s ease, background .2s ease, box-shadow .2s ease;
 }
 .header-cta, .primary-btn, .plan.featured button { background: linear-gradient(135deg, var(--saffron), var(--rose)); color: #1b0d07; border-color: transparent; font-weight: 800; }
 button:hover { transform: translateY(-2px); }
+button:focus-visible, a:focus-visible { outline: 3px solid rgba(255,179,71,.35); outline-offset: 4px; }
+.primary-btn:hover, .header-cta:hover, .plan.featured button:hover { box-shadow: 0 18px 50px rgba(255, 114, 94, .24); }
 .hero { min-height: 86vh; display: grid; grid-template-columns: 1.08fr .92fr; gap: clamp(32px, 5vw, 76px); align-items: center; padding: clamp(56px, 8vw, 108px) clamp(18px, 5vw, 86px); }
 .eyebrow { margin: 0 0 14px; color: var(--saffron); font-size: 12px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { max-width: 860px; font-size: clamp(46px, 7.8vw, 104px); line-height: .9; letter-spacing: -0.075em; margin-bottom: 24px; }
 .lede { max-width: 720px; color: var(--muted); font-size: clamp(17px, 2vw, 22px); line-height: 1.7; }
+.hero-badges { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 22px; }
+.hero-badges span { border: 1px solid rgba(255,179,71,.2); border-radius: 999px; padding: 8px 12px; background: rgba(255,179,71,.07); color: #ffd79a; font-size: 13px; font-weight: 750; }
 .hero-actions, .hero-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 30px; }
 .hero-stats span { border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; color: var(--muted); background: rgba(255,255,255,.045); }
 .hero-stats strong { display: block; color: var(--text); font-size: 20px; }
 .hero-visual { position: relative; min-height: 520px; display: grid; place-items: center; }
 .glow { position: absolute; width: 72%; aspect-ratio: 1; border-radius: 50%; background: conic-gradient(from 90deg, var(--saffron), var(--rose), var(--green), var(--saffron)); filter: blur(46px); opacity: .34; animation: spin 14s linear infinite; }
+.floating-card { position: absolute; z-index: 2; display: grid; gap: 3px; min-width: 190px; border: 1px solid rgba(255,255,255,.18); border-radius: 18px; padding: 14px 16px; background: rgba(13,11,8,.58); box-shadow: 0 20px 70px rgba(0,0,0,.32); backdrop-filter: blur(18px); animation: floatY 4.8s ease-in-out infinite; }
+.floating-card strong { font-size: 13px; }
+.floating-card span { color: var(--muted); font-size: 12px; }
+.card-one { top: 42px; right: 4%; }
+.card-two { left: 0; bottom: 70px; animation-delay: -1.7s; }
 .thali-card { position: relative; display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 16px; width: min(460px, 100%); padding: 24px; border: 1px solid var(--border); border-radius: 34px; background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.045)); box-shadow: 0 30px 110px rgba(0,0,0,.42); backdrop-filter: blur(18px); }
-.dish { min-height: 120px; display: grid; place-items: center; border-radius: 26px; color: #211006; background: linear-gradient(135deg, #ffd79a, #ff9b73); font-size: 22px; font-weight: 850; box-shadow: inset 0 1px rgba(255,255,255,.5); }
+.dish { min-height: 120px; display: grid; place-items: center; border-radius: 26px; color: #211006; background: linear-gradient(135deg, #ffd79a, #ff9b73); font-size: 22px; font-weight: 850; box-shadow: inset 0 1px rgba(255,255,255,.5); transition: transform .24s ease, box-shadow .24s ease; }
+.dish:hover { transform: translateY(-4px) rotate(-1deg); box-shadow: inset 0 1px rgba(255,255,255,.55), 0 18px 40px rgba(255, 140, 90, .18); }
 .dish.large { grid-row: span 2; min-height: 256px; font-size: 32px; background: linear-gradient(135deg, #fff1b8, #ffb347); }
 .section { padding: 78px clamp(18px, 5vw, 86px); }
 .section-heading { max-width: 760px; margin-bottom: 30px; }
@@ -355,8 +395,10 @@ h1 { max-width: 860px; font-size: clamp(46px, 7.8vw, 104px); line-height: .9; le
 .dish-grid, .steps, .plans { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
 .steps, .plans { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .food-card, .steps article, .plan, .faq-panel {
-  border: 1px solid var(--border); border-radius: 26px; background: var(--panel); padding: 24px; box-shadow: 0 18px 60px rgba(0,0,0,.18);
+  min-height: 100%;
+  border: 1px solid var(--border); border-radius: 26px; background: linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.045)); padding: 24px; box-shadow: 0 18px 60px rgba(0,0,0,.18); transition: transform .24s ease, border-color .24s ease, box-shadow .24s ease;
 }
+.food-card:hover, .steps article:hover, .plan:hover { transform: translateY(-6px); border-color: rgba(255,179,71,.34); box-shadow: 0 26px 90px rgba(0,0,0,.3); }
 .food-card span { font-size: 34px; }
 .food-card p, .steps p, .plan li, .faq-panel { color: var(--muted); line-height: 1.65; }
 .food-card strong { color: var(--saffron); font-size: 20px; }
@@ -368,15 +410,24 @@ h1 { max-width: 860px; font-size: clamp(46px, 7.8vw, 104px); line-height: .9; le
 .plan ul { padding-left: 18px; }
 .accordion { max-width: 900px; }
 .faq-item { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 18px 0; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; text-align: left; }
-.faq-panel { display: none; margin: 14px 0; }
-.faq-panel.open { display: block; animation: fadeUp .24s ease both; }
+.faq-panel { display: grid; grid-template-rows: 0fr; margin: 0; padding-block: 0; opacity: 0; overflow: hidden; transition: grid-template-rows .28s ease, opacity .28s ease, margin .28s ease, padding .28s ease; }
+.faq-panel.open { grid-template-rows: 1fr; margin: 14px 0; padding-block: 24px; opacity: 1; }
+.final-cta { margin: 42px clamp(18px, 5vw, 86px) 86px; padding: clamp(34px, 6vw, 72px); border: 1px solid rgba(255,179,71,.24); border-radius: 34px; background: radial-gradient(circle at 18% 20%, rgba(255,179,71,.18), transparent 26rem), linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.05)); box-shadow: 0 30px 120px rgba(0,0,0,.32); }
+.final-cta h2 { max-width: 920px; margin-bottom: 16px; font-size: clamp(34px, 5vw, 70px); line-height: .98; letter-spacing: -0.06em; }
+.final-cta p { max-width: 720px; color: var(--muted); font-size: 18px; line-height: 1.7; }
 footer { padding: 32px clamp(18px, 5vw, 86px); color: var(--muted); border-top: 1px solid var(--border); }
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .65s ease, transform .65s ease; }
 .reveal.visible { opacity: 1; transform: translateY(0); }
+@keyframes backgroundDrift { from { background-position: 0% 0%, 100% 0%, 0 0; } to { background-position: 6% 4%, 92% 8%, 0 0; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes floatY { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
 @keyframes fadeUp { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 980px) {
-  nav { display: none; }
+  .menu-toggle { display: block; }
+  .nav-links { position: absolute; left: 16px; right: 16px; top: calc(100% + 10px); display: none; flex-direction: column; gap: 4px; border: 1px solid var(--border); border-radius: 20px; padding: 12px; background: rgba(12,9,12,.94); box-shadow: 0 24px 80px rgba(0,0,0,.35); backdrop-filter: blur(18px); }
+  .nav-links.open { display: flex; animation: fadeUp .2s ease both; }
+  .nav-links a { padding: 12px; border-radius: 12px; }
+  .nav-links a:hover { background: rgba(255,255,255,.06); }
   .hero { grid-template-columns: 1fr; min-height: auto; }
   .dish-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .steps, .plans { grid-template-columns: 1fr; }
@@ -387,14 +438,35 @@ footer { padding: 32px clamp(18px, 5vw, 86px); color: var(--muted); border-top: 
   .header-cta { display: none; }
   .hero { padding-top: 42px; }
   .hero-visual { min-height: 360px; }
+  .floating-card { position: relative; inset: auto; width: 100%; min-width: 0; margin-bottom: 10px; animation: none; }
   .thali-card { grid-template-columns: 1fr; border-radius: 24px; }
   .dish, .dish.large { min-height: 88px; font-size: 21px; }
   .dish-grid { grid-template-columns: 1fr; }
+  .hero-actions .primary-btn, .hero-actions .secondary-btn { width: 100%; }
+  .hero-stats span { flex: 1 1 100%; }
+  .final-cta { margin-inline: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }`;
-    const js = `const scrollButtons = document.querySelectorAll("[data-scroll]");
+    const js = `const menuToggle = document.querySelector(".menu-toggle");
+const navLinks = document.querySelector(".nav-links");
+
+menuToggle?.addEventListener("click", () => {
+  const open = navLinks?.classList.toggle("open");
+  menuToggle.classList.toggle("open", Boolean(open));
+  menuToggle.setAttribute("aria-expanded", String(Boolean(open)));
+});
+
+document.querySelectorAll(".nav-links a").forEach((link) => {
+  link.addEventListener("click", () => {
+    navLinks?.classList.remove("open");
+    menuToggle?.classList.remove("open");
+    menuToggle?.setAttribute("aria-expanded", "false");
+  });
+});
+
+const scrollButtons = document.querySelectorAll("[data-scroll]");
 scrollButtons.forEach((button) => {
   button.addEventListener("click", () => {
     const target = document.querySelector(button.dataset.scroll || "");
@@ -414,10 +486,12 @@ const observer = new IntersectionObserver((entries) => {
 document.querySelectorAll(".reveal").forEach((item) => observer.observe(item));
 
 document.querySelectorAll(".faq-item").forEach((button) => {
+  button.setAttribute("aria-expanded", "false");
   button.addEventListener("click", () => {
     const panel = button.nextElementSibling;
     const icon = button.querySelector("strong");
     const open = panel?.classList.toggle("open");
+    button.setAttribute("aria-expanded", String(Boolean(open)));
     if (icon) icon.textContent = open ? "−" : "+";
   });
 });`;
@@ -1306,7 +1380,8 @@ export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnT
   });
   const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
 Website Designer Agent V2:
-- Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
+- Enable DESIGN QUALITY MODE: AWARD WINNING / PIXEL PERFECT. Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
+- Before returning files, score visual design, responsiveness, animation, accessibility, code quality, and preview quality. If any score is below 9/10, improve the files again internally before returning.
 - Detect category internally from Restaurant, Hotel, Cafe, Portfolio, Agency, AI Startup, SaaS, E-commerce, Landing Page, Corporate, Healthcare, Education, Finance, Travel, Event, Photography, Construction, Real Estate, Gaming, Developer Tool, Open Source, Admin Dashboard, Blog, Documentation.
 - Give every website a distinct design system: palette, typography, spacing, radius, buttons, cards, shadows, icons, animation language.
 - Never return only a centered heading, paragraph, button, and footer. Use complete sections for the category.
@@ -1315,7 +1390,8 @@ Website Designer Agent V2:
 - Portfolio: hero, projects, skills, experience, testimonials, contact, footer.
 - For animated/modern/beautiful/premium/creative prompts, include tasteful IntersectionObserver reveals, hover motion, smooth scrolling, gradient/glass effects, responsive grids, and reduced-motion support.
 - Static website tasks must remain dependency-free unless explicitly asked. If the user says "only index.html, style.css, script.js", create exactly those three files and no README/internal files. Otherwise static sites may include README.md.
-- Internal visual score must be 90+ for hierarchy, spacing, typography, responsiveness, animation, color, component quality, completeness, and accessibility before returning.` : "";
+- Premium pages must include strong first impression, animated gradient/background system, equal-height glass cards, CTA hierarchy, trust metrics, keyboard focus states, mobile navigation, FAQ accordion, no overflow at 390px, and reduced-motion support.
+- Internal visual score must be 95+ for hierarchy, spacing, typography, responsiveness, animation, color, component quality, completeness, accessibility, and preview quality before returning.` : "";
   const system = `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:
 {
