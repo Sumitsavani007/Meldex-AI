@@ -1,49 +1,19 @@
 # AI Studio Live QA Report
 
-Date: 2026-06-28
+Date: 2026-06-29
 
 ## Local QA
 
-- `npm run lint` passed with existing Workspace hook warnings.
-- `npm run build` passed.
-- Studio routes compiled:
-  - `/studio`
-  - `/api/studio/projects`
-  - `/api/studio/projects/[id]`
-  - `/api/studio/generate`
-  - `/api/studio/scenes/[id]/update`
-  - `/api/studio/provider/status`
+- `npm run lint`: passed with existing workspace hook warnings only.
+- `npm run build`: passed.
 
-## QA Coverage
+## Functional Coverage
 
-- Project CRUD implemented.
-- Settings persistence implemented.
-- OpenRouter storyboard stream implemented.
-- Provider status honesty implemented.
-- Storyboard/timeline persistence implemented.
+- Studio route compiles as `/studio`.
+- Generate flow is connected to the existing backend SSE route.
+- Prompt, settings, avatar, quick-add uploads, storyboard, timeline, and provider status surfaces are wired in the client.
 
-## Live Authenticated QA
+## Deployment Note
 
-- Created a live credentials QA session.
-- Created AI Studio project: `Gujarati Rain QA`.
-- Provider status endpoint returned:
-  - OpenRouter: `connected`
-  - ComfyUI/Wan 2.1/FLUX/SDXL/XTTS/FFmpeg: `not_configured`
-- Ran Gujarati prompt:
+- This report covers local verification. Production deployment should pull the latest commit and rebuild/restart the app.
 
-`એક છોકરો વરસાદમાં ગામની ગલીમાં દોડે છે અને છેલ્લે સૂર્ય નીકળે છે, cinematic video બનાવો.`
-
-Result:
-
-- Stream completed with `done`.
-- Language detected: `Gujarati`.
-- Generation status: `COMPLETED`.
-- Scenes generated: `2`.
-- Enhanced prompt persisted: yes.
-- Local provider warning shown honestly through provider status event.
-- Settings persistence verified: `720p`, `9:16`, `30fps`, `Anime`.
-- Scene update persistence verified: duration `5`, camera `Orbit`, prompt updated.
-
-## Remaining V1 Boundary
-
-Real video rendering awaits local provider configuration.

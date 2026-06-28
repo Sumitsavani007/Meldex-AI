@@ -1,29 +1,48 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import {
   Aperture,
-  CheckCircle2,
+  Bell,
+  Box,
+  Check,
+  ChevronDown,
   Clapperboard,
   Copy,
-  Edit3,
-  Film,
+  Folder,
+  Frame,
+  Grid2X2,
+  HelpCircle,
   ImageIcon,
   Mic2,
+  Moon,
   Music2,
+  PanelLeftClose,
   Play,
   Plus,
   RefreshCw,
   Search,
   Settings2,
+  SlidersHorizontal,
+  Sparkles,
+  Sun,
   Trash2,
   Upload,
   Wand2,
+  X,
 } from "lucide-react";
-import { UserPanelShell } from "@/components/user-panel-shell";
 import { cn } from "@/lib/utils";
+
+type StudioAsset = {
+  id: string;
+  type: string;
+  name: string;
+  url?: string | null;
+  mimeType?: string | null;
+  sizeBytes?: number;
+};
 
 type StudioProject = {
   id: string;
@@ -35,7 +54,9 @@ type StudioProject = {
   resolution: string;
   durationSec: number;
   aspectRatio: string;
+  fps?: number;
   updatedAt: string;
+  assets?: StudioAsset[];
   generations?: StudioGeneration[];
   _count?: { assets: number; generations: number; scenes: number };
 };
@@ -70,6 +91,7 @@ type StudioPlan = {
   enhancedPrompt?: string;
   detectedLanguage?: string;
   style?: string;
+  negativePrompt?: string;
   scenes?: StudioScene[];
   timeline?: Array<{ scene: number; start: number; end: number; label: string }>;
 };
@@ -89,35 +111,69 @@ type ProviderStatus = {
   message: string;
 };
 
-const studioNav = [
-  { label: "Projects", icon: Clapperboard },
-  { label: "Recent", icon: RefreshCw },
-  { label: "Templates", icon: Film },
-  { label: "Assets", icon: ImageIcon },
-  { label: "Brand Kit", icon: Aperture },
-  { label: "Uploads", icon: Upload },
-  { label: "AI Voices", icon: Mic2 },
-  { label: "Music", icon: Music2 },
-  { label: "Settings", icon: Settings2 },
+type UploadedItem = {
+  id: string;
+  type: "frame" | "clip" | "audio" | "avatar";
+  name: string;
+  dataUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+const navItems = [
+  { key: "studio", label: "AI Studio", icon: Sparkles },
+  { key: "projects", label: "Projects", icon: Folder },
+  { key: "templates", label: "Templates", icon: Grid2X2 },
+  { key: "assets", label: "Assets", icon: ImageIcon },
+  { key: "uploads", label: "Uploads", icon: Upload },
+  { key: "voices", label: "AI Voices", icon: Mic2 },
+  { key: "music", label: "Music", icon: Music2 },
+  { key: "settings", label: "Settings", icon: Settings2 },
 ];
 
 const templatePresets = [
   { name: "Cinematic Product Reveal", prompt: "Create a premium cinematic product reveal video with dramatic lighting, close-up macro shots, slow dolly motion, and an elegant final hero frame.", styleLock: "Cinematic", cameraMotion: "Dolly", aspectRatio: "16:9" },
   { name: "Gujarati Festival Story", prompt: "ગુજરાતી તહેવારની ખુશી બતાવતો cinematic video બનાવો: રંગોળી, દીવા, પરિવાર, ધીમો કેમેરા મૂવમેન્ટ અને ગરમ golden hour lighting.", styleLock: "Cinematic", cameraMotion: "Tracking", aspectRatio: "16:9" },
   { name: "Luxury Fashion Reel", prompt: "Create a luxury fashion reel with runway pacing, soft studio lighting, fabric close-ups, confident model movement, and premium editorial mood.", styleLock: "Realistic", cameraMotion: "Steadicam", aspectRatio: "9:16" },
-  { name: "YouTube Explainer", prompt: "Create a clean YouTube explainer video concept with animated scene beats, readable visual metaphors, confident narration pacing, and clear transitions.", styleLock: "3D", cameraMotion: "Zoom", aspectRatio: "16:9" },
   { name: "Instagram Reel", prompt: "Create a fast premium Instagram reel with a strong opening hook, kinetic cuts, stylish captions, and a satisfying final CTA moment.", styleLock: "Cyberpunk", cameraMotion: "Handheld", aspectRatio: "9:16" },
-  { name: "Short Film Scene", prompt: "Create an emotional short film scene with character-driven blocking, atmospheric lighting, subtle camera movement, and a cinematic ending.", styleLock: "Cinematic", cameraMotion: "Dolly", aspectRatio: "21:9" },
 ];
-const templates = templatePresets.map((template) => template.name);
-const styles = ["Cinematic", "Realistic", "Anime", "Pixar", "Cyberpunk", "3D", "Fantasy", "Oil Painting"];
+
+const styles = ["Cinematic", "Realistic", "Anime", "3D Render", "Fantasy", "Vintage"];
 const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam", "Zoom", "Tilt"];
-const ratios = ["16:9", "9:16", "1:1", "4:5", "21:9"];
-const studioFieldClass =
-  "border border-slate-300/80 bg-white text-slate-950 shadow-inner shadow-slate-950/5 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/25 dark:border-white/10 dark:bg-[#080a12]/90 dark:text-white dark:placeholder:text-white/35 dark:focus:border-violet-300/70 dark:focus:ring-violet-300/15";
-const studioSelectClass =
-  `${studioFieldClass} [color-scheme:light] [&>option]:bg-white [&>option]:text-slate-950 dark:[color-scheme:dark] dark:[&>option]:bg-[#080a12] dark:[&>option]:text-white`;
-const studioTextareaClass = `${studioFieldClass} resize-none`;
+const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
+const fpsOptions = [24, 30, 48, 60];
+const resolutions = [
+  { label: "1080P", sub: "1920 x 1080", value: "1080p" },
+  { label: "720P", sub: "1280 x 720", value: "720p" },
+];
+const quickAdd = [
+  { type: "frame" as const, label: "Frame", accept: "image/*", icon: Frame },
+  { type: "clip" as const, label: "Clip", accept: "video/*", icon: Plus },
+  { type: "audio" as const, label: "Audio", accept: "audio/*", icon: Music2 },
+];
+
+const avatarSeed = [
+  ["D", "#f8c59a", "#111827"],
+  ["A", "#f2b6c8", "#4c0519"],
+  ["K", "#f5b64a", "#111827"],
+  ["N", "#c29b76", "#172554"],
+  ["M", "#a1633d", "#111827"],
+  ["R", "#d49a69", "#3b0764"],
+] as const;
+
+const studioTokens = {
+  app: "bg-[#f5f7fb] text-slate-950 dark:bg-[#050911] dark:text-white",
+  line: "border-slate-200/80 dark:border-white/10",
+  panel: "border border-slate-200/80 bg-white/86 shadow-xl shadow-slate-950/5 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b121c]/78 dark:shadow-black/30",
+  soft: "border border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-white/[0.035]",
+  input: "border border-slate-300/80 bg-white text-slate-950 shadow-inner shadow-slate-950/5 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10 dark:bg-[#080d16]/92 dark:text-white dark:placeholder:text-white/38 dark:focus:border-violet-300/70 dark:focus:ring-violet-300/15",
+  muted: "text-slate-500 dark:text-white/58",
+  faint: "text-slate-400 dark:text-white/38",
+};
+
+function fallbackPrompt() {
+  return "એક છોકરો વરસાદમાં ગામની ગલીમાં દોડે છે અને છેલ્લે સૂર્ય નીકળે છે, cinematic video બનાવો.";
+}
 
 function timeAgo(value?: string) {
   if (!value) return "now";
@@ -129,39 +185,105 @@ function timeAgo(value?: string) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function fallbackPrompt() {
-  return "એક છોકરો વરસાદમાં દોડી રહ્યો છે, કેમેરા ધીમે ધીમે ઉપર જાય છે, વાદળો ખૂલે છે અને સૂર્ય નીકળે છે. Cinematic, emotional, premium.";
+function avatarDataUrl(seed: (typeof avatarSeed)[number]) {
+  const [letter, bg, fg] = seed;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="${bg}"/><stop offset="1" stop-color="#111827"/></linearGradient></defs><rect width="96" height="96" rx="48" fill="url(#g)"/><circle cx="48" cy="38" r="16" fill="${fg}" opacity=".92"/><path d="M20 86c5-21 51-21 56 0" fill="${fg}" opacity=".88"/><text x="48" y="88" text-anchor="middle" font-size="18" font-family="Inter,Arial" font-weight="700" fill="white">${letter}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
+function formatBytes(bytes = 0) {
+  if (!bytes) return "0 KB";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function StudioPage() {
-  const { status } = useSession({ required: true });
+  const { data: session, status } = useSession({ required: true });
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [activeNav, setActiveNav] = useState("studio");
+  const [mobileTab, setMobileTab] = useState("create");
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProject, setSelectedProject] = useState<StudioProject | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
   const [prompt, setPrompt] = useState(fallbackPrompt());
+  const [promptHistory, setPromptHistory] = useState<string[]>([]);
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Ready");
-  const [activeSection, setActiveSection] = useState("Projects");
-  const [projectSearch, setProjectSearch] = useState("");
   const [providerStatuses, setProviderStatuses] = useState<ProviderStatus[]>([]);
+  const [selectedAvatar, setSelectedAvatar] = useState(0);
+  const [uploads, setUploads] = useState<UploadedItem[]>([]);
   const [settings, setSettings] = useState({
+    model: "OpenRouter active model",
     resolution: "1080p",
-    durationSec: 8,
+    durationSec: 5,
     aspectRatio: "16:9",
     fps: 24,
     seed: "",
+    contentPreference: "Auto",
     negativePrompt: "low quality, blurry, distorted faces, watermark",
     motionStrength: 56,
     cameraMotion: "Dolly",
     styleLock: "Cinematic",
     consistency: 74,
   });
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const quickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
+  const avatarUrls = useMemo(() => [...avatarSeed.map(avatarDataUrl), ...uploads.filter((item) => item.type === "avatar").map((item) => item.dataUrl)], [uploads]);
   const latestGeneration = selectedProject?.generations?.[0];
   const scenes = latestGeneration?.scenes || latestGeneration?.storyboardJson?.scenes || [];
   const timeline = latestGeneration?.storyboardJson?.timeline || scenes.map((scene, index) => ({ scene: index + 1, start: index * 4, end: (index + 1) * 4, label: scene.title }));
   const filteredProjects = projects.filter((project) => project.name.toLowerCase().includes(projectSearch.toLowerCase()));
+  const referenceAsset = uploads.find((item) => item.type === "frame" || item.type === "clip");
+  const localProvider = providerStatuses.find((provider) => provider.status !== "connected" && provider.key !== "openrouter");
+  const progress = useMemo(() => {
+    if (!loading && latestGeneration?.status === "COMPLETED") return 100;
+    if (!events.length) return 0;
+    const map: Record<string, number> = {
+      request_received: 8,
+      language_detection: 18,
+      prompt_enhancement: 32,
+      story_generation: 44,
+      scene_breakdown: 56,
+      storyboard_started: 68,
+      storyboard_ready: 78,
+      shot_planner: 86,
+      timeline_updated: 92,
+      preview_ready: 96,
+      done: 100,
+    };
+    return map[events.at(-1)?.type || ""] || 12;
+  }, [events, loading, latestGeneration?.status]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("meldex_studio_prompt_history");
+    if (saved) setPromptHistory(JSON.parse(saved).slice(0, 8));
+  }, []);
+
+  useEffect(() => {
+    if (!promptRef.current) return;
+    promptRef.current.style.height = "auto";
+    promptRef.current.style.height = `${Math.max(216, promptRef.current.scrollHeight)}px`;
+  }, [prompt]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    loadProjects().catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load AI Studio"));
+    loadProviderStatus().catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   async function loadProjects(projectId = selectedProjectId) {
     const response = await fetch("/api/studio/projects", { cache: "no-store" });
@@ -180,19 +302,22 @@ export default function StudioPage() {
     const response = await fetch(`/api/studio/projects/${id}`, { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to load Studio project");
-    setSelectedProject(data.project);
+    const project = data.project as StudioProject;
+    setSelectedProject(project);
     setSelectedProjectId(id);
-    const savedSettings = data.project.settingsJson && typeof data.project.settingsJson === "object" ? data.project.settingsJson : {};
+    const savedSettings = project.settingsJson && typeof project.settingsJson === "object" ? project.settingsJson : {};
     setSettings((current) => ({
       ...current,
       ...(savedSettings as Partial<typeof current>),
-      resolution: data.project.resolution || current.resolution,
-      durationSec: data.project.durationSec || current.durationSec,
-      aspectRatio: data.project.aspectRatio || current.aspectRatio,
-      fps: data.project.fps || current.fps,
-      seed: data.project.seed || current.seed,
-      styleLock: data.project.styleLock || current.styleLock,
+      resolution: project.resolution || current.resolution,
+      durationSec: project.durationSec || current.durationSec,
+      aspectRatio: project.aspectRatio || current.aspectRatio,
+      fps: project.fps || current.fps,
+      seed: project.seed || current.seed,
+      styleLock: project.styleLock || current.styleLock,
     }));
+    const savedUploads = Array.isArray(savedSettings.uploads) ? savedSettings.uploads as UploadedItem[] : [];
+    if (savedUploads.length) setUploads(savedUploads);
   }
 
   async function createProject() {
@@ -206,6 +331,7 @@ export default function StudioPage() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to create project");
     await loadProjects(data.project.id);
+    setActiveNav("studio");
   }
 
   async function updateProject(body: Record<string, unknown>, reload = true) {
@@ -220,11 +346,11 @@ export default function StudioPage() {
     if (reload) await loadProject(data.project.id);
   }
 
-  async function saveSettings(nextSettings = settings) {
+  async function saveSettings(nextSettings = settings, nextUploads = uploads) {
     if (!selectedProject) return;
     await updateProject({
       action: "settings",
-      settings: nextSettings,
+      settings: { ...nextSettings, uploads: nextUploads },
       styleLock: nextSettings.styleLock,
       aspectRatio: nextSettings.aspectRatio,
       resolution: nextSettings.resolution,
@@ -233,6 +359,12 @@ export default function StudioPage() {
       seed: nextSettings.seed || null,
     }, false);
     setMessage("Settings saved");
+  }
+
+  async function loadProviderStatus() {
+    const response = await fetch("/api/studio/provider/status", { method: "POST", cache: "no-store" });
+    const data = await response.json();
+    if (response.ok) setProviderStatuses(data.providers || []);
   }
 
   async function renameProject() {
@@ -256,12 +388,6 @@ export default function StudioPage() {
     if (!selectedProject) return;
     await updateProject({ action: "duplicate" });
     await loadProjects();
-  }
-
-  async function loadProviderStatus() {
-    const response = await fetch("/api/studio/provider/status", { method: "POST", cache: "no-store" });
-    const data = await response.json();
-    if (response.ok) setProviderStatuses(data.providers || []);
   }
 
   function applyTemplate(name: string) {
@@ -293,8 +419,25 @@ export default function StudioPage() {
     if (selectedProject) await loadProject(selectedProject.id);
   }
 
+  function updatePromptHistory(value: string) {
+    const next = [value, ...promptHistory.filter((item) => item !== value)].slice(0, 8);
+    setPromptHistory(next);
+    window.localStorage.setItem("meldex_studio_prompt_history", JSON.stringify(next));
+  }
+
+  async function handleUpload(type: UploadedItem["type"], files?: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    const dataUrl = await readFileAsDataUrl(file);
+    const item = { id: `${type}-${Date.now()}`, type, name: file.name, dataUrl, mimeType: file.type, sizeBytes: file.size };
+    const nextUploads = type === "avatar" ? [...uploads.filter((upload) => upload.type !== "avatar"), item] : [item, ...uploads.filter((upload) => upload.id !== item.id)].slice(0, 10);
+    setUploads(nextUploads);
+    if (type === "avatar") setSelectedAvatar(avatarSeed.length);
+    await saveSettings(settings, nextUploads).catch(() => setMessage("Upload saved locally; project save failed"));
+  }
+
   function exportJson() {
-    const payload = JSON.stringify({ project: selectedProject, generation: latestGeneration, scenes, timeline }, null, 2);
+    const payload = JSON.stringify({ project: selectedProject, generation: latestGeneration, scenes, timeline, uploads }, null, 2);
     const blob = new Blob([payload], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -309,6 +452,8 @@ export default function StudioPage() {
     setLoading(true);
     setEvents([]);
     setMessage("Starting AI Studio pipeline");
+    updatePromptHistory(prompt.trim());
+    await saveSettings(settings).catch(() => undefined);
     try {
       const response = await fetch("/api/studio/generate", {
         method: "POST",
@@ -337,6 +482,7 @@ export default function StudioPage() {
         }
       }
       await loadProject(selectedProject.id);
+      await loadProviderStatus();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "AI Studio generation failed");
     } finally {
@@ -344,156 +490,331 @@ export default function StudioPage() {
     }
   }
 
-  useEffect(() => {
-    if (status !== "authenticated") return;
-    loadProjects().catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load AI Studio"));
-    loadProviderStatus().catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  function setSetting<K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    saveSettings(next).catch(() => undefined);
+  }
 
-  const progress = useMemo(() => {
-    if (!loading && latestGeneration?.status === "COMPLETED") return 100;
-    if (!events.length) return 0;
-    const map: Record<string, number> = {
-      request_received: 8,
-      language_detection: 18,
-      prompt_enhancement: 32,
-      scene_breakdown: 48,
-      storyboard_ready: 68,
-      shot_planner: 80,
-      timeline_updated: 90,
-      preview_ready: 96,
-      done: 100,
-    };
-    return map[events.at(-1)?.type || ""] || 12;
-  }, [events, loading, latestGeneration?.status]);
-
-  return (
-    <UserPanelShell title="AI Studio" eyebrow="Meldex Studio" description="Cinematic prompt enhancement, storyboard planning, timeline editing, and media project control.">
-      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#070812] text-white shadow-2xl shadow-violet-950/20">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(124,92,255,0.32),transparent_28%),radial-gradient(circle_at_80%_8%,rgba(0,208,255,0.18),transparent_24%),radial-gradient(circle_at_60%_90%,rgba(255,92,180,0.18),transparent_26%)]" />
-        <div className="pointer-events-none absolute inset-0 opacity-[0.08]" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.8) 1px, transparent 1px)", backgroundSize: "42px 42px" }} />
-        <div className="relative grid min-h-[calc(100vh-154px)] grid-cols-1 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-          <aside className="border-r border-white/10 bg-white/[0.035] p-4 backdrop-blur-xl">
-            <div className="mb-5 flex items-center gap-3">
-              <span className="grid size-10 place-items-center rounded-2xl bg-violet-500 shadow-lg shadow-violet-500/30"><Clapperboard className="size-5" /></span>
-              <div>
-                <p className="text-sm font-semibold">Meldex AI Studio</p>
-                <p className="text-[11px] text-white/45">Media creation OS</p>
-              </div>
-            </div>
-            <button onClick={createProject} className="mb-4 flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-semibold text-[#080912] transition hover:scale-[1.01]"><Plus className="size-4" /> New project</button>
-            <nav className="space-y-1">
-              {studioNav.map((item) => <button key={item.label} onClick={() => setActiveSection(item.label)} className={cn("flex h-9 w-full items-center gap-3 rounded-xl px-3 text-left text-[13px] transition", activeSection === item.label ? "bg-white/12 text-white" : "text-white/62 hover:bg-white/8 hover:text-white")}><item.icon className="size-4" />{item.label}</button>)}
-            </nav>
-            <div className="mt-6">
-              <div className="mb-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/55"><Search className="size-3.5" /><input value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Search projects" className="min-w-0 flex-1 bg-transparent text-white outline-none placeholder:text-white/35" /></div>
-              <div className="space-y-2">
-                {filteredProjects.length ? filteredProjects.slice(0, activeSection === "Recent" ? 8 : 5).map((project) => (
-                  <button key={project.id} onClick={() => loadProject(project.id)} className={cn("w-full rounded-xl border p-3 text-left transition", selectedProjectId === project.id ? "border-violet-400/50 bg-violet-400/12" : "border-white/10 bg-white/[0.035] hover:bg-white/8")}>
-                    <div className="truncate text-xs font-semibold">{project.name}</div>
-                    <div className="mt-1 text-[11px] text-white/45">{project._count?.generations || 0} generations · {timeAgo(project.updatedAt)}</div>
-                  </button>
-                )) : <p className="rounded-xl border border-white/10 p-3 text-xs text-white/45">Create your first Studio project.</p>}
-              </div>
-              {activeSection === "Templates" && <div className="mt-4 space-y-2">{templatePresets.map((template) => <button key={template.name} onClick={() => applyTemplate(template.name)} className="w-full rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left text-xs text-white/70 hover:bg-white/10 hover:text-white">{template.name}</button>)}</div>}
-            </div>
-          </aside>
-
-          <main className="min-w-0 p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight">{selectedProject?.name || "AI Studio"}</h1>
-                <p className="text-sm text-white/52">{message}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button onClick={renameProject} disabled={!selectedProject} className="grid size-8 place-items-center rounded-xl border border-white/10 bg-white/8 text-white/70 disabled:opacity-40" title="Rename project"><Edit3 className="size-4" /></button>
-                <button onClick={duplicateProject} disabled={!selectedProject} className="grid size-8 place-items-center rounded-xl border border-white/10 bg-white/8 text-white/70 disabled:opacity-40" title="Duplicate project"><Copy className="size-4" /></button>
-                <button onClick={deleteProject} disabled={!selectedProject} className="grid size-8 place-items-center rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 disabled:opacity-40" title="Delete project"><Trash2 className="size-4" /></button>
-                <div className="rounded-full border border-white/10 bg-white/8 px-3 py-1.5 text-xs text-white/65">OpenRouter · Text to Video planning</div>
-              </div>
-            </div>
-
-            <section className="overflow-hidden rounded-3xl border border-white/10 bg-black/30 shadow-2xl shadow-black/40">
-              <div className="relative min-h-[340px] p-6">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(124,92,255,.34),transparent_32%)]" />
-                <div className="relative flex h-full min-h-[300px] flex-col justify-between">
-                  <div className="flex items-start justify-between">
-                    <div className="rounded-2xl border border-white/10 bg-white/8 px-4 py-3 backdrop-blur">
-                      <p className="text-xs uppercase tracking-[0.2em] text-violet-200/80">Canvas preview</p>
-                      <p className="mt-2 max-w-xl text-3xl font-semibold leading-tight">{latestGeneration?.storyboardJson?.summary || "Turn any Gujarati, Hindi, English, or mixed prompt into a cinematic storyboard."}</p>
-                    </div>
-                    <div className="grid size-16 place-items-center rounded-3xl bg-white text-[#070812]"><Film className="size-7" /></div>
-                  </div>
-                  <div>
-                    <div className="mb-3 h-2 overflow-hidden rounded-full bg-white/10"><motion.div className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-300 to-cyan-300" animate={{ width: `${progress}%` }} /></div>
-                    <div className="grid grid-cols-4 gap-3">
-                      {["Language", "Storyboard", "Timeline", "Export"].map((label, index) => <div key={label} className="rounded-2xl border border-white/10 bg-white/[0.055] p-3"><CheckCircle2 className={cn("mb-2 size-4", progress >= (index + 1) * 24 ? "text-emerald-300" : "text-white/24")} /><p className="text-xs text-white/70">{label}</p></div>)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="mt-4 grid grid-cols-[minmax(0,1.1fr)_minmax(320px,.9fr)] gap-4">
-              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl">
-                <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Prompt</h2><button onClick={() => setPrompt(fallbackPrompt())} className="text-xs text-violet-200 hover:text-white">Use Gujarati sample</button></div>
-                <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className={cn("h-32 w-full rounded-2xl p-4 text-sm leading-6", studioTextareaClass)} placeholder="Describe any video idea in Gujarati, Hindi, English, or mixed language..." />
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="flex flex-wrap gap-2">{templates.slice(0, 3).map((item) => <button key={item} onClick={() => applyTemplate(item)} className="rounded-full border border-white/10 px-3 py-1.5 text-[11px] text-white/60 hover:bg-white/8 hover:text-white">{item}</button>)}</div>
-                  <button onClick={runGeneration} disabled={!selectedProject || loading || !prompt.trim()} className="flex h-11 items-center gap-2 rounded-2xl bg-white px-5 text-sm font-semibold text-[#070812] transition hover:scale-[1.015] disabled:opacity-45">{loading ? <RefreshCw className="size-4 animate-spin" /> : <Play className="size-4 fill-current" />} Generate</button>
-                </div>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-white/[0.045] p-4">
-                <h2 className="mb-3 font-semibold">Live pipeline</h2>
-                <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
-                  {events.length ? events.map((event) => <div key={event.sequence} className="flex items-start gap-3 rounded-2xl bg-black/20 p-3 text-xs"><span className="mt-0.5 grid size-5 place-items-center rounded-full bg-violet-400/20 text-violet-100">{event.sequence}</span><div><p className="font-medium">{event.message}</p><p className="text-white/42">{event.type.replaceAll("_", " ")}</p></div></div>) : <p className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-white/45">Generation events stream here in realtime.</p>}
-                </div>
-              </div>
-            </section>
-
-            <section className="mt-4 rounded-3xl border border-white/10 bg-white/[0.045] p-4">
-              <div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Story timeline</h2><span className="text-xs text-white/45">{scenes.length || 0} editable scenes</span></div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                {scenes.length ? scenes.map((scene, index) => <div key={scene.id || index} className="rounded-2xl border border-white/10 bg-black/24 p-4"><p className="text-xs text-violet-200">Scene {scene.order || index + 1} · {scene.durationSec}s · {settings.aspectRatio}</p><h3 className="mt-2 font-semibold">{scene.title}</h3><p className="mt-2 line-clamp-4 text-xs leading-5 text-white/55">{scene.prompt}</p><p className="mt-2 text-[11px] text-white/38">Negative: {scene.negativePrompt || latestGeneration?.negativePrompt || settings.negativePrompt}</p><div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-white/50"><span className="rounded-full bg-white/8 px-2 py-1">{scene.camera || "Camera"}</span><span className="rounded-full bg-white/8 px-2 py-1">{scene.lighting || "Lighting"}</span><span className="rounded-full bg-white/8 px-2 py-1">{scene.emotion || "Mood"}</span></div><div className="mt-3 flex flex-wrap gap-2"><button onClick={() => { const next = window.prompt("Edit scene prompt", scene.prompt); if (next) void updateScene(scene, { prompt: next }); }} className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/62 hover:bg-white/8">Edit</button><button onClick={() => void sceneAction(scene, "duplicate")} className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/62 hover:bg-white/8">Duplicate</button><button onClick={() => void sceneAction(scene, "delete")} className="rounded-lg border border-red-400/30 px-2 py-1 text-[11px] text-red-200 hover:bg-red-500/10">Delete</button><button onClick={() => void updateScene(scene, { durationSec: Math.max(1, scene.durationSec + 1) })} className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-white/62 hover:bg-white/8">+1s</button></div></div>) : templates.slice(0, 4).map((item) => <div key={item} className="rounded-2xl border border-dashed border-white/10 p-4 text-sm text-white/45">{item}</div>)}
-              </div>
-              <div className="mt-4 flex h-14 items-center gap-2 overflow-hidden rounded-2xl border border-white/10 bg-black/24 p-2">
-                {timeline.map((item, index) => <div key={`${item.scene}-${index}`} className="flex h-full min-w-[120px] items-center justify-center rounded-xl bg-gradient-to-r from-violet-500/40 to-cyan-400/25 px-3 text-xs">{item.label}</div>)}
-              </div>
-            </section>
-          </main>
-
-          <aside className="border-l border-white/10 bg-white/[0.035] p-4 backdrop-blur-xl">
-            <h2 className="mb-4 flex items-center gap-2 font-semibold"><Wand2 className="size-4 text-violet-200" /> Generation settings</h2>
-            <div className="space-y-4">
-              <label className="block text-xs text-white/55">Model<select className={cn("mt-1 h-10 w-full rounded-xl px-3 text-sm", studioSelectClass)}><option>OpenRouter active model</option></select></label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block text-xs text-white/55">Resolution<select value={settings.resolution} onChange={(e) => setSettings({ ...settings, resolution: e.target.value })} className={cn("mt-1 h-10 w-full rounded-xl px-3 text-sm", studioSelectClass)}><option>720p</option><option>1080p</option><option>4K</option></select></label>
-                <label className="block text-xs text-white/55">FPS<input type="number" value={settings.fps} onChange={(e) => setSettings({ ...settings, fps: Number(e.target.value) })} className={cn("mt-1 h-10 w-full rounded-xl px-3 text-sm", studioFieldClass)} /></label>
-              </div>
-              <label className="block text-xs text-white/55">Aspect ratio<div className="mt-2 grid grid-cols-3 gap-2">{ratios.map((ratio) => <button key={ratio} onClick={() => setSettings({ ...settings, aspectRatio: ratio })} className={cn("rounded-xl border px-2 py-2 text-xs", settings.aspectRatio === ratio ? "border-violet-300 bg-violet-400/20" : "border-white/10 bg-black/20 text-white/55")}>{ratio}</button>)}</div></label>
-              <label className="block text-xs text-white/55">Duration <span className="float-right">{settings.durationSec}s</span><input type="range" min={2} max={60} value={settings.durationSec} onChange={(e) => setSettings({ ...settings, durationSec: Number(e.target.value) })} className="mt-2 w-full accent-violet-400" /></label>
-              <label className="block text-xs text-white/55">Style lock<div className="mt-2 grid grid-cols-2 gap-2">{styles.map((style) => <button key={style} onClick={() => setSettings({ ...settings, styleLock: style })} className={cn("rounded-xl border px-2 py-2 text-xs", settings.styleLock === style ? "border-violet-300 bg-violet-400/20" : "border-white/10 bg-black/20 text-white/55")}>{style}</button>)}</div></label>
-              <label className="block text-xs text-white/55">Camera motion<select value={settings.cameraMotion} onChange={(e) => setSettings({ ...settings, cameraMotion: e.target.value })} className={cn("mt-1 h-10 w-full rounded-xl px-3 text-sm", studioSelectClass)}>{cameras.map((camera) => <option key={camera}>{camera}</option>)}</select></label>
-              <label className="block text-xs text-white/55">Motion strength <span className="float-right">{settings.motionStrength}</span><input type="range" min={0} max={100} value={settings.motionStrength} onChange={(e) => setSettings({ ...settings, motionStrength: Number(e.target.value) })} className="mt-2 w-full accent-violet-400" /></label>
-              <label className="block text-xs text-white/55">Consistency <span className="float-right">{settings.consistency}</span><input type="range" min={0} max={100} value={settings.consistency} onChange={(e) => setSettings({ ...settings, consistency: Number(e.target.value) })} className="mt-2 w-full accent-violet-400" /></label>
-              <label className="block text-xs text-white/55">Negative prompt<textarea value={settings.negativePrompt} onChange={(e) => setSettings({ ...settings, negativePrompt: e.target.value })} className={cn("mt-1 h-20 w-full rounded-xl p-3 text-sm", studioTextareaClass)} /></label>
-              <button onClick={() => void saveSettings()} disabled={!selectedProject} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-violet-500 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 disabled:opacity-45">Save settings</button>
-              <button onClick={() => navigator.clipboard?.writeText(latestGeneration?.enhancedPrompt || prompt)} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/8 text-sm text-white/70 hover:bg-white/12"><Copy className="size-4" /> Copy enhanced prompt</button>
-              <button onClick={() => navigator.clipboard?.writeText(scenes.map((scene, index) => `Scene ${index + 1}: ${scene.prompt}`).join("\n\n"))} disabled={!scenes.length} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/8 text-sm text-white/70 hover:bg-white/12 disabled:opacity-40"><Copy className="size-4" /> Copy scene prompts</button>
-              <button onClick={() => navigator.clipboard?.writeText(latestGeneration?.negativePrompt || settings.negativePrompt)} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/8 text-sm text-white/70 hover:bg-white/12"><Copy className="size-4" /> Copy negative prompt</button>
-              <button onClick={exportJson} disabled={!selectedProject} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/8 text-sm text-white/70 hover:bg-white/12 disabled:opacity-40">Export JSON</button>
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold">Provider status</h3><button onClick={() => void loadProviderStatus()} className="text-xs text-violet-200">Refresh</button></div>
-                <div className="space-y-2">
-                  {providerStatuses.length ? providerStatuses.map((provider) => <div key={provider.key} className="flex items-center justify-between gap-2 rounded-xl bg-white/[0.04] px-3 py-2 text-xs"><span>{provider.name}</span><span className={cn(provider.status === "connected" ? "text-emerald-300" : provider.status === "failed" ? "text-red-300" : "text-amber-200")}>{provider.status.replaceAll("_", " ")}</span></div>) : <p className="text-xs text-white/45">Provider status loads after login.</p>}
-                </div>
-              </div>
-              {latestGeneration && <div className="rounded-2xl border border-white/10 bg-black/20 p-3 text-xs text-white/62"><h3 className="mb-2 text-sm font-semibold text-white">Output</h3><p>Language: {latestGeneration.detectedLanguage || "Unknown"}</p><p className="mt-2">Enhanced: {latestGeneration.enhancedPrompt || "Not generated yet"}</p><p className="mt-2">Next action: Configure local ComfyUI + Wan 2.1 to render video.</p></div>}
-            </div>
-          </aside>
+  const promptPanel = (
+    <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
+      <div className="mb-5 flex items-center gap-3">
+        <span className="grid size-8 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/30">1</span>
+        <h2 className="text-base font-semibold">Choose your avatar</h2>
+      </div>
+      <div className="flex flex-wrap items-start gap-4">
+        {avatarUrls.map((avatar, index) => (
+          <button key={avatar} onClick={() => setSelectedAvatar(index)} className={cn("relative rounded-full p-1 transition hover:scale-105", selectedAvatar === index ? "bg-violet-500 shadow-lg shadow-violet-500/30" : "bg-transparent")}>
+            <Image src={avatar} alt={`Avatar ${index + 1}`} width={64} height={64} unoptimized className="size-16 rounded-full object-cover ring-1 ring-white/20" />
+            {selectedAvatar === index && <span className="absolute -bottom-1 -right-1 grid size-6 place-items-center rounded-full bg-violet-600 text-white"><Check className="size-3.5" /></span>}
+          </button>
+        ))}
+        <button onClick={() => avatarInputRef.current?.click()} className={cn("grid size-16 place-items-center rounded-full border border-dashed transition hover:border-violet-400", theme === "dark" ? "border-white/20 bg-white/[0.03]" : "border-slate-300 bg-white")}>
+          <Plus className="size-6" />
+        </button>
+        <input ref={avatarInputRef} type="file" accept="image/*" hidden onChange={(event) => void handleUpload("avatar", event.target.files)} />
+        <div className="self-center text-xs font-medium">
+          <button onClick={() => avatarInputRef.current?.click()} className={cn(studioTokens.muted, "hover:text-violet-400")}>Add Photo</button>
+          {uploads.some((item) => item.type === "avatar") && <button onClick={() => { const next = uploads.filter((item) => item.type !== "avatar"); setUploads(next); setSelectedAvatar(0); void saveSettings(settings, next); }} className="ml-3 text-red-400 hover:text-red-300">Remove</button>}
         </div>
       </div>
-    </UserPanelShell>
+
+      <div className="mt-10 mb-5 flex items-center gap-3">
+        <span className="grid size-8 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/30">2</span>
+        <h2 className="text-base font-semibold">Describe your story</h2>
+      </div>
+      <div className={cn("rounded-2xl border p-4", theme === "dark" ? "border-white/10 bg-[#090f18]/78" : "border-slate-200 bg-white")}>
+        <textarea
+          ref={promptRef}
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          maxLength={2000}
+          className="min-h-[216px] w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-slate-500 dark:placeholder:text-white/36"
+          placeholder="Enter your story idea in any language..."
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className={cn("text-xs", studioTokens.muted)}>{prompt.length} / 2000</span>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setPrompt("")} disabled={!prompt} className={cn("h-9 rounded-xl border px-3 text-xs disabled:opacity-40", studioTokens.soft)}>Clear</button>
+            <button onClick={() => setPrompt(fallbackPrompt())} className={cn("flex h-9 items-center gap-2 rounded-xl border px-3 text-xs", studioTokens.soft)}><Wand2 className="size-3.5" /> Use Example</button>
+          </div>
+        </div>
+      </div>
+      {promptHistory.length > 0 && (
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {promptHistory.slice(0, 4).map((item) => <button key={item} onClick={() => setPrompt(item)} className={cn("max-w-[220px] shrink-0 truncate rounded-full border px-3 py-1.5 text-[11px]", studioTokens.soft)}>{item}</button>)}
+        </div>
+      )}
+
+      <div className="mt-8 mb-5 flex items-center gap-3">
+        <span className="grid size-8 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/30">3</span>
+        <h2 className="text-base font-semibold">Select style <span className={cn("font-normal", studioTokens.muted)}>(Optional)</span></h2>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {styles.map((style) => (
+          <button key={style} onClick={() => setSetting("styleLock", style)} className={cn("flex h-11 items-center gap-2 rounded-xl border px-4 text-xs font-semibold transition", settings.styleLock === style ? "border-violet-400 bg-violet-600 text-white shadow-lg shadow-violet-600/25" : `${studioTokens.soft} hover:border-violet-400/60`)}>
+            {style === "3D Render" ? <Box className="size-3.5" /> : <ImageIcon className="size-3.5" />}
+            {style}
+          </button>
+        ))}
+      </div>
+      <div className="mt-7 flex justify-end">
+        <button onClick={runGeneration} disabled={!selectedProject || loading || !prompt.trim()} className="flex h-14 min-w-[190px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-6 text-sm font-semibold text-white shadow-xl shadow-violet-700/30 transition hover:scale-[1.015] disabled:opacity-45">
+          {loading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+          Generate Script
+        </button>
+      </div>
+    </section>
+  );
+
+  const outputPanel = (
+    <section className={cn("space-y-4 rounded-[22px] p-5", studioTokens.panel)}>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-semibold">Generated Script & Storyboard</h2>
+          <p className={cn("mt-1 text-xs", studioTokens.muted)}>{localProvider?.message || "Local video provider not configured. Storyboard and prompts are ready."}</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => navigator.clipboard?.writeText(latestGeneration?.enhancedPrompt || prompt)} className={cn("grid size-9 place-items-center rounded-xl border", studioTokens.soft)} title="Copy enhanced prompt"><Copy className="size-4" /></button>
+          <button onClick={exportJson} disabled={!selectedProject} className={cn("grid size-9 place-items-center rounded-xl border disabled:opacity-40", studioTokens.soft)} title="Export JSON"><Upload className="size-4 rotate-180" /></button>
+        </div>
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        {["Language", "Prompt", "Scenes", "Timeline"].map((label, index) => (
+          <div key={label} className={cn("rounded-2xl border p-3", studioTokens.soft)}>
+            <Check className={cn("mb-2 size-4", progress >= (index + 1) * 24 ? "text-emerald-400" : studioTokens.faint)} />
+            <p className="text-xs font-medium">{label}</p>
+          </div>
+        ))}
+      </div>
+      <div className={cn("rounded-2xl border p-4 text-sm leading-6", studioTokens.soft)}>
+        {latestGeneration?.enhancedPrompt || "Generate once to see the enhanced script, cinematic prompt, scenes, and timeline here."}
+      </div>
+      <div className="grid gap-3 lg:grid-cols-2">
+        {scenes.length ? scenes.map((scene, index) => (
+          <div key={scene.id || index} className={cn("rounded-2xl border p-4", studioTokens.soft)}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-violet-500 dark:text-violet-300">Scene {scene.order || index + 1} · {scene.durationSec}s · {settings.aspectRatio}</p>
+                <h3 className="mt-2 font-semibold">{scene.title}</h3>
+              </div>
+              <button onClick={() => void sceneAction(scene, "delete")} className="text-red-400 hover:text-red-300" title="Delete scene"><Trash2 className="size-4" /></button>
+            </div>
+            <p className={cn("mt-3 line-clamp-4 text-xs leading-5", studioTokens.muted)}>{scene.prompt}</p>
+            <div className="mt-3 flex flex-wrap gap-1.5 text-[10px]">
+              {[scene.camera || settings.cameraMotion, scene.lighting || "Lighting", scene.emotion || "Mood"].map((tag) => <span key={tag} className="rounded-full bg-violet-500/12 px-2 py-1 text-violet-500 dark:text-violet-200">{tag}</span>)}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => { const next = window.prompt("Edit scene prompt", scene.prompt); if (next) void updateScene(scene, { prompt: next }); }} className={cn("rounded-lg border px-2 py-1 text-[11px]", studioTokens.soft)}>Edit</button>
+              <button onClick={() => void sceneAction(scene, "duplicate")} className={cn("rounded-lg border px-2 py-1 text-[11px]", studioTokens.soft)}>Duplicate</button>
+              <button onClick={() => void updateScene(scene, { durationSec: Math.max(1, scene.durationSec + 1) })} className={cn("rounded-lg border px-2 py-1 text-[11px]", studioTokens.soft)}>+1s</button>
+            </div>
+          </div>
+        )) : templatePresets.slice(0, 2).map((template) => <button key={template.name} onClick={() => applyTemplate(template.name)} className={cn("rounded-2xl border border-dashed p-4 text-left text-sm", studioTokens.soft)}>{template.name}</button>)}
+      </div>
+      <div className={cn("flex h-16 items-center gap-2 overflow-x-auto rounded-2xl border p-2", studioTokens.soft)}>
+        {timeline.length ? timeline.map((item, index) => <div key={`${item.scene}-${index}`} className="flex h-full min-w-[128px] items-center justify-center rounded-xl bg-gradient-to-r from-violet-600/70 to-cyan-400/30 px-3 text-xs font-medium text-white">{item.label}</div>) : <p className={cn("px-2 text-sm", studioTokens.muted)}>Timeline appears after generation.</p>}
+      </div>
+    </section>
+  );
+
+  const settingsPanel = (
+    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
+      <h2 className="mb-5 flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500 dark:text-violet-300" /> Generation Settings</h2>
+      <div className="space-y-5">
+        <label className={cn("block text-xs", studioTokens.muted)}>Model
+          <select value={settings.model} onChange={(event) => setSetting("model", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input, "[color-scheme:light] dark:[color-scheme:dark]")}>
+            <option>OpenRouter active model</option>
+          </select>
+        </label>
+        <div>
+          <p className={cn("mb-2 text-xs", studioTokens.muted)}>Resolution</p>
+          <div className="grid grid-cols-2 gap-3">
+            {resolutions.map((resolution) => (
+              <button key={resolution.value} onClick={() => setSetting("resolution", resolution.value)} className={cn("h-16 rounded-xl border text-center transition", settings.resolution === resolution.value ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/25" : `${studioTokens.soft} hover:border-violet-400/60`)}>
+                <p className="text-sm font-semibold">{resolution.label}</p>
+                <p className="mt-1 text-xs opacity-75">{resolution.sub}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={cn("block text-xs", studioTokens.muted)}>Aspect Ratio
+            <select value={settings.aspectRatio} onChange={(event) => setSetting("aspectRatio", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input, "[color-scheme:light] dark:[color-scheme:dark]")}>
+              {ratios.map((ratio) => <option key={ratio}>{ratio}</option>)}
+            </select>
+          </label>
+          <label className={cn("block text-xs", studioTokens.muted)}>Frame Rate (FPS)
+            <select value={settings.fps} onChange={(event) => setSetting("fps", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input, "[color-scheme:light] dark:[color-scheme:dark]")}>
+              {fpsOptions.map((fps) => <option key={fps}>{fps}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className={cn("block text-xs", studioTokens.muted)}>Duration (seconds) <span className="float-right font-medium">{settings.durationSec}s</span>
+          <input type="range" min={2} max={15} value={settings.durationSec} onChange={(event) => setSetting("durationSec", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
+          <div className={cn("mt-2 flex justify-between text-xs", studioTokens.muted)}><span>2s</span><span>5s</span><span>10s</span><span>15s</span></div>
+        </label>
+        <div className="grid grid-cols-5 gap-2">
+          {ratios.map((ratio) => (
+            <button key={ratio} onClick={() => setSetting("aspectRatio", ratio)} className={cn("flex h-[70px] flex-col items-center justify-center gap-2 rounded-xl border text-xs transition", settings.aspectRatio === ratio ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : `${studioTokens.soft} hover:border-violet-400/60`)}>
+              <span className={cn("block rounded border-2", ratio === "9:16" || ratio === "3:4" ? "h-5 w-3" : ratio === "1:1" ? "size-4" : "h-3 w-5")} />
+              {ratio}
+            </button>
+          ))}
+        </div>
+        <label className={cn("block text-xs", studioTokens.muted)}>Content Preference
+          <select value={settings.contentPreference} onChange={(event) => setSetting("contentPreference", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input, "[color-scheme:light] dark:[color-scheme:dark]")}>
+            <option>Auto</option><option>Realistic</option><option>Stylized</option><option>Product</option><option>Story</option>
+          </select>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Camera Motion
+          <select value={settings.cameraMotion} onChange={(event) => setSetting("cameraMotion", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input, "[color-scheme:light] dark:[color-scheme:dark]")}>
+            {cameras.map((camera) => <option key={camera}>{camera}</option>)}
+          </select>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Motion Strength <span className="float-right font-medium">{settings.motionStrength}</span>
+          <input type="range" min={0} max={100} value={settings.motionStrength} onChange={(event) => setSetting("motionStrength", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Consistency <span className="float-right font-medium">{settings.consistency}</span>
+          <input type="range" min={0} max={100} value={settings.consistency} onChange={(event) => setSetting("consistency", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Negative prompt
+          <textarea value={settings.negativePrompt} onChange={(event) => setSetting("negativePrompt", event.target.value)} className={cn("mt-2 h-20 w-full resize-none rounded-xl p-3 text-sm", studioTokens.input)} />
+        </label>
+        <div>
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Sparkles className="size-4 text-violet-500" /> Quick Add</h3>
+          <div className="grid grid-cols-3 gap-2">
+            {quickAdd.map((item) => (
+              <button key={item.type} onClick={() => quickInputRefs.current[item.type]?.click()} className={cn("flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-medium", studioTokens.soft)}>
+                <item.icon className="size-4" /> {item.label}
+                <input ref={(node) => { quickInputRefs.current[item.type] = node; }} type="file" accept={item.accept} hidden onChange={(event) => void handleUpload(item.type, event.target.files)} />
+              </button>
+            ))}
+          </div>
+          {uploads.filter((item) => item.type !== "avatar").length > 0 && (
+            <div className="mt-3 space-y-2">
+              {uploads.filter((item) => item.type !== "avatar").map((item) => <div key={item.id} className={cn("flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-xs", studioTokens.soft)}><span className="min-w-0 flex-1 truncate">{item.name}</span><span className={studioTokens.faint}>{formatBytes(item.sizeBytes)}</span><button onClick={() => { const next = uploads.filter((upload) => upload.id !== item.id); setUploads(next); void saveSettings(settings, next); }}><X className="size-3.5" /></button></div>)}
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+
+  const referencePanel = (
+    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
+      <h2 className="mb-5 flex items-center gap-3 text-base font-semibold"><Play className="size-5 text-violet-500" /> Video - Reference</h2>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-white/10 dark:bg-[#080d16]">
+        {referenceAsset?.dataUrl ? (
+          referenceAsset.type === "clip" ? <video src={referenceAsset.dataUrl} className="h-44 w-full object-cover" controls /> : <Image src={referenceAsset.dataUrl} alt={referenceAsset.name} width={320} height={176} unoptimized className="h-44 w-full object-cover" />
+        ) : (
+          <div className="relative h-44 overflow-hidden bg-[radial-gradient(circle_at_30%_25%,rgba(124,92,255,.55),transparent_24%),linear-gradient(135deg,#102033,#050911)]">
+            <Image src={avatarUrls[selectedAvatar] || avatarUrls[0]} alt="Selected avatar" width={96} height={96} unoptimized className="absolute bottom-4 left-1/2 size-24 -translate-x-1/2 rounded-full object-cover ring-2 ring-white/20" />
+            <div className="absolute inset-x-5 bottom-4 h-16 rounded-full bg-cyan-400/10 blur-2xl" />
+          </div>
+        )}
+      </div>
+      <div className="mt-4">
+        <h3 className="font-semibold">@{session?.user?.name?.split(" ")?.[0]?.toLowerCase() || "meldex"}</h3>
+        <p className={cn("mt-2 line-clamp-4 text-sm leading-6", studioTokens.muted)}>{latestGeneration?.storyboardJson?.summary || "Cinematic storyboard preview appears here after generation. Upload a frame or clip to use it as a visual reference."}</p>
+        <div className="mt-3 flex flex-wrap gap-2 text-xs">
+          <span className="rounded-lg bg-slate-200 px-2 py-1 dark:bg-white/8">Wan2.7</span>
+          <span className="rounded-lg bg-slate-200 px-2 py-1 dark:bg-white/8">{settings.resolution.toUpperCase()}</span>
+          <span className="rounded-lg bg-slate-200 px-2 py-1 dark:bg-white/8">{settings.aspectRatio}</span>
+          <span className="rounded-lg bg-slate-200 px-2 py-1 dark:bg-white/8">{settings.durationSec}s</span>
+        </div>
+        <p className={cn("mt-4 text-xs", studioTokens.muted)}>Creation Time</p>
+        <p className={cn("mt-1 text-sm", studioTokens.muted)}>{new Date(latestGeneration?.createdAt || Date.now()).toLocaleString()}</p>
+        <div className="mt-5 grid grid-cols-[1fr_1fr_44px] gap-2">
+          <button onClick={() => latestGeneration?.enhancedPrompt && setPrompt(latestGeneration.enhancedPrompt)} disabled={!latestGeneration?.enhancedPrompt} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Use</button>
+          <button onClick={runGeneration} disabled={!selectedProject || loading} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>{loading ? "Running" : "Rerun"}</button>
+          <button onClick={() => setUploads(uploads.filter((item) => item.type !== "frame" && item.type !== "clip"))} className="grid h-11 place-items-center rounded-xl border border-violet-500/35 text-violet-500"><Trash2 className="size-4" /></button>
+        </div>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div className={cn(theme === "dark" && "dark")}>
+      <div className={cn("min-h-screen overflow-hidden transition-colors", studioTokens.app)}>
+        <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)]" />
+        <header className={cn("relative z-20 flex h-20 items-center justify-between border-b px-6", studioTokens.line, theme === "dark" ? "bg-[#050911]/88" : "bg-white/88", "backdrop-blur-xl")}>
+          <div className="flex items-center gap-7">
+            <a href="/dashboard" className="flex items-center gap-3">
+              <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/30"><Sparkles className="size-5" /></span>
+              <span className="text-2xl font-bold tracking-tight">Meldex AI</span>
+            </a>
+            <div className="hidden items-center gap-3 md:flex">
+              <span className="grid size-8 place-items-center rounded-xl bg-violet-600/15 text-violet-500"><Clapperboard className="size-4" /></span>
+              <span className="text-lg font-semibold">AI Studio</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={cn("grid size-11 place-items-center rounded-full border", studioTokens.soft)} title="Switch theme">{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
+            <button className={cn("relative grid size-11 place-items-center rounded-full border", studioTokens.soft)} title="Notifications"><Bell className="size-5" /><span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">3</span></button>
+            <Image src={avatarUrls[selectedAvatar] || avatarUrls[0]} alt="Profile" width={44} height={44} unoptimized className="size-11 rounded-full object-cover ring-2 ring-violet-500/40" />
+            <button onClick={renameProject} className="hidden items-center gap-2 text-sm font-semibold md:flex">{session?.user?.name || "Dhaval"} <ChevronDown className="size-4" /></button>
+          </div>
+        </header>
+        <div className="relative z-10 grid min-h-[calc(100vh-80px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className={cn("hidden border-r p-5 lg:flex lg:flex-col", studioTokens.line, theme === "dark" ? "bg-[#070c14]/80" : "bg-white/78", "backdrop-blur-xl")}>
+            <nav className="space-y-3">
+              {navItems.map((item) => (
+                <button key={item.key} onClick={() => { setActiveNav(item.key); if (item.key === "projects") void loadProjects(); if (item.key === "templates") setMobileTab("create"); }} className={cn("flex h-14 w-full items-center gap-4 rounded-xl px-4 text-left text-sm font-medium transition", activeNav === item.key ? "bg-violet-600/14 text-violet-500 dark:text-violet-300" : `${studioTokens.muted} hover:bg-violet-600/10 hover:text-violet-500`)}>
+                  <item.icon className="size-5" /> {item.label}
+                </button>
+              ))}
+            </nav>
+            <div className="mt-auto space-y-4">
+              <button className={cn("flex h-10 items-center gap-3 text-sm", studioTokens.muted)}><HelpCircle className="size-5" /> Help & Docs</button>
+              <button onClick={() => setActiveNav("settings")} className={cn("flex h-10 items-center gap-3 text-sm", studioTokens.muted)}><Settings2 className="size-5" /> Settings</button>
+              <div className={cn("rounded-xl p-4", studioTokens.panel)}>
+                <div className="flex items-center gap-3">
+                  <span className="grid size-10 place-items-center rounded-xl bg-violet-600/15 text-violet-500"><Aperture className="size-5" /></span>
+                  <div><p className="text-sm font-semibold">Meldex Pro</p><p className={cn("text-xs", studioTokens.muted)}>Unlimited generations</p></div>
+                </div>
+                <a href="/billing" className="mt-4 flex h-10 items-center justify-center rounded-lg bg-violet-600 text-sm font-semibold text-white">Upgrade Plan</a>
+              </div>
+              <button className={cn("ml-auto grid size-9 place-items-center rounded-xl", studioTokens.soft)}><PanelLeftClose className="size-4" /></button>
+            </div>
+          </aside>
+          <main className="min-w-0 p-4 xl:p-6">
+            <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
+              {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
+            </div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_344px_278px]">
+              <section className={cn("min-w-0 space-y-4", mobileTab !== "create" && "hidden lg:block")}>
+                <div className="px-3 pt-2">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight">AI Studio</h1>
+                      <p className={cn("mt-3 text-sm", studioTokens.muted)}>Describe your idea and AI will turn it into a cinematic video.</p>
+                      <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={createProject} className={cn("rounded-xl border px-3 py-2 text-xs font-semibold", studioTokens.soft)}><Plus className="mr-1 inline size-3.5" /> New</button>
+                      <button onClick={duplicateProject} disabled={!selectedProject} className={cn("rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-40", studioTokens.soft)}>Duplicate</button>
+                      <button onClick={deleteProject} disabled={!selectedProject} className="rounded-xl border border-red-400/30 px-3 py-2 text-xs font-semibold text-red-400 disabled:opacity-40">Delete</button>
+                    </div>
+                  </div>
+                </div>
+                {activeNav === "projects" && (
+                  <div className={cn("rounded-2xl p-4", studioTokens.panel)}>
+                    <div className="mb-3 flex gap-2"><div className={cn("flex h-10 flex-1 items-center gap-2 rounded-xl border px-3", studioTokens.soft)}><Search className="size-4" /><input value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Search projects" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><button onClick={createProject} className="rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white">New</button></div>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {filteredProjects.map((project) => <button key={project.id} onClick={() => { void loadProject(project.id); setActiveNav("studio"); }} className={cn("rounded-xl border p-3 text-left", selectedProjectId === project.id ? "border-violet-500 bg-violet-600/12" : studioTokens.soft)}><p className="truncate text-sm font-semibold">{project.name}</p><p className={cn("mt-1 text-xs", studioTokens.muted)}>{project._count?.generations || 0} generations · {timeAgo(project.updatedAt)}</p></button>)}
+                    </div>
+                  </div>
+                )}
+                {promptPanel}
+                {outputPanel}
+              </section>
+              <div className={cn("space-y-4", mobileTab !== "settings" && "hidden xl:block")}>{settingsPanel}</div>
+              <div className={cn("space-y-4", mobileTab !== "assets" && "hidden xl:block")}>{referencePanel}</div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
   );
 }
