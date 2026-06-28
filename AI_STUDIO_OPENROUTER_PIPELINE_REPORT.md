@@ -33,3 +33,7 @@ The Studio stream emits:
 ## Honesty
 
 No fake video render is shown. If local video providers are not configured, Studio shows the storyboard plan and next action.
+
+## Live Result
+
+Authenticated live Gujarati prompt completed through OpenRouter with model `qwen/qwen3-coder-30b-a3b-instruct`, generated 2 scenes, detected Gujarati, and persisted storyboard data.

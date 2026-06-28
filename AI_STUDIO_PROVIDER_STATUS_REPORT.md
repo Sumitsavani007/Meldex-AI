@@ -19,3 +19,7 @@ Displays:
 ## Rule
 
 Studio does not pretend video was generated without a configured video provider.
+
+## Live Result
+
+Authenticated QA returned OpenRouter `connected` and all local/render providers `not_configured`.

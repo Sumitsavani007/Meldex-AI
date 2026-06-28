@@ -16,3 +16,7 @@ Date: 2026-06-28
 ## Isolation
 
 All routes require auth and filter by `userId`.
+
+## Live Result
+
+Authenticated QA created a project, loaded it, patched settings, and verified persisted project values from the API.
