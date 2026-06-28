@@ -35,7 +35,18 @@ export async function GET(
     const filePath = searchParams.get("path");
     if (filePath) {
       const content = await readProjectFile(session.user.id, id, filePath);
-      return NextResponse.json({ path: filePath, content }, { headers: { "Cache-Control": "no-store" } });
+      const record = await prisma.workspaceFile.findFirst({ where: { userId: session.user.id, projectId: id, path: filePath, deletedAt: null } });
+      return NextResponse.json({
+        path: filePath,
+        content,
+        debug: {
+          label: "EDITOR_FILE_LOAD_DEBUG",
+          path: filePath,
+          storedLength: content.length,
+          source: "storage",
+          updatedAt: record?.updatedAt || null,
+        },
+      }, { headers: { "Cache-Control": "no-store" } });
     }
     const includeHidden = searchParams.get("showHidden") === "1";
     const tree = await listProjectTree(id, { includeHidden });
@@ -61,6 +72,10 @@ export async function POST(
       if (!relative) throw new Error("Folder path is required");
       await mkdir(absolute, { recursive: true });
       return NextResponse.json({ folder: { path: relative } }, { status: 201, headers: { "Cache-Control": "no-store" } });
+    }
+    const existingContent = await readProjectFile(session.user.id, id, body.path).catch(() => "");
+    if (existingContent.trim().length > 0 && body.content.trim().length === 0 && request.headers.get("x-meldex-allow-empty") !== "1") {
+      return NextResponse.json({ error: "Refusing to overwrite non-empty file with empty content", code: "EMPTY_OVERWRITE_BLOCKED" }, { status: 422, headers: { "Cache-Control": "no-store" } });
     }
     const storageLimit = await checkStorageLimit(session.user.id, Buffer.byteLength(body.content, "utf8"));
     if (!storageLimit.ok) {

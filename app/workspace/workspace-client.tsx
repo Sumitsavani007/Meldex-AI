@@ -253,7 +253,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const activeTask = state.tasks[0];
   const files = useMemo(() => flatten(state.tree).filter((node) => node.type === "file" && (showHiddenFiles || isUserVisibleWorkspaceFile(node.path))), [showHiddenFiles, state.tree]);
   const selectedNode = files.find((file) => file.path === selectedFile);
-  const fileDirty = Boolean(selectedFile && editorContent !== savedEditorContent);
+  const liveWritePending = savedEditorContent === "__meldex_live_write_pending__";
+  const fileDirty = Boolean(selectedFile && !liveWritePending && editorContent !== savedEditorContent);
   const editorLanguage = selectedFile.endsWith(".html") ? "html" : selectedFile.endsWith(".css") ? "css" : selectedFile.endsWith(".json") ? "json" : selectedFile.endsWith(".md") ? "markdown" : selectedFile.endsWith(".ts") || selectedFile.endsWith(".tsx") ? "typescript" : selectedFile.endsWith(".js") || selectedFile.endsWith(".jsx") ? "javascript" : "plaintext";
   const visibleTree = useMemo(() => {
     const query = fileSearch.trim().toLowerCase();
@@ -462,7 +463,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setLiveFileStatuses((current) => ({ ...current, [path]: "Reading" }));
             }
           }
-          if (event.type === "file_write_started" || event.type === "file_writing" || event.type === "creating_file" || event.type === "updating_file") {
+          if (event.type === "file_write_started") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
               const path = payload.path;
@@ -470,6 +471,16 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
               setEditorContent("");
               setSavedEditorContent("__meldex_live_write_pending__");
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Writing" }));
+              await loadWorkspace(state.project.id).catch(() => undefined);
+            }
+          }
+          if (event.type === "file_writing" || event.type === "creating_file" || event.type === "updating_file") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              const path = payload.path;
+              setSelectedFile(path);
+              setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
               setLiveFileStatuses((current) => ({ ...current, [path]: "Writing" }));
               await loadWorkspace(state.project.id).catch(() => undefined);
             }
@@ -606,10 +617,16 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setPreviewFullscreen(false);
     setEditorFullscreen(false);
     setSelectedFile(filePath);
-    setEditorContent(data.content || "");
-    setSavedEditorContent(data.content || "");
+    const latestContent = typeof data.content === "string" ? data.content : "";
+    setEditorContent(latestContent);
+    setSavedEditorContent(latestContent);
     setOpenTabs((current) => current.includes(filePath) ? current : [...current, filePath]);
-    setMessage(`Opened ${filePath}`);
+    const debug = data.debug || {};
+    setTerminalOutput((current) => [
+      `EDITOR_FILE_LOAD_DEBUG path=${filePath} storedLength=${latestContent.length} editorLength=${latestContent.length} source=${debug.source || "storage"} updatedAt=${debug.updatedAt || "unknown"}`,
+      ...current,
+    ].slice(0, 180));
+    setMessage(latestContent.length ? `Opened ${filePath}` : `File corruption warning: ${filePath} is empty in storage`);
   }
 
   async function createWorkspaceFile(filePath?: string, content = "") {
@@ -682,6 +699,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   async function saveCurrentFile(manual = true) {
     if (!state.project || !selectedFile || !fileDirty) return;
+    if (liveWritePending) return;
+    if (savedEditorContent.trim().length > 0 && editorContent.trim().length === 0) {
+      setMessage(`Refusing to overwrite ${selectedFile} with empty content`);
+      setBottomTab("PROBLEMS");
+      setBottomCollapsed(false);
+      return;
+    }
     setSavingFile(true);
     const response = selectedNode?.id ? await fetch(`/api/workspaces/${state.project.id}/files/${selectedNode.id}`, {
       method: "PATCH",

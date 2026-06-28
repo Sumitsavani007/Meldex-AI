@@ -18,8 +18,8 @@ import {
   getOwnedWorkspaceProject,
   isStaticWebsitePrompt,
   normalizeWorkspaceFileActions,
-  offlineStaticWorkspace,
   readProjectFile,
+  syncWorkspaceFile,
   staticFileCompletenessIssues,
   staticFallbackFiles,
   updateWorkspaceMemorySnapshot,
@@ -49,6 +49,14 @@ function streamChunks(content = "") {
   const chunks: string[] = [];
   for (let index = 0; index < content.length; index += size) chunks.push(content.slice(index, index + size));
   return chunks.length ? chunks : [""];
+}
+
+function nowMs() {
+  return Date.now();
+}
+
+function elapsedMs(startedAt: number) {
+  return Math.max(0, Date.now() - startedAt);
 }
 
 export async function POST(
@@ -115,6 +123,11 @@ export async function POST(
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
+        const taskStartedAt = nowMs();
+        const timings: Record<string, unknown> = {
+          taskStartedAt: new Date(taskStartedAt).toISOString(),
+          promptChars: body.data.prompt.length,
+        };
         let taskId: string | null = null;
         let completed = false;
         const eventBus = createWorkspaceEventBus({
@@ -139,10 +152,13 @@ export async function POST(
           });
           taskId = task.id;
 
+          timings.taskCreatedMs = elapsedMs(taskStartedAt);
           const snapshot = await createWorkspaceSnapshot(session.user.id, project.id, task.id);
-          await send("understanding_request", "Understanding request", { taskId, snapshotId: snapshot.id });
+          timings.snapshotCreatedMs = elapsedMs(taskStartedAt);
+          await send("understanding_request", "Understanding request", { taskId, snapshotId: snapshot.id, elapsedMs: elapsedMs(taskStartedAt) });
           await send("native_prompt_expanding", "Expanding native language prompt", {
             sourceLanguage: /[\u0A80-\u0AFF]/.test(body.data.prompt) ? "gujarati" : /[\u0900-\u097F]/.test(body.data.prompt) ? "hindi" : "english",
+            elapsedMs: elapsedMs(taskStartedAt),
           });
           await send("usage_checked", "Plan and credit limits checked", {
             estimatedCredits: preEstimate.credits,
@@ -152,7 +168,9 @@ export async function POST(
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("loading_workspace", "Loading workspace");
           await send("tool_start", "Reading project structure");
+          const workspaceReadStartedAt = nowMs();
           const context = await buildWorkspaceContext(project.id, project.storagePath, memoryGate.ok ? session.user.id : undefined, body.data.prompt);
+          timings.workspaceReadMs = elapsedMs(workspaceReadStartedAt);
           const contextTokens = Math.ceil([
             body.data.prompt,
             context.projectFiles.join("\n"),
@@ -167,7 +185,7 @@ export async function POST(
             estimatedContextTokens: contextTokens,
           });
           if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
-          await send("tool_result", "Read workspace", { files: context.projectFiles.length });
+          await send("tool_result", "Read workspace", { files: context.projectFiles.length, elapsedMs: timings.workspaceReadMs });
           await send("relevant_files_searched", `Found ${context.relevantFiles.length} relevant file${context.relevantFiles.length === 1 ? "" : "s"}`, {
             files: context.relevantFiles.map((file) => file.path),
           });
@@ -218,39 +236,45 @@ export async function POST(
           await send("selecting_files", "Selecting files");
 
           let response: WorkspaceAgentResponse;
-          let offlineMode = false;
-          let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
+          const offlineMode = false;
           let retries = 0;
           let autofixes = 0;
           try {
             await send("qwen_generation_started", "Qwen generation started", {
               classification: orchestration.classification,
               confidence: orchestration.confidence.score,
+              elapsedMs: elapsedMs(taskStartedAt),
             });
             await send("current_step", "Waiting for model response", { stage: "model_generation" });
             const stopHeartbeat = eventBus.heartbeat("Still working… waiting for model response", 2000);
+            const modelStartedAt = nowMs();
             try {
               response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
             } finally {
               stopHeartbeat();
+              timings.modelResponseMs = elapsedMs(modelStartedAt);
             }
+            await send("model_response_received", "Model response received", { elapsedMs: timings.modelResponseMs });
             for (const runtimeEvent of response.runtimeV4?.events || []) {
               await send(runtimeEvent.type, runtimeEvent.message, runtimeEvent.payload);
             }
           } catch (providerError) {
-            providerFailure = classifyWorkspaceProviderFailure(providerError, body.data.prompt);
-            await send("error", providerFailure.userMessage, { providerFailure });
-            if (!providerFailure.offlineAvailable) throw providerError;
-            await send("tool_result", "Offline Workspace Mode selected", { reason: providerFailure.kind });
-            response = offlineStaticWorkspace(body.data.prompt);
-            offlineMode = true;
+            const providerFailure = classifyWorkspaceProviderFailure(providerError, body.data.prompt);
+            await send("provider_failed", providerFailure.userMessage, {
+              providerFailure,
+              guard: "No generated files were saved because the provider failed before valid output.",
+              elapsedMs: elapsedMs(taskStartedAt),
+            });
+            throw providerError;
           }
 
           const plan = Array.isArray(response.plan) ? response.plan.slice(0, 8) : ["Understand request", "Create files", "Verify preview"];
           await send("plan", `Planned ${plan.length} step${plan.length === 1 ? "" : "s"}`, { plan, offlineMode });
           await send("changes_planned", "Planned changes");
 
+          const parseStartedAt = nowMs();
           let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
+          timings.parseMs = elapsedMs(parseStartedAt);
           if (response.runtimeV4?.reflection) {
             await send(
               (response.runtimeV4.reflection as { ok?: boolean }).ok ? "local_reflection_done" : "local_reflection_failed",
@@ -260,6 +284,7 @@ export async function POST(
           }
           await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
+            elapsedMs: timings.parseMs,
           });
           if (isStaticWebsitePrompt(body.data.prompt)) {
             const completenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
@@ -277,18 +302,11 @@ export async function POST(
             }
           }
           if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
-            autofixes += 1;
-            const fallback = offlineStaticWorkspace(body.data.prompt);
-            response = {
-              ...fallback,
-              summary: `${response.summary || "The model returned no file actions."} Meldex generated safe static workspace files as an autofix.`,
-              warnings: [...(response.warnings || []), "Model returned no file actions; static workspace autofix generated required files."],
-            };
-            files = normalizeWorkspaceFileActions(fallback.files || [], body.data.prompt);
-            await send("debugger_fix_applied", "Debugger generated required static files after zero file extraction", {
-              fixed: files.length > 0,
-              files: files.map((file) => ({ path: file.path, operation: file.operation })),
+            await send("invalid_model_output", "Model returned no valid file actions; no files were saved", {
+              promptType: "static_website",
+              guard: "provider_error_save_guard",
             });
+            throw new Error("Model returned no valid file actions; no files were saved.");
           }
           let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
@@ -325,9 +343,10 @@ TASK ISOLATION FIX:
               files = normalizeWorkspaceFileActions(Array.isArray(isolatedResponse.files) ? isolatedResponse.files : [], body.data.prompt);
               leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
               if (!leakCheck.ok && isStaticWebsitePrompt(body.data.prompt)) {
-                autofixes += 1;
-                files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, `context leak guard: ${leakCheck.findings.join("; ")}`), body.data.prompt);
-                leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+                response = {
+                  ...response,
+                  warnings: [...(response.warnings || []), `Context validation warning: ${leakCheck.findings.join("; ")}`],
+                };
               }
               response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
             }
@@ -361,14 +380,7 @@ TASK ISOLATION FIX:
             const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_autofix" });
             files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
             if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
-              autofixes += 1;
-              const fallback = offlineStaticWorkspace(body.data.prompt);
-              response = {
-                ...fallback,
-                summary: `${fixResponse.summary || response.summary || "Targeted regeneration returned no file actions."} Meldex generated safe static workspace files as an autofix.`,
-                warnings: [...(fixResponse.warnings || response.warnings || []), "Targeted regeneration returned no file actions; static workspace autofix generated required files."],
-              };
-              files = normalizeWorkspaceFileActions(fallback.files || [], body.data.prompt);
+              throw new Error("Targeted regeneration returned no valid file actions; no files were saved.");
             }
             reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
             await send("debugger_fix_applied", "Debugger regenerated a targeted file fix", {
@@ -392,6 +404,7 @@ TASK ISOLATION FIX:
             await send("file_operation_queued", `Queued ${file.operation} ${file.path}`, { index, path: file.path, operation: file.operation });
           }
           for (const file of files) {
+            const fileStartedAt = nowMs();
             if (!file.path) continue;
             await send("file_operation_started", `${file.operation === "create" ? "Creating" : file.operation === "delete" ? "Deleting" : "Editing"} ${file.path}`, { path: file.path, operation: file.operation });
             await send("tool_start", `${file.operation === "create" ? "Creating" : file.operation === "delete" ? "Deleting" : "Editing"} ${file.path}`, { path: file.path, operation: file.operation });
@@ -416,8 +429,12 @@ TASK ISOLATION FIX:
               await send("file_operation_completed", `Completed delete ${file.path}`, { path: file.path, operation: file.operation });
             } else {
               const finalContent = file.content || "";
+              if (!finalContent.trim()) {
+                await send("error", `Refusing to save empty generated content for ${file.path}`, { path: file.path, operation: file.operation });
+                throw new Error(`Generated content for ${file.path} was empty.`);
+              }
               const initialStatus = oldContent ? "EDITING" : "CREATING";
-              await writeProjectFile(session.user.id, project.id, file.path, oldContent, initialStatus);
+              await syncWorkspaceFile(session.user.id, project.id, file.path, oldContent, initialStatus);
               await send(file.operation === "create" ? "creating_file" : "updating_file", `${file.operation === "create" ? "Creating" : "Updating"} ${file.path}`, { path: file.path, operation: file.operation });
               await send("explorerRefresh", `Explorer updated for ${file.path}`, { path: file.path, operation: file.operation, status: initialStatus });
               await send("file_writing", `Writing ${file.path}`, { path: file.path, operation: file.operation, totalBytes: Buffer.byteLength(finalContent) });
@@ -455,10 +472,12 @@ TASK ISOLATION FIX:
               await send("editorSaveState", `Saving ${file.path}`, { path: file.path, operation: file.operation, state: "saving" });
               await send("file_save_started", `Saving ${file.path}`, { path: file.path, operation: file.operation });
               await writeProjectFile(session.user.id, project.id, file.path, finalContent, oldContent ? "EDITED" : "CREATED");
+              timings[`file:${file.path}:writeMs`] = elapsedMs(fileStartedAt);
               await send("file_saved", `Saved ${file.path}`, {
                 path: file.path,
                 operation: file.operation,
                 content: finalContent,
+                elapsedMs: timings[`file:${file.path}:writeMs`],
               });
               await send("editorSaveState", `Saved ${file.path}`, { path: file.path, operation: file.operation, state: "saved" });
               await send("explorerRefresh", `Explorer updated for ${file.path}`, { path: file.path, operation: file.operation, status: oldContent ? "EDITED" : "CREATED" });
@@ -495,11 +514,13 @@ TASK ISOLATION FIX:
           await send("previewStatus", "Running preview", { status: "starting" });
           await send("server_starting", "Starting preview");
           if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);
+          const previewStartedAt = nowMs();
           const verification = await verifyStaticPreview(session.user.id, project.id);
+          timings.previewVerifyMs = elapsedMs(previewStartedAt);
           await send("previewStatus", verification.verified ? "Preview verified" : "Preview needs repair", { status: verification.verified ? "verified" : "failed", verification });
           await send("server_ready", "Preview URL ready", { url: verification.url });
-          await send(verification.verified ? "preview_verified" : "error", verification.message, verification);
-          if (!verification.verified) await send("error_fixed", "Preview issue recorded for debugger follow-up", { message: verification.message });
+          await send(verification.verified ? "preview_verified" : "error", verification.message, { ...verification, elapsedMs: timings.previewVerifyMs });
+          if (!verification.verified) throw new Error(verification.message);
 
           const preview = await prisma.workspacePreview.create({
             data: {
@@ -529,9 +550,8 @@ TASK ISOLATION FIX:
           });
 
           const qualityScore = Math.max(0, Math.min(100, 68 + (verification.verified ? 20 : 0) + Math.min(12, changedFiles.length * 2)));
-          const summary = offlineMode
-            ? `${response.summary || "Offline Workspace Mode created starter files."} Provider reason: ${providerFailure?.userMessage || "Provider unavailable."}`
-            : response.summary || (changedFiles.length ? "Done — workspace task completed and preview checked." : "No file edits were returned.");
+          const summary = response.summary || (changedFiles.length ? "Done — workspace task completed and preview checked." : "No file edits were returned.");
+          timings.totalBeforeDbFinalizeMs = elapsedMs(taskStartedAt);
           const updatedTask = await prisma.workspaceTask.update({
             where: { id: task.id },
             data: {
@@ -646,8 +666,13 @@ TASK ISOLATION FIX:
             weekly: usage.windows.WEEKLY,
             fiveHour: usage.windows.FIVE_HOUR,
           });
+          timings.totalMs = elapsedMs(taskStartedAt);
+          await send("speed_benchmark", "Workspace speed benchmark recorded", {
+            timings,
+            target: "BookNest prompt should stream first event immediately and avoid silent batching.",
+          });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode, creditsUsed: finalCredit.credits });
-          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage });
+          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage, timings });
           completed = true;
           try {
             controller.close();
