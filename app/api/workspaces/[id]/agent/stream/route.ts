@@ -73,18 +73,29 @@ export async function POST(
 
   try {
     checkRateLimit(request.headers.get("x-forwarded-for") || `workspace-stream:${session.user.id}`, 20);
-    const abuseCheck = await detectAbuse({ userId: session.user.id, prompt: body.data.prompt, action: "agent_runs" });
+    const [
+      abuseCheck,
+      dynamicRateLimit,
+      project,
+      agentGate,
+      memoryGate,
+      previewGate,
+      parallelCheck,
+      activeModel,
+    ] = await Promise.all([
+      detectAbuse({ userId: session.user.id, prompt: body.data.prompt, action: "agent_runs" }),
+      checkDynamicRateLimit(session.user.id, "agent_runs"),
+      getOwnedWorkspaceProject(session.user.id, id),
+      canUseFeature(session.user.id, "agent_runs"),
+      canUseFeature(session.user.id, "memory"),
+      canUseFeature(session.user.id, "preview_runtime"),
+      checkParallelTaskLimit(session.user.id),
+      getActiveGenerationModel(),
+    ]);
     if (!abuseCheck.ok) return NextResponse.json(abuseCheck, { status: 429, headers: { "Cache-Control": "no-store" } });
-    const dynamicRateLimit = await checkDynamicRateLimit(session.user.id, "agent_runs");
     if (!dynamicRateLimit.ok) return NextResponse.json(dynamicRateLimit, { status: 429, headers: { "Cache-Control": "no-store" } });
-    const project = await getOwnedWorkspaceProject(session.user.id, id);
-    const agentGate = await canUseFeature(session.user.id, "agent_runs");
     if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
-    const memoryGate = await canUseFeature(session.user.id, "memory");
-    const previewGate = await canUseFeature(session.user.id, "preview_runtime");
-    const parallelCheck = await checkParallelTaskLimit(session.user.id);
     if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
-    const activeModel = await getActiveGenerationModel();
     const promptTokens = Math.ceil(body.data.prompt.length / 4);
     const preEstimate = await calculateCredits({
       provider: activeModel.provider,
