@@ -1869,9 +1869,10 @@ ${websiteDesignerRules}`;
   };
 }
 
-function estimateWorkspaceOutputBudget(prompt: string) {
+export function estimateWorkspaceOutputBudget(prompt: string) {
   const lower = prompt.toLowerCase();
   const explicitLargeApp = /\b(full[- ]stack|large app|multi[- ]page|dashboard|admin|backend|api|database|auth|next\.?js|react|vite|typescript|tsx|e[- ]commerce app|saas app)\b/i.test(prompt);
+  const landingPage = isStaticWebsitePrompt(prompt) && /\b(landing|website|site|homepage|hero)\b/i.test(prompt);
   const premiumStatic = isStaticWebsitePrompt(prompt) && /\b(premium|award|beautiful|animated|modern|luxury|saas|responsive|polished|pixel[- ]perfect)\b/i.test(prompt);
   if (explicitLargeApp) {
     return {
@@ -1889,11 +1890,19 @@ function estimateWorkspaceOutputBudget(prompt: string) {
       reason: "Premium static website needs richer sections without using the old 8192 default.",
     };
   }
+  if (landingPage) {
+    return {
+      maxTokens: 4600,
+      category: "landing_page",
+      targetRange: "4000-6000",
+      reason: "Landing page needs complete sections while staying below large-project budgets.",
+    };
+  }
   if (isStaticWebsitePrompt(prompt)) {
     return {
-      maxTokens: lower.includes("simple") ? 3600 : 4400,
+      maxTokens: lower.includes("simple") ? 3200 : 4000,
       category: "static_landing_page",
-      targetRange: "3500-5000",
+      targetRange: "2500-4000",
       reason: "Static landing page fast path keeps output compact and quick.",
     };
   }

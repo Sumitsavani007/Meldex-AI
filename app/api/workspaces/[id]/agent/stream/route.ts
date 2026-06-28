@@ -16,6 +16,7 @@ import {
   createWorkspaceSnapshot,
   deleteProjectFile,
   detectWorkspaceContextLeak,
+  estimateWorkspaceOutputBudget,
   getOwnedWorkspaceProject,
   isStaticWebsitePrompt,
   normalizeWorkspaceFileActions,
@@ -83,6 +84,40 @@ function nowMs() {
 
 function elapsedMs(startedAt: number) {
   return Math.max(0, Date.now() - startedAt);
+}
+
+function planWorkspaceFiles(prompt: string) {
+  if (isStaticWebsitePrompt(prompt)) {
+    const exactStatic = /only\s+index\.html,\s*style\.css,\s*script\.js|index\.html,\s*style\.css,\s*script\.js/i.test(prompt);
+    return {
+      projectType: "static_website",
+      complexity: /\b(premium|animated|responsive|modern|beautiful|award)\b/i.test(prompt) ? "medium" : "simple",
+      create: exactStatic ? ["index.html", "style.css", "script.js"] : ["index.html", "style.css", "script.js"],
+      modify: [] as string[],
+      delete: [] as string[],
+      dependencies: [] as string[],
+      expectedOutputSize: /\b(premium|animated|responsive|modern|beautiful|award)\b/i.test(prompt) ? "landing page: 4000-6000 tokens" : "simple page: 2500-4000 tokens",
+    };
+  }
+  return {
+    projectType: "workspace_code_change",
+    complexity: /\b(large|full[- ]stack|dashboard|database|auth|api)\b/i.test(prompt) ? "large" : "medium",
+    create: [] as string[],
+    modify: ["selected relevant files"],
+    delete: [] as string[],
+    dependencies: ["existing project dependencies only"],
+    expectedOutputSize: "adaptive to selected files",
+  };
+}
+
+function targetedRepairPaths(findings: string[], files: Array<{ path: string }>) {
+  const joined = findings.join("\n").toLowerCase();
+  const explicit = files.filter((file) => joined.includes(file.path.toLowerCase())).map((file) => file.path);
+  if (explicit.length) return explicit;
+  if (/\bcss|style|layout|responsive|color|spacing|overflow\b/i.test(joined)) return files.filter((file) => /\.css$/i.test(file.path)).map((file) => file.path);
+  if (/\bjs|script|button|accordion|menu|interaction|console\b/i.test(joined)) return files.filter((file) => /\.js$/i.test(file.path)).map((file) => file.path);
+  if (/\bhtml|doctype|link|script tag|semantic|section\b/i.test(joined)) return files.filter((file) => /\.html$/i.test(file.path)).map((file) => file.path);
+  return files.slice(0, 1).map((file) => file.path);
 }
 
 export async function POST(
@@ -312,7 +347,20 @@ export async function POST(
           if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
             throw new Error(orchestration.confidence.reason);
           }
-          await send("selecting_files", "Selecting files");
+          const filePlan = planWorkspaceFiles(body.data.prompt);
+          const outputBudget = estimateWorkspaceOutputBudget(body.data.prompt);
+          await send("single_agent_plan_ready", "Planning", {
+            plan: {
+              request: "understood",
+              projectType: filePlan.projectType,
+              complexity: filePlan.complexity,
+              oneModel: true,
+              multiAgent: false,
+            },
+          });
+          await send("smart_file_plan_ready", "Preparing files", { filePlan });
+          await send("adaptive_token_budget_selected", "Adaptive token budget selected", { outputBudget });
+          await send("selecting_files", "Selecting files", { filePlan });
 
           let response: WorkspaceAgentResponse;
           const offlineMode = false;
@@ -497,16 +545,32 @@ TASK ISOLATION FIX:
           if (reviewer.status === "block") {
             retries += 1;
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
-            const fixPrompt = `${body.data.prompt}\n\nTARGETED FIX REQUIRED:\n${reviewer.findings.join("\n")}\nReturn complete corrected index.html, style.css, script.js, and README.md only.`;
+            const repairPaths = targetedRepairPaths(reviewer.findings, files);
+            const repairSet = new Set(repairPaths);
+            const repairContext = files
+              .filter((file) => repairSet.has(file.path))
+              .map((file) => `### ${file.path}\n\`\`\`\n${file.content || ""}\n\`\`\``)
+              .join("\n\n");
+            await send("targeted_repair_started", `Repairing ${repairPaths.join(", ") || "selected file"}`, {
+              repairPaths,
+              findings: reviewer.findings,
+            });
+            const fixPrompt = `${body.data.prompt}\n\nTARGETED FILE REPAIR ONLY:\n${reviewer.findings.join("\n")}\n\nRepair only these file(s): ${repairPaths.join(", ") || "the failing file"}.\nReturn JSON with complete corrected content for ONLY the targeted file(s). Do not regenerate unrelated files.\n\nCurrent targeted file content:\n${repairContext}`;
             const fixResponse = await askWorkspaceAgent(fixPrompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_autofix" });
-            files = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt);
+            const repairedFiles = normalizeWorkspaceFileActions(Array.isArray(fixResponse.files) ? fixResponse.files : [], body.data.prompt)
+              .filter((file) => repairSet.size === 0 || repairSet.has(file.path));
+            if (repairedFiles.length) {
+              const repairedByPath = new Map(repairedFiles.map((file) => [file.path, file]));
+              files = files.map((file) => repairedByPath.get(file.path) || file);
+            }
             if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
               throw new Error("Targeted regeneration returned no valid file actions; no files were saved.");
             }
             reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
-            await send("debugger_fix_applied", "Debugger regenerated a targeted file fix", {
+            await send("targeted_repair_completed", "Targeted file repair completed", {
               fixed: reviewer.status !== "block",
               findings: reviewer.findings,
+              repairPaths,
             });
           }
           await send("reviewer_done", reviewer.summary, { reviewer });
