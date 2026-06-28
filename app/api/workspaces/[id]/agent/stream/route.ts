@@ -14,11 +14,13 @@ import {
   createWorkspaceSnapshot,
   createWorkspaceTaskEvent,
   deleteProjectFile,
+  detectWorkspaceContextLeak,
   getOwnedWorkspaceProject,
   isStaticWebsitePrompt,
   normalizeWorkspaceFileActions,
   offlineStaticWorkspace,
   readProjectFile,
+  staticFallbackFiles,
   updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
   writeProjectFile,
@@ -255,7 +257,32 @@ export async function POST(
               files: files.map((file) => ({ path: file.path, operation: file.operation })),
             });
           }
-          let reviewer = reviewWorkspaceFiles(files, orchestration.classification);
+          let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+          if (!leakCheck.ok) {
+            retries += 1;
+            await send("context_leak_detected", "Detected old context mismatch; regenerating for current prompt", { leakCheck });
+            const isolationPrompt = `${body.data.prompt}
+
+TASK ISOLATION FIX:
+- The previous generation did not match the current prompt.
+- Ignore old workspace content and memory except generic coding/style preferences.
+- Do not reuse old pricing, food, or unrelated page copy.
+- Generate complete files for ONLY the current prompt.
+- Return JSON only with complete file contents.`;
+            const isolatedResponse = await askWorkspaceAgent(isolationPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_isolation_fix" });
+            files = normalizeWorkspaceFileActions(Array.isArray(isolatedResponse.files) ? isolatedResponse.files : [], body.data.prompt);
+            leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+            if (!leakCheck.ok && isStaticWebsitePrompt(body.data.prompt)) {
+              autofixes += 1;
+              files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, `context leak guard: ${leakCheck.findings.join("; ")}`), body.data.prompt);
+              leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+            }
+            response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
+            await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_blocked", leakCheck.ok ? "Regenerated output now matches current prompt" : "Context leak guard still found mismatched output", { leakCheck });
+          }
+          if (!leakCheck.ok) throw new Error(`Generated output did not match current prompt: ${leakCheck.findings.join("; ")}`);
+
+          let reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
           if (reviewer.status === "block") {
             retries += 1;
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
@@ -272,7 +299,7 @@ export async function POST(
               };
               files = normalizeWorkspaceFileActions(fallback.files || [], body.data.prompt);
             }
-            reviewer = reviewWorkspaceFiles(files, orchestration.classification);
+            reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
             await send("debugger_fix_applied", "Debugger regenerated a targeted file fix", {
               fixed: reviewer.status !== "block",
               findings: reviewer.findings,
@@ -533,8 +560,9 @@ export async function POST(
     return new Response(stream, {
       headers: {
         "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-store, no-cache",
+        "Cache-Control": "no-store, no-cache, no-transform",
         Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
       },
     });
   } catch (err) {

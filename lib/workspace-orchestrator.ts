@@ -417,11 +417,13 @@ export async function runWorkspaceOrchestration(input: OrchestrationInput): Prom
   };
 }
 
-export function reviewWorkspaceFiles(files: WorkspaceFileAction[], classification: OrchestrationResult["classification"]): ReviewResult {
+export function reviewWorkspaceFiles(files: WorkspaceFileAction[], classification: OrchestrationResult["classification"], prompt = ""): ReviewResult {
   const findings: string[] = [];
   const byPath = new Map(files.map((file) => [file.path, file]));
   const html = byPath.get("index.html")?.content || "";
   const isStaticWebsite = classification.type === "website_generation";
+  const isPricingTask = /\b(pricing|price|plans?|subscription|billing|monthly|yearly)\b/i.test(prompt) ||
+    classification.labels.some((label) => /\b(pricing|price|plans?|subscription|billing)\b/i.test(label));
 
   if (isStaticWebsite) {
     for (const required of ["index.html", "style.css", "script.js"]) {
@@ -433,7 +435,7 @@ export function reviewWorkspaceFiles(files: WorkspaceFileAction[], classificatio
     if (/\$\{[^}]+}/.test(files.map((file) => file.content || "").join("\n"))) findings.push("Generated files contain unresolved template placeholders.");
     if (!/href=["']\.\/style\.css["']/i.test(html)) findings.push("index.html does not link ./style.css.");
     if (!/src=["']\.\/script\.js["']/i.test(html)) findings.push("index.html does not load ./script.js.");
-    if (!/pricing|plan|monthly|yearly|price/i.test(html)) findings.push("Pricing task does not appear visually complete.");
+    if (isPricingTask && !/pricing|plan|monthly|yearly|price/i.test(html)) findings.push("Pricing task does not appear visually complete.");
   }
 
   return {

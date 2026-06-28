@@ -186,7 +186,34 @@ function isGujaratiFoodPrompt(prompt = "") {
   return /gujarati|tasty\s+gujarat|food\s+delivery|dhokla|fafda|khandvi|thepla|undhiyu|khaman/i.test(prompt);
 }
 
-function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileAction[] {
+function wantsWorkspaceContinuity(prompt = "") {
+  return /\b(continue|previous|same|again|restore|yesterday|last|better|fix it|fix the same|same issue|same style|modify|update|edit|improve existing|change existing)\b/i.test(prompt);
+}
+
+function isStandaloneWebsiteGeneration(prompt = "") {
+  return isStaticWebsitePrompt(prompt) && !wantsWorkspaceContinuity(prompt);
+}
+
+function promptRequiresPricing(prompt = "") {
+  return /\b(pricing|price|plans?|subscription|billing|monthly|yearly)\b/i.test(prompt);
+}
+
+function promptSubjectTerms(prompt = "") {
+  return [...new Set([
+    ...[...prompt.matchAll(/"([^"]{2,80})"/g)].map((match) => match[1]),
+    ...[...prompt.matchAll(/\b([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,3})\b/g)].map((match) => match[1]),
+  ].map((item) => item.trim()).filter((item) => !/Create|Premium|Responsive|Landing|Page|Section|SaaS|AI$/i.test(item)))].slice(0, 6);
+}
+
+function promptDomain(prompt = "") {
+  if (isGujaratiFoodPrompt(prompt)) return "gujarati_food_delivery";
+  if (/fitflow|fitness|workout|gym|wellness|health\s+coach|meal\s+plan/i.test(prompt)) return "fitness_saas";
+  if (promptRequiresPricing(prompt)) return "pricing";
+  if (/portfolio|resume|designer|developer/i.test(prompt)) return "portfolio";
+  return "general";
+}
+
+export function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileAction[] {
   if (isGujaratiFoodPrompt(prompt)) {
     const html = `<!doctype html>
 <html lang="en">
@@ -500,6 +527,80 @@ document.querySelectorAll(".faq-item").forEach((button) => {
       { operation: "create", path: "style.css", content: css, description: "Dark premium responsive styling and animations" },
       { operation: "create", path: "script.js", content: js, description: "Smooth scroll, reveal animations, and FAQ accordion" },
     ];
+  }
+  if (/fitflow|fitness|workout|gym|wellness|health\s+coach|meal\s+plan/i.test(prompt)) {
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FitFlow AI - Intelligent Fitness SaaS</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="#top">FitFlow <span>AI</span></a>
+    <button class="menu" type="button" aria-label="Toggle menu" aria-expanded="false"><span></span><span></span></button>
+    <nav class="links" aria-label="Primary navigation">
+      <a href="#features">Features</a>
+      <a href="#plans">Plans</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="nav-cta" type="button" data-scroll="#plans">Start training</button>
+  </header>
+  <main id="top">
+    <section class="hero reveal">
+      <div>
+        <p class="eyebrow">AI fitness operating system</p>
+        <h1>Turn every workout into an adaptive coaching loop.</h1>
+        <p class="lede">FitFlow AI plans training, nutrition, recovery, and progress insights for busy teams and ambitious individuals.</p>
+        <div class="actions">
+          <button class="primary" type="button" data-scroll="#plans">Build my plan</button>
+          <button class="secondary" type="button" data-scroll="#features">See features</button>
+        </div>
+        <div class="metrics"><span><strong>92%</strong> adherence</span><span><strong>24/7</strong> coach</span><span><strong>4.9</strong> rating</span></div>
+      </div>
+      <aside class="dashboard" aria-label="FitFlow AI dashboard preview">
+        <div class="orb"></div>
+        <div class="dash-head"><span>Today</span><strong>Strength + Mobility</strong></div>
+        <div class="rings"><span>82%</span><span>36m</span><span>7.8k</span></div>
+        <div class="timeline"><p>Warmup complete</p><p>Deadlift progression ready</p><p>Recovery score improving</p></div>
+      </aside>
+    </section>
+    <section id="features" class="section reveal">
+      <p class="eyebrow">Built for momentum</p>
+      <h2>Personalized plans, measurable progress, and premium coaching workflows.</h2>
+      <div class="grid">
+        <article><span>01</span><h3>Adaptive programs</h3><p>Plans shift around soreness, schedule changes, and performance signals.</p></article>
+        <article><span>02</span><h3>Nutrition guidance</h3><p>Smart meals and macros that align with training blocks.</p></article>
+        <article><span>03</span><h3>Team analytics</h3><p>Track adherence, recovery, and progress across clients or employees.</p></article>
+      </div>
+    </section>
+    <section id="plans" class="section reveal">
+      <p class="eyebrow">Plans</p>
+      <h2>Choose your training engine.</h2>
+      <div class="plans">
+        <article><h3>Starter</h3><strong>$19/mo</strong><p>AI plans, workout tracking, weekly insights.</p><button type="button">Start</button></article>
+        <article class="featured"><h3>Coach</h3><strong>$49/mo</strong><p>Adaptive cycles, nutrition, recovery optimization.</p><button type="button">Choose Coach</button></article>
+        <article><h3>Studio</h3><strong>$149/mo</strong><p>Client dashboards, team analytics, priority support.</p><button type="button">Contact sales</button></article>
+      </div>
+    </section>
+    <section id="faq" class="faq reveal">
+      <button type="button">Does FitFlow replace a trainer?<strong>+</strong></button><div>It supports trainers and users with adaptive plans and measurable insights.</div>
+      <button type="button">Can teams use it?<strong>+</strong></button><div>Yes, Studio includes team dashboards and client management workflows.</div>
+    </section>
+  </main>
+  <script src="./script.js"></script>
+</body>
+</html>`;
+    const css = `:root{color-scheme:dark;--bg:#05070f;--panel:rgba(255,255,255,.08);--border:rgba(255,255,255,.14);--text:#f8fafc;--muted:#9aa6bd;--lime:#a3ff12;--violet:#7c5cff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,ui-sans-serif,system-ui;background:radial-gradient(circle at 25% 0,rgba(124,92,255,.3),transparent 34rem),radial-gradient(circle at 80% 20%,rgba(163,255,18,.16),transparent 24rem),var(--bg);color:var(--text)}.nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:24px;padding:18px clamp(18px,4vw,64px);background:rgba(5,7,15,.72);backdrop-filter:blur(18px);border-bottom:1px solid var(--border)}.brand{margin-right:auto;color:#fff;text-decoration:none;font-weight:900;font-size:20px}.brand span{color:var(--lime)}.links{display:flex;gap:20px}.links a{color:var(--muted);text-decoration:none}.nav-cta,.primary,.secondary,.plans button{border:0;border-radius:999px;padding:12px 18px;font-weight:900;cursor:pointer}.nav-cta,.primary,.plans button{background:linear-gradient(135deg,var(--lime),#48ffbd);color:#07110b}.secondary{background:rgba(255,255,255,.08);color:#fff;border:1px solid var(--border)}.menu{display:none}.hero{display:grid;grid-template-columns:minmax(0,1fr) 440px;gap:48px;align-items:center;min-height:calc(100vh - 78px);padding:clamp(42px,8vw,96px) clamp(18px,5vw,72px)}.eyebrow{color:var(--lime);text-transform:uppercase;letter-spacing:.14em;font-size:12px;font-weight:900}h1{font-size:clamp(48px,8vw,92px);line-height:.9;letter-spacing:-.06em;margin:12px 0}.lede{max-width:650px;color:var(--muted);font-size:19px;line-height:1.75}.actions,.metrics{display:flex;gap:12px;flex-wrap:wrap;margin-top:26px}.metrics span{border:1px solid var(--border);background:var(--panel);border-radius:18px;padding:13px 16px;color:var(--muted)}.metrics strong{display:block;color:#fff;font-size:24px}.dashboard{position:relative;border:1px solid var(--border);border-radius:32px;background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05));padding:24px;box-shadow:0 34px 110px rgba(0,0,0,.45);overflow:hidden}.orb{position:absolute;inset:auto -80px -80px auto;width:220px;height:220px;background:var(--lime);filter:blur(80px);opacity:.25}.dash-head,.timeline p,.rings span{position:relative;border:1px solid var(--border);background:rgba(0,0,0,.22);border-radius:20px;padding:16px}.dash-head{display:grid;gap:6px}.dash-head span,.timeline p{color:var(--muted)}.rings{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:18px 0}.rings span{text-align:center;font-size:24px;font-weight:900}.timeline{display:grid;gap:10px}.section{padding:70px clamp(18px,5vw,72px)}.section h2{max-width:820px;font-size:clamp(34px,5vw,58px);line-height:1}.grid,.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.grid article,.plans article{border:1px solid var(--border);border-radius:28px;background:var(--panel);padding:24px;min-height:230px}.grid span{color:var(--lime);font-weight:900}.grid p,.plans p{color:var(--muted);line-height:1.65}.plans strong{font-size:36px}.featured{outline:2px solid rgba(163,255,18,.45)}.faq{display:grid;gap:10px;padding:70px clamp(18px,5vw,72px)}.faq button{display:flex;justify-content:space-between;border:1px solid var(--border);border-radius:18px;background:var(--panel);color:#fff;padding:18px;font:inherit;font-weight:800}.faq div{display:none;color:var(--muted);padding:0 18px 12px}.faq div.open{display:block}.reveal{opacity:0;transform:translateY(18px);transition:.7s ease}.reveal.visible{opacity:1;transform:none}@media(max-width:920px){.hero{grid-template-columns:1fr}.dashboard{max-width:520px}.grid,.plans{grid-template-columns:1fr}.links,.nav-cta{display:none}.menu{display:grid;margin-left:auto;background:transparent;border:1px solid var(--border);border-radius:12px;width:42px;height:42px}.menu span{display:block;width:18px;height:2px;background:#fff;margin:auto}.links.open{display:flex;position:absolute;left:16px;right:16px;top:70px;flex-direction:column;border:1px solid var(--border);border-radius:20px;padding:14px;background:#080b15}}@media(max-width:520px){.rings{grid-template-columns:1fr}h1{font-size:44px}.actions button{width:100%}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}`;
+    const js = `const menu=document.querySelector(".menu"),links=document.querySelector(".links");menu?.addEventListener("click",()=>{const open=links?.classList.toggle("open");menu.setAttribute("aria-expanded",String(Boolean(open)))});document.querySelectorAll("[data-scroll]").forEach(btn=>btn.addEventListener("click",()=>document.querySelector(btn.dataset.scroll||"")?.scrollIntoView({behavior:"smooth"})));const obs=new IntersectionObserver(entries=>entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("visible");obs.unobserve(entry.target)}}),{threshold:.16});document.querySelectorAll(".reveal").forEach(el=>obs.observe(el));document.querySelectorAll(".faq button").forEach(btn=>btn.addEventListener("click",()=>{const panel=btn.nextElementSibling;const open=panel?.classList.toggle("open");const icon=btn.querySelector("strong");if(icon)icon.textContent=open?"−":"+";}));`;
+    const files = [
+      { operation: "create" as const, path: "index.html", content: html, description: "Premium FitFlow AI fitness SaaS landing page" },
+      { operation: "create" as const, path: "style.css", content: css, description: "Dark premium responsive fitness SaaS styling" },
+      { operation: "create" as const, path: "script.js", content: js, description: "Menu, reveal, scroll, and FAQ interactions" },
+    ];
+    return onlyStaticCoreFilesRequested(prompt) ? files : [...files, { operation: "create", path: "README.md", content: "# FitFlow AI\n\nPremium responsive fitness SaaS landing page generated by Meldex Workspace.\n", description: "Project notes" }];
   }
   const productName = /meldex/i.test(prompt) ? "Meldex" : "Meldex AI";
   const isPricing = /\bpricing|price|plan|subscription\b/i.test(prompt);
@@ -863,14 +964,20 @@ export async function readWorkspaceMemorySnapshot(userId: string, projectId: str
 
 export function workspaceMemoryPrompt(memory: WorkspaceMemorySnapshot, prompt: string) {
   const lower = prompt.toLowerCase();
-  const wantsContinuity = /\b(continue|previous|same|again|restore|yesterday|last|better|fix it|same issue|same style)\b/i.test(prompt);
+  const wantsContinuity = wantsWorkspaceContinuity(prompt);
   const relatedTasks = memory.recentTasks
     .map((task) => ({ task, score: lower.split(/[^a-z0-9]+/).filter((word) => word.length > 3 && task.prompt.toLowerCase().includes(word)).length + (wantsContinuity ? 3 : 0) }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map((item) => item.task);
-  const lines = [
+  const styleOnlyLines = [
+    "Memory mode: style hints only. Do not reuse previous product names, sections, copy, generated content, or page type unless the user explicitly asks to continue or modify previous work.",
+    memory.designStyle.length ? `Reusable design preferences: ${memory.designStyle.slice(0, 4).join("; ")}` : "",
+    memory.codingStyle.length ? `Reusable coding preferences: ${memory.codingStyle.slice(0, 4).join("; ")}` : "",
+    memory.knownIssues.length ? `Avoid known issues: ${memory.knownIssues.slice(0, 3).join("; ")}` : "",
+  ].filter(Boolean).join("\n");
+  const continuityLines = [
     memory.projectSummary ? `Project summary: ${memory.projectSummary}` : "",
     memory.architecture.length ? `Architecture: ${memory.architecture.slice(0, 6).join("; ")}` : "",
     memory.designStyle.length ? `Design style: ${memory.designStyle.slice(0, 6).join("; ")}` : "",
@@ -881,10 +988,11 @@ export function workspaceMemoryPrompt(memory: WorkspaceMemorySnapshot, prompt: s
     relatedTasks.length ? `Relevant previous tasks: ${relatedTasks.map((task) => `${task.prompt} => ${task.summary}`).join(" | ")}` : "",
     memory.lastSuccessfulCommands.length ? `Last successful commands: ${memory.lastSuccessfulCommands.slice(0, 4).join("; ")}` : "",
   ].filter(Boolean).join("\n");
+  const lines = wantsContinuity ? continuityLines : styleOnlyLines;
   return {
     snippet: lines ? `[Relevant Workspace Memory]\n${lines.slice(0, 2600)}` : "",
-    relatedTaskCount: relatedTasks.length,
-    reusedStyle: memory.designStyle.length > 0 || memory.codingStyle.length > 0,
+    relatedTaskCount: wantsContinuity ? relatedTasks.length : 0,
+    reusedStyle: (memory.designStyle.length > 0 || memory.codingStyle.length > 0) && !wantsContinuity,
     avoidedIssue: memory.knownIssues.length > 0,
   };
 }
@@ -1139,6 +1247,39 @@ export async function createWorkspaceSnapshot(userId: string, projectId: string,
   });
 }
 
+export function detectWorkspaceContextLeak(files: WorkspaceFileAction[], prompt = "") {
+  const content = files.map((file) => `${file.path}\n${file.content || ""}`).join("\n").toLowerCase();
+  const domain = promptDomain(prompt);
+  const subjects = promptSubjectTerms(prompt).map((item) => item.toLowerCase());
+  const findings: string[] = [];
+
+  for (const subject of subjects) {
+    const words = subject.split(/\s+/).filter((word) => word.length > 2);
+    if (words.length && !words.some((word) => content.includes(word))) {
+      findings.push(`Missing current prompt subject: ${subject}`);
+    }
+  }
+
+  if (domain === "gujarati_food_delivery") {
+    if (!/(tasty gujarat|gujarati|food|dhokla|fafda|khaman|thali|delivery)/i.test(content)) findings.push("Generated content does not match Gujarati food delivery intent.");
+    if (/\bmeldex pricing|choose the right meldex plan|ai saas pricing|monthly|yearly\s+save/i.test(content)) findings.push("Old Meldex pricing content leaked into Gujarati food task.");
+  }
+  if (domain === "fitness_saas") {
+    if (!/(fitflow|fitness|workout|training|coach|recovery|wellness)/i.test(content)) findings.push("Generated content does not match FitFlow/fitness SaaS intent.");
+    if (/\bmeldex pricing|tasty gujarat|gujarati|dhokla|fafda|khaman/i.test(content)) findings.push("Previous pricing or food content leaked into FitFlow task.");
+  }
+  if (domain === "pricing") {
+    if (!/(pricing|price|plan|monthly|yearly|subscription)/i.test(content)) findings.push("Generated content does not match pricing intent.");
+  }
+
+  return {
+    ok: findings.length === 0,
+    findings,
+    domain,
+    subjects,
+  };
+}
+
 export async function restoreWorkspaceSnapshot(userId: string, projectId: string, snapshotId: string) {
   const project = await getOwnedWorkspaceProject(userId, projectId);
   const snapshot = await prisma.workspaceSnapshot.findFirst({ where: { id: snapshotId, userId, projectId } });
@@ -1217,7 +1358,11 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
     }
   };
   flatten(tree);
-  const allReadable = await Promise.all(files.slice(0, 240).map(async (filePath) => {
+  const standaloneGeneration = isStandaloneWebsiteGeneration(prompt);
+  const readableFiles = standaloneGeneration
+    ? files.filter((filePath) => /(^|\/)(package\.json|README\.md|tsconfig\.json|next\.config\.(js|ts)|vite\.config\.(js|ts))$/i.test(filePath)).slice(0, 40)
+    : files.slice(0, 240);
+  const allReadable = await Promise.all(readableFiles.map(async (filePath) => {
     try {
       const content = await readFile(resolveProjectFile(storagePath, filePath).absolute, "utf8");
       return { path: filePath, content: content.slice(0, 9000) };
@@ -1227,15 +1372,18 @@ export async function buildWorkspaceContext(projectId: string, storagePath: stri
   }));
   const graph = buildProjectKnowledgeGraph(allReadable);
   const ranked = rankSemanticFiles({ taskId: projectId, prompt, files: allReadable }, graph);
-  const relevant = (ranked.length ? ranked : allReadable).slice(0, 12).map((file) => ({
+  const relevantSource = standaloneGeneration
+    ? ranked.filter((file) => /package\.json|README\.md|config/i.test(file.path)).slice(0, 4)
+    : (ranked.length ? ranked : allReadable).slice(0, 12);
+  const relevant = relevantSource.map((file) => ({
     path: file.path,
-    content: file.content.slice(0, 7000),
+    content: standaloneGeneration ? "" : file.content.slice(0, 7000),
     score: "score" in file ? file.score : 0,
-    reasons: "reasons" in file ? file.reasons : [],
+    reasons: standaloneGeneration ? ["standalone_generation_no_old_content"] : "reasons" in file ? file.reasons : [],
   }));
   const memory = userId ? (await readWorkspaceMemorySnapshot(userId, projectId).catch(() => null))?.memory : undefined;
   const memoryContext = memory ? workspaceMemoryPrompt(memory, prompt) : { snippet: "", relatedTaskCount: 0, reusedStyle: false, avoidedIssue: false };
-  return { projectId, projectFiles: files.slice(0, 120), relevantFiles: relevant, memory, memoryContext, knowledgeGraph: graph, rankedFiles: ranked.slice(0, 16) };
+  return { projectId, projectFiles: files.slice(0, 120), relevantFiles: relevant, memory, memoryContext, knowledgeGraph: graph, rankedFiles: ranked.slice(0, 16), taskIsolation: { standaloneGeneration, domain: promptDomain(prompt), subjectTerms: promptSubjectTerms(prompt), continuity: wantsWorkspaceContinuity(prompt) } };
 }
 
 function parseNestedWorkspaceResponse(value: unknown, depth = 0): WorkspaceAgentResponse | null {
@@ -1370,12 +1518,18 @@ function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
 }
 
 export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnType<typeof buildWorkspaceContext>>, orchestrationInstruction = "", runtime?: { userId?: string; taskType?: string }) {
+  const taskIsolation = context.taskIsolation || {
+    standaloneGeneration: false,
+    domain: promptDomain(prompt),
+    subjectTerms: promptSubjectTerms(prompt),
+    continuity: wantsWorkspaceContinuity(prompt),
+  };
   const runtimeV4 = buildCliRuntimeV4Plan({
     taskId: `${context.projectId}:${runtime?.taskType || "workspace_agent"}`,
     prompt,
     files: context.relevantFiles.map((file) => ({ path: file.path, content: file.content })),
     memorySnippet: context.memoryContext?.snippet || "",
-    styleRules: context.memory?.designStyle || [],
+    styleRules: taskIsolation.standaloneGeneration ? [] : context.memory?.designStyle || [],
     taskType: runtime?.taskType || "workspace_agent",
   });
   const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
@@ -1402,6 +1556,12 @@ Return JSON only:
   "warnings": []
 }
 Rules: use relative paths, avoid secrets, do not add dependencies for static HTML, prefer minimal patches, and create complete working files.
+Current Prompt Dominance:
+- The current user prompt is the source of truth and has higher priority than workspace memory, previous tasks, existing files, and project summaries.
+- Do not reuse previous generated page content, product names, copy, page type, or sections unless the prompt explicitly says continue, update, modify, same, previous, or existing.
+- If the current prompt names a product, brand, domain, or audience, visible copy and sections must match that current prompt.
+- Memory is allowed only for reusable style/coding preferences when this is a new standalone task.
+- If standaloneGeneration=true, overwrite/create the requested files for the new task instead of adapting old page content.
 Coding Engine V2:
 - Internally run: understand request, detect project type, detect framework, plan architecture, plan files, plan reusable components, plan state/data flow, generate code, self-review, run checks, fix errors, refactor if needed, verify final output.
 - Before coding decide folder structure, components, utilities, data model, API routes, validation, state management, styling approach, and testing approach.
@@ -1417,6 +1577,14 @@ ${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");
   const runtimePrompt = buildQwenRuntimePrompt(runtimeV4);
+  const dominanceBlock = [
+    "[CURRENT PROMPT - HIGHEST PRIORITY]",
+    prompt,
+    "",
+    `[Task isolation] standaloneGeneration=${taskIsolation.standaloneGeneration}; continuity=${taskIsolation.continuity}; domain=${taskIsolation.domain}; subjects=${taskIsolation.subjectTerms.join(", ") || "none"}`,
+    "Do not let old workspace content override this prompt. If old context conflicts, ignore the old context.",
+    taskIsolation.standaloneGeneration ? "This is a fresh standalone generation. Generate files for this prompt only. Do not copy previous index.html/style.css/script.js concepts." : "",
+  ].filter(Boolean).join("\n");
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
     maxTokens: 8192,
@@ -1425,7 +1593,7 @@ ${websiteDesignerRules}`;
     taskType: runtime?.taskType || "workspace_agent",
     messages: [
       { role: "system", content: [system, orchestrationInstruction, "Use the Meldex CLI Runtime V4 contract below. Qwen3-Coder 32B is the only coding model."].filter(Boolean).join("\n\n") },
-      { role: "user", content: `${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || "(empty workspace)"}` },
+      { role: "user", content: `${dominanceBlock}\n\n${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files list only:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || (taskIsolation.standaloneGeneration ? "(old generated file content intentionally isolated for this new task)" : "(empty workspace)")}` },
     ],
   });
   const parsed = parseAgentJson(completion.content);
