@@ -1870,7 +1870,8 @@ export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnT
     styleRules: taskIsolation.standaloneGeneration ? [] : context.memory?.designStyle || [],
     taskType: runtime?.taskType || "workspace_agent",
   });
-  const staticEditPrompt = /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|glassmorphism)\b/i.test(prompt)
+  const newStaticGeneration = isNewStaticGenerationPrompt(prompt);
+  const staticEditPrompt = !newStaticGeneration && /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|glassmorphism)\b/i.test(prompt)
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
   const staticFastPrompt = (isStaticWebsitePrompt(prompt) || staticEditPrompt) && runtime?.taskType === "workspace_agent_stream";
   const websiteDesignerRules = (isStaticWebsitePrompt(prompt) || staticEditPrompt) ? `
@@ -1985,10 +1986,11 @@ Output contract:
 
 export function estimateWorkspaceOutputBudget(prompt: string) {
   const lower = prompt.toLowerCase();
+  const newStaticGeneration = isNewStaticGenerationPrompt(prompt);
   const explicitLargeApp = /\b(full[- ]stack|large app|multi[- ]page|dashboard|admin|backend|api|database|auth|next\.?js|react|vite|typescript|tsx|e[- ]commerce app|saas app)\b/i.test(prompt);
   const landingPage = isStaticWebsitePrompt(prompt) && /\b(landing|website|site|homepage|hero)\b/i.test(prompt);
   const premiumStatic = isStaticWebsitePrompt(prompt) && /\b(premium|award|beautiful|animated|modern|luxury|saas|responsive|polished|pixel[- ]perfect)\b/i.test(prompt);
-  const smallStaticEdit = /\b(change|update|fix|edit|modify|color|headline|copy|button|faq|accordion|style\.css|script\.js|index\.html|regenerate)\b/i.test(prompt)
+  const smallStaticEdit = !newStaticGeneration && /\b(change|update|fix|edit|modify|color|headline|copy|button|faq|accordion|style\.css|script\.js|index\.html|regenerate)\b/i.test(prompt)
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
   if (explicitLargeApp) {
     return {
@@ -2069,6 +2071,11 @@ export function classifyWorkspaceProviderFailure(error: unknown, prompt = ""): W
 export function isStaticWebsitePrompt(prompt: string) {
   return /\b(website|landing|portfolio|pricing|contact|static|html|page|site)\b/i.test(prompt) ||
     /(વેબસાઇટ|લેન્ડિંગ|પેજ|સાઇટ|હોટેલ|ફૂડ|ડિલિવરી|બનાવ|बनाव|बनाओ|पेज|वेबसाइट|साइट)/i.test(prompt);
+}
+
+export function isNewStaticGenerationPrompt(prompt: string) {
+  return (/\b(create|build|make|generate|scaffold|new)\b/i.test(prompt) && /\b(landing|website|web\s*site|site|page|homepage|portfolio|pricing|html|static)\b/i.test(prompt)) ||
+    /((બનાવી|બનાવ|બનાવો|બનાવજે|બનાવી આપ|બનાવી દે|બનાવવું|बनाओ|बनाना|बनाव).*(લેન્ડિંગ|વેબસાઇટ|પેજ|સાઇટ|landing|website|page|site))|((લેન્ડિંગ|વેબસાઇટ|પેજ|સાઇટ|landing|website|page|site).*(બનાવી|બનાવ|બનાવો|બનાવજે|બનાવી આપ|બનાવી દે|બનાવવું|बनाओ|बनाना|बनाव))/i.test(prompt);
 }
 
 export function offlineStaticWorkspace(prompt: string): WorkspaceAgentResponse {

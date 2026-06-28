@@ -135,8 +135,14 @@ function runtimeModeForPrompt(prompt: string): RuntimeProfile["mode"] {
 }
 
 function isStaticEditPrompt(prompt: string) {
+  if (isNewStaticGenerationPrompt(prompt)) return false;
   return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|click|dialog|modal|popup|open|faq|accordion|color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|theme|background|glassmorphism)\b/i.test(prompt)
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
+}
+
+function isNewStaticGenerationPrompt(prompt: string) {
+  return /\b(create|build|make|generate|scaffold|new)\b/i.test(prompt) && /\b(landing|website|web\s*site|site|page|homepage|portfolio|pricing|html|static)\b/i.test(prompt) ||
+    /((બનાવી|બનાવ|બનાવો|બનાવજે|બનાવી આપ|બનાવી દે|બનાવવું|बनाओ|बनाना|बनाव).*(લેન્ડિંગ|વેબસાઇટ|પેજ|સાઇટ|landing|website|page|site))|((લેન્ડિંગ|વેબસાઇટ|પેજ|સાઇટ|landing|website|page|site).*(બનાવી|બનાવ|બનાવો|બનાવજે|બનાવી આપ|બનાવી દે|બનાવવું|बनाओ|बनाना|बनाव))/i.test(prompt);
 }
 
 function bottleneckFromProfile(profile: RuntimeProfile) {
