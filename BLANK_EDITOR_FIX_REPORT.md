@@ -18,6 +18,8 @@ The editor could stay blank after a file was selected or while the agent was wri
 
 - File APIs return storage-backed content and debug metadata.
 - Production build passed.
+- Deployed commit: `2f64184810f766e0d185a43ffb1c34365432dbef`.
+- Live app restarted through PM2 on AWS.
 
 ## Expected Result
 

@@ -29,6 +29,9 @@ The final stream includes a `speed_benchmark` event with the timing payload.
 - `npm run lint` passed with existing warnings.
 - `npx prisma generate` passed.
 - `npm run build` passed.
+- AWS migration deploy passed after sourcing `.env.local`.
+- AWS build passed and PM2 restarted.
+- Deployed commit: `2f64184810f766e0d185a43ffb1c34365432dbef`.
 
 ## Live Benchmark Note
 

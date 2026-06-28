@@ -27,6 +27,9 @@ Date: 2026-06-28
 - Local lint passed with existing warnings.
 - Prisma generate passed.
 - Local production build passed.
+- AWS production build passed.
+- AWS PM2 process `meldex-ai` is online.
+- Local, GitHub, and AWS commit all match `2f64184810f766e0d185a43ffb1c34365432dbef`.
 
 ## Remaining QA
 

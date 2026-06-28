@@ -17,6 +17,8 @@ Provider failures or invalid model output could fall back into generated files, 
 
 - Source-level guard is in `app/api/workspaces/[id]/agent/stream/route.ts`.
 - Build passed.
+- Deployed commit: `2f64184810f766e0d185a43ffb1c34365432dbef`.
+- Provider failure path emits `provider_failed` and throws before file extraction/write loops.
 
 ## Expected Result
 

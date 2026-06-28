@@ -25,6 +25,9 @@ Workspace stream marked files as edited while the saved file content could be em
 - `npm run lint` passed with existing React hook warnings.
 - `npx prisma generate` passed.
 - `npm run build` passed.
+- Deployed commit: `2f64184810f766e0d185a43ffb1c34365432dbef`.
+- AWS PM2 process `meldex-ai` restarted and online.
+- Live `/api/workspaces` returns `401 Authentication required`, confirming the deployed app is serving protected workspace APIs.
 
 ## Remaining Notes
 
