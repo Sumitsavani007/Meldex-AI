@@ -207,7 +207,7 @@ export async function POST(
               confidence: orchestration.confidence.score,
             });
             await send("current_step", "Waiting for model response", { stage: "model_generation" });
-            const stopHeartbeat = eventBus.heartbeat("Still working… waiting for model response", 3000);
+            const stopHeartbeat = eventBus.heartbeat("Still working… waiting for model response", 2000);
             try {
               response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
             } finally {
@@ -257,9 +257,12 @@ export async function POST(
           let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
             retries += 1;
-            await send("context_leak_detected", "Output needs repair", {
+            await send("context_leak_detected", "Checking output", {
               missing: leakCheck.missingRequiredEntities,
               repairHints: leakCheck.repairHints,
+              domain: leakCheck.domain,
+            });
+            await send("current_step", `Repairing ${leakCheck.missingRequiredEntities[0] || "current prompt"} context`, {
               domain: leakCheck.domain,
             });
             const isolationPrompt = `${body.data.prompt}
@@ -270,22 +273,43 @@ TASK ISOLATION FIX:
 - Do not reuse old pricing, food, or unrelated page copy.
 - Generate complete files for ONLY the current prompt.
 - Return JSON only with complete file contents.`;
-            const isolatedResponse = await askWorkspaceAgent(isolationPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_isolation_fix" });
-            files = normalizeWorkspaceFileActions(Array.isArray(isolatedResponse.files) ? isolatedResponse.files : [], body.data.prompt);
-            leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
-            if (!leakCheck.ok && isStaticWebsitePrompt(body.data.prompt)) {
-              autofixes += 1;
-              files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, `context leak guard: ${leakCheck.findings.join("; ")}`), body.data.prompt);
-              leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+            const stopRepairHeartbeat = eventBus.heartbeat("Still working… repairing output", 2000);
+            let isolatedResponse: WorkspaceAgentResponse | null = null;
+            try {
+              isolatedResponse = await askWorkspaceAgent(isolationPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_isolation_fix" });
+            } catch (repairError) {
+              await send("context_leak_warning", "Repair pass failed; continuing with generated files", {
+                reason: repairError instanceof Error ? repairError.message : "Repair pass failed",
+                domain: leakCheck.domain,
+              });
+            } finally {
+              stopRepairHeartbeat();
             }
-            response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
-            await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_blocked", leakCheck.ok ? "Auto repair completed" : "Output needs repair", {
+            if (isolatedResponse) {
+              files = normalizeWorkspaceFileActions(Array.isArray(isolatedResponse.files) ? isolatedResponse.files : [], body.data.prompt);
+              leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+              if (!leakCheck.ok && isStaticWebsitePrompt(body.data.prompt)) {
+                autofixes += 1;
+                files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, `context leak guard: ${leakCheck.findings.join("; ")}`), body.data.prompt);
+                leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+              }
+              response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
+            }
+            await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_warning", leakCheck.ok ? "Auto repair completed" : "Continuing with validation warning", {
               missing: leakCheck.missingRequiredEntities,
               repairHints: leakCheck.repairHints,
               domain: leakCheck.domain,
             });
           }
-          if (!leakCheck.ok) throw new Error(`Output needs repair: ${leakCheck.missingRequiredEntities.length ? `Missing ${leakCheck.missingRequiredEntities.join(", ")}` : "Current prompt context was not preserved"}.`);
+          if (!leakCheck.ok) {
+            response = {
+              ...response,
+              warnings: [
+                ...(response.warnings || []),
+                `Output validation warning: ${leakCheck.missingRequiredEntities[0] || "current prompt context"} may need review.`,
+              ],
+            };
+          }
           if (leakCheck.repairRecommended) {
             await send("output_repair_recommended", "Output may need a small repair", {
               repairHints: leakCheck.repairHints,

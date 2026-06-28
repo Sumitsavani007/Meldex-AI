@@ -233,6 +233,7 @@ function promptSubjectTerms(prompt = "") {
   const knownDomainNames = [
     /fitflow\s+ai/i.test(prompt) ? "FitFlow AI" : "",
     /tasty\s+gujarat/i.test(prompt) ? "Tasty Gujarat" : "",
+    /booknest\s+ai/i.test(prompt) ? "BookNest AI" : "",
     /\bmeldex\b/i.test(prompt) ? "Meldex" : "",
   ];
   return [...new Set([...explicitNames, ...knownDomainNames].map(cleanSubjectTerm).filter((item) => !isGenericSubject(item)))].slice(0, 5);
@@ -246,6 +247,9 @@ function promptRequiredEntities(prompt = "") {
   }
   if (domain === "gujarati_food_delivery") {
     return [...new Set([...entities, /tasty\s+gujarat/i.test(prompt) ? "Tasty Gujarat" : "Gujarati food"])].filter((item) => !isGenericSubject(item));
+  }
+  if (domain === "book_summary_app") {
+    return [...new Set([...entities, /booknest/i.test(prompt) ? "BookNest AI" : "book summary"])].filter((item) => !isGenericSubject(item));
   }
   if (domain === "pricing") {
     return [...new Set(entities.length ? entities : /\bmeldex\b/i.test(prompt) ? ["Meldex"] : [])].filter((item) => !isGenericSubject(item));
@@ -261,12 +265,14 @@ function promptOptionalRequirements(prompt = "") {
   if (/\bmobile|responsive\b/i.test(prompt)) optional.push("responsive layout");
   if (/\banimation|animated|smooth\b/i.test(prompt)) optional.push("animations");
   if (/\bpopular dishes|menu|food\b/i.test(prompt)) optional.push("food/menu sections");
+  if (/\bbook\s+summary|summaries|reading|reader|books?\b/i.test(prompt)) optional.push("book summary app context");
   return [...new Set(optional)];
 }
 
 function promptDomain(prompt = "") {
   if (isGujaratiFoodPrompt(prompt)) return "gujarati_food_delivery";
   if (/fitflow|fitness|workout|gym|wellness|health\s+coach|meal\s+plan/i.test(prompt)) return "fitness_saas";
+  if (/booknest|book\s+summary|book\s+summar(?:y|ies)|reading|reader|bookshelf|library/i.test(prompt)) return "book_summary_app";
   if (promptRequiresPricing(prompt)) return "pricing";
   if (/portfolio|resume|designer|developer/i.test(prompt)) return "portfolio";
   return "general";
@@ -1330,6 +1336,10 @@ export function detectWorkspaceContextLeak(files: WorkspaceFileAction[], prompt 
     if (!/(fitflow|fitness|workout|training|coach|recovery|wellness)/i.test(content)) missingRequiredEntities.push("FitFlow AI fitness context");
     if (/\bmeldex pricing|tasty gujarat|gujarati|dhokla|fafda|khaman/i.test(content)) hardFindings.push("Previous pricing or food content leaked into FitFlow task.");
   }
+  if (domain === "book_summary_app") {
+    if (!/(booknest|book summary|summaries|reading|reader|bookshelf|library|chapter|author|ai-powered book)/i.test(content)) missingRequiredEntities.push("BookNest AI book summary context");
+    if (/\bfitflow|tasty gujarat|meldex pricing|choose the right meldex plan|ai saas pricing|dhokla|fafda|khaman/i.test(content)) hardFindings.push("Previous workspace content leaked into BookNest task.");
+  }
   if (domain === "pricing") {
     if (promptRequiresPricing(prompt) && !/(pricing|price|plan|monthly|yearly|subscription)/i.test(content)) missingRequiredEntities.push("pricing context");
   }
@@ -1341,6 +1351,7 @@ export function detectWorkspaceContextLeak(files: WorkspaceFileAction[], prompt 
     if (requirement === "responsive layout" && !/@media|viewport|responsive/i.test(content)) repairHints.push("Responsive layout may be incomplete.");
     if (requirement === "pricing or plan cards" && !/\bpricing|price|plan|monthly|yearly|subscription\b/i.test(content)) repairHints.push("Pricing or plan cards may be missing.");
     if (requirement === "food/menu sections" && !/\bmenu|dish|food|delivery|thali|gujarati\b/i.test(content)) repairHints.push("Food/menu sections may be missing.");
+    if (requirement === "book summary app context" && !/\bbook|summary|reading|reader|chapter|author|library\b/i.test(content)) repairHints.push("Book summary app context may be incomplete.");
   }
 
   const findings = [...new Set([...missingRequiredEntities.map((item) => `Missing required entity: ${item}`), ...hardFindings])];
@@ -1352,6 +1363,7 @@ export function detectWorkspaceContextLeak(files: WorkspaceFileAction[], prompt 
     missingRequiredEntities: [...new Set(missingRequiredEntities)],
     requiredEntities,
     optionalRequirements,
+    memoryContextOnly: [],
     designRequirements: optionalRequirements.filter((item) => ["responsive layout", "animations"].includes(item)),
     validationHints: optionalRequirements,
     domain,
