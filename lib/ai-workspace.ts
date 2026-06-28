@@ -2018,10 +2018,10 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
   }
   if (premiumStatic) {
     return {
-      maxTokens: 3800,
+      maxTokens: 3200,
       category: "premium_static_page",
-      targetRange: "3500-4200",
-      reason: "Premium static website uses a compact turbo budget to avoid provider timeouts.",
+      targetRange: "2800-3400",
+      reason: "Premium static website uses a compact turbo budget to reduce provider timeouts.",
     };
   }
   if (landingPage) {
@@ -2048,7 +2048,8 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
   };
 }
 
-export function classifyWorkspaceProviderFailure(error: unknown, prompt = ""): WorkspaceProviderFailure {
+export function classifyWorkspaceProviderFailure(error: unknown, _prompt = ""): WorkspaceProviderFailure {
+  void _prompt;
   const safe = toSafeProviderError(error);
   const lower = `${safe.code} ${safe.reason} ${safe.userMessage}`.toLowerCase();
   const kind: WorkspaceProviderFailure["kind"] =
@@ -2064,7 +2065,7 @@ export function classifyWorkspaceProviderFailure(error: unknown, prompt = ""): W
     reason: safe.reason,
     userMessage: safe.userMessage,
     retryAfter: safe.retryAfter,
-    offlineAvailable: isStaticWebsitePrompt(prompt),
+    offlineAvailable: false,
   };
 }
 

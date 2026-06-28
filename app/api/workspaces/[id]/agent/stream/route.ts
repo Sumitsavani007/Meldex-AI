@@ -198,6 +198,17 @@ function applyFindReplacePatches(
 }
 
 function planWorkspaceFiles(prompt: string) {
+  if (isNewStaticGenerationPrompt(prompt) && isStaticWebsitePrompt(prompt)) {
+    return {
+      projectType: "static_website",
+      complexity: /\b(premium|animated|responsive|modern|beautiful|award)\b/i.test(prompt) ? "medium" : "simple",
+      create: ["index.html", "style.css", "script.js"],
+      modify: [] as string[],
+      delete: [] as string[],
+      dependencies: [] as string[],
+      expectedOutputSize: /\b(premium|animated|responsive|modern|beautiful|award)\b/i.test(prompt) ? "landing page: 4000-6000 tokens" : "simple page: 2500-4000 tokens",
+    };
+  }
   if (/\bstyle\.css\b/i.test(prompt) && (/\bonly\b|do not change|don'?t change|regenerate style\.css/i.test(prompt))) {
     return {
       projectType: "static_website_style_edit",
