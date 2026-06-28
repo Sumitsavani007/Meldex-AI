@@ -109,6 +109,11 @@ type ProviderStatus = {
   name: string;
   status: string;
   message: string;
+  category?: string;
+  version?: string | null;
+  gpuMemory?: string | null;
+  queue?: number | null;
+  temperature?: string | null;
 };
 
 type UploadedItem = {
@@ -247,7 +252,7 @@ export default function StudioPage() {
   const timeline = latestGeneration?.storyboardJson?.timeline || scenes.map((scene, index) => ({ scene: index + 1, start: index * 4, end: (index + 1) * 4, label: scene.title }));
   const filteredProjects = projects.filter((project) => project.name.toLowerCase().includes(projectSearch.toLowerCase()));
   const referenceAsset = uploads.find((item) => item.type === "frame" || item.type === "clip");
-  const localProvider = providerStatuses.find((provider) => provider.status !== "connected" && provider.key !== "openrouter");
+  const localProvider = providerStatuses.find((provider) => provider.status === "missing" && provider.key !== "openrouter");
   const progress = useMemo(() => {
     if (!loading && latestGeneration?.status === "COMPLETED") return 100;
     if (!events.length) return 0;
@@ -490,6 +495,24 @@ export default function StudioPage() {
     }
   }
 
+  async function requestRender(mode: "storyboard_images" | "draft_preview" | "final_render" | "voice" | "music" | "sound_effects" | "lip_sync" | "subtitles" | "translation" | "export") {
+    if (!selectedProject) return;
+    setMessage("Checking local media providers");
+    const response = await fetch("/api/studio/render", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: selectedProject.id, generationId: latestGeneration?.id, mode, settings }),
+    });
+    const data = await response.json().catch(() => ({ error: "Render request failed" }));
+    if (!response.ok) {
+      setMessage(data.error === "Provider Not Installed" ? `Provider Not Installed: ${(data.missingProviders || []).map((provider: ProviderStatus) => provider.name).join(", ")}` : data.error || "Render request failed");
+      await loadProject(selectedProject.id);
+      return;
+    }
+    setMessage(`${mode.replaceAll("_", " ")} queued`);
+    await loadProject(selectedProject.id);
+  }
+
   function setSetting<K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) {
     const next = { ...settings, [key]: value };
     setSettings(next);
@@ -572,7 +595,7 @@ export default function StudioPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold">Generated Script & Storyboard</h2>
-          <p className={cn("mt-1 text-xs", studioTokens.muted)}>{localProvider?.message || "Local video provider not configured. Storyboard and prompts are ready."}</p>
+        <p className={cn("mt-1 text-xs", studioTokens.muted)}>{localProvider?.message || "Local media providers will render when installed. Storyboard and prompts are ready."}</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => navigator.clipboard?.writeText(latestGeneration?.enhancedPrompt || prompt)} className={cn("grid size-9 place-items-center rounded-xl border", studioTokens.soft)} title="Copy enhanced prompt"><Copy className="size-4" /></button>
@@ -614,6 +637,11 @@ export default function StudioPage() {
       </div>
       <div className={cn("flex h-16 items-center gap-2 overflow-x-auto rounded-2xl border p-2", studioTokens.soft)}>
         {timeline.length ? timeline.map((item, index) => <div key={`${item.scene}-${index}`} className="flex h-full min-w-[128px] items-center justify-center rounded-xl bg-gradient-to-r from-violet-600/70 to-cyan-400/30 px-3 text-xs font-medium text-white">{item.label}</div>) : <p className={cn("px-2 text-sm", studioTokens.muted)}>Timeline appears after generation.</p>}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <button onClick={() => void requestRender("storyboard_images")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-semibold disabled:opacity-40", studioTokens.soft)}>Storyboard Images</button>
+        <button onClick={() => void requestRender("draft_preview")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-semibold disabled:opacity-40", studioTokens.soft)}>Instant Preview</button>
+        <button onClick={() => void requestRender("final_render")} disabled={!selectedProject || !latestGeneration} className="h-11 rounded-xl bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/25 disabled:opacity-40">Render Final</button>
       </div>
     </section>
   );
@@ -697,6 +725,24 @@ export default function StudioPage() {
             </div>
           )}
         </div>
+        <div className={cn("rounded-2xl border p-3", studioTokens.soft)}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Provider Layer</h3>
+            <button onClick={() => void loadProviderStatus()} className="text-xs text-violet-500">Refresh</button>
+          </div>
+          <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+            {providerStatuses.length ? providerStatuses.map((provider) => (
+              <div key={provider.key} className="rounded-xl bg-slate-100 px-3 py-2 text-xs dark:bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{provider.name}</span>
+                  <span className={cn("shrink-0 rounded-full px-2 py-0.5", provider.status === "running" || provider.status === "installed" ? "bg-emerald-500/15 text-emerald-500" : provider.status === "failed" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-500")}>{provider.status.replaceAll("_", " ")}</span>
+                </div>
+                <p className={cn("mt-1 line-clamp-2", studioTokens.muted)}>{provider.message}</p>
+                {(provider.version || provider.gpuMemory) && <p className={cn("mt-1", studioTokens.faint)}>{provider.version || ""} {provider.gpuMemory || ""}</p>}
+              </div>
+            )) : <p className={cn("text-xs", studioTokens.muted)}>Provider status loads after login.</p>}
+          </div>
+        </div>
       </div>
     </aside>
   );
@@ -727,8 +773,13 @@ export default function StudioPage() {
         <p className={cn("mt-1 text-sm", studioTokens.muted)}>{new Date(latestGeneration?.createdAt || Date.now()).toLocaleString()}</p>
         <div className="mt-5 grid grid-cols-[1fr_1fr_44px] gap-2">
           <button onClick={() => latestGeneration?.enhancedPrompt && setPrompt(latestGeneration.enhancedPrompt)} disabled={!latestGeneration?.enhancedPrompt} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Use</button>
-          <button onClick={runGeneration} disabled={!selectedProject || loading} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>{loading ? "Running" : "Rerun"}</button>
+          <button onClick={() => void requestRender("draft_preview")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Preview</button>
           <button onClick={() => setUploads(uploads.filter((item) => item.type !== "frame" && item.type !== "clip"))} className="grid h-11 place-items-center rounded-xl border border-violet-500/35 text-violet-500"><Trash2 className="size-4" /></button>
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <button onClick={() => void requestRender("voice")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Voice</button>
+          <button onClick={() => void requestRender("music")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Music</button>
+          <button onClick={() => void requestRender("export")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Export</button>
         </div>
       </div>
     </aside>

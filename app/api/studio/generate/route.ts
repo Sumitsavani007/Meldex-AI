@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { enhanceStudioPrompt, type StudioSettings } from "@/lib/ai-studio";
+import { listStudioProviderStatuses } from "@/lib/ai-studio-providers";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ const schema = z.object({
     aspectRatio: z.string().default("16:9"),
     fps: z.number().int().min(12).max(60).default(24),
     seed: z.string().optional(),
+    contentPreference: z.string().optional(),
     negativePrompt: z.string().optional(),
     motionStrength: z.number().min(0).max(100).default(52),
     cameraMotion: z.string().default("Dolly"),
@@ -80,6 +82,13 @@ export async function POST(request: Request) {
         });
         jobId = job.id;
 
+        send("provider_scan", "Checking Studio provider layer", { localFirst: true });
+        const providers = await listStudioProviderStatuses();
+        send("provider_status", "Provider layer ready", {
+          providers: providers.map((provider) => ({ key: provider.key, status: provider.status, message: provider.message })),
+          policy: "No fake media generation. Missing providers block render jobs.",
+        });
+
         send("language_detection", "Detecting language", { stage: "Language Detection" });
         send("prompt_enhancement", "Enhancing cinematic prompt", { styleLock: settings.styleLock });
         send("story_generation", "Writing story/script", { mode: project.mode });
@@ -110,10 +119,12 @@ export async function POST(request: Request) {
           })),
         });
         send("timeline_updated", "Timeline updated", { scenes: result.plan.scenes.length });
-        send("provider_status", "Checking local providers", {
-          openRouter: "connected",
-          localVideoProvider: "not_configured",
-          message: "Local video provider not configured",
+        send("media_provider_plan", "Media provider plan prepared", {
+          storyboardImages: "FLUX.1 Schnell through ComfyUI",
+          draftPreview: "Wan 2.1 1.3B through ComfyUI",
+          finalRender: "Wan 2.1 14B through ComfyUI",
+          audio: ["XTTS v2", "MusicGen", "AudioGen"],
+          export: "FFmpeg",
         });
 
         await prisma.studioGeneration.update({
@@ -150,7 +161,7 @@ export async function POST(request: Request) {
             generationId: generation.id,
             action: "generation_completed",
             summary: result.plan.summary,
-            metadataJson: { model: result.model, provider: result.provider, usage: result.usage } as Prisma.InputJsonValue,
+            metadataJson: { model: result.model, provider: result.provider, usage: result.usage, studioProviders: providers } as Prisma.InputJsonValue,
           },
         });
         await prisma.studioProject.update({

@@ -7,6 +7,7 @@ export type StudioSettings = {
   aspectRatio: string;
   fps: number;
   seed?: string;
+  contentPreference?: string;
   negativePrompt?: string;
   motionStrength: number;
   cameraMotion: string;
@@ -16,14 +17,19 @@ export type StudioSettings = {
 
 export type StudioScenePlan = {
   title: string;
+  description?: string;
   prompt: string;
   negativePrompt?: string;
   durationSec: number;
   camera: string;
+  motion?: string;
+  transition?: string;
   emotion: string;
   lighting: string;
   environment: string;
   characters?: string[];
+  voice?: string;
+  music?: string;
 };
 
 export type StudioPlan = {
@@ -46,25 +52,35 @@ const fallbackPlan = (prompt: string, settings: StudioSettings): StudioPlan => (
   scenes: [
     {
       title: "Opening moment",
+      description: "Establishes the main visual and emotional premise.",
       prompt: prompt.trim(),
       negativePrompt: settings.negativePrompt,
       durationSec: Math.max(3, Math.round(settings.durationSec / 2)),
       camera: settings.cameraMotion,
+      motion: `${settings.motionStrength}% motion strength`,
+      transition: "cinematic cut",
       emotion: "immersive",
       lighting: "cinematic",
       environment: "story-driven environment",
       characters: [],
+      voice: "none",
+      music: "cinematic ambient bed",
     },
     {
       title: "Resolution",
+      description: "Finishes the moment with a clear cinematic payoff.",
       prompt: `${prompt.trim()} with a polished ending shot and clear emotional payoff.`,
       negativePrompt: settings.negativePrompt,
       durationSec: Math.max(3, Math.round(settings.durationSec / 2)),
       camera: "slow push-in",
+      motion: `${settings.motionStrength}% motion strength`,
+      transition: "soft dissolve",
       emotion: "uplifting",
       lighting: "golden hour",
       environment: "premium cinematic scene",
       characters: [],
+      voice: "none",
+      music: "uplifting cinematic swell",
     },
   ],
   timeline: [
@@ -87,14 +103,19 @@ function parseJsonPlan(content: string, prompt: string, settings: StudioSettings
       style: parsed.style || settings.styleLock,
       scenes: scenes.map((scene, index) => ({
         title: String(scene.title || `Scene ${index + 1}`),
+        description: scene.description ? String(scene.description) : `Editable scene ${index + 1}`,
         prompt: String(scene.prompt || prompt),
         negativePrompt: scene.negativePrompt ? String(scene.negativePrompt) : settings.negativePrompt,
         durationSec: Number(scene.durationSec || Math.max(3, Math.round(settings.durationSec / scenes.length))),
         camera: String(scene.camera || settings.cameraMotion),
+        motion: scene.motion ? String(scene.motion) : `${settings.motionStrength}% motion strength`,
+        transition: scene.transition ? String(scene.transition) : "cinematic cut",
         emotion: String(scene.emotion || "cinematic"),
         lighting: String(scene.lighting || "studio"),
         environment: String(scene.environment || "premium environment"),
         characters: Array.isArray(scene.characters) ? scene.characters.map(String) : [],
+        voice: scene.voice ? String(scene.voice) : "none",
+        music: scene.music ? String(scene.music) : "cinematic ambient bed",
       })),
       timeline: Array.isArray(parsed.timeline) ? parsed.timeline.map((item, index) => ({
         scene: Number(item.scene || index + 1),
@@ -119,7 +140,7 @@ Return JSON only with:
   "negativePrompt": "quality and artifact negatives",
   "summary": "short creative direction",
   "style": "style lock",
-  "scenes": [{"title":"Scene 1","prompt":"shot prompt","negativePrompt":"optional","durationSec":4,"camera":"dolly","emotion":"hopeful","lighting":"golden hour","environment":"rainy street","characters":["name"]}],
+  "scenes": [{"title":"Scene 1","description":"scene purpose","prompt":"shot prompt","negativePrompt":"optional","durationSec":4,"camera":"dolly","motion":"slow push","transition":"match cut","emotion":"hopeful","lighting":"golden hour","environment":"rainy street","characters":["name"],"voice":"optional voice direction","music":"optional music direction"}],
   "timeline": [{"scene":1,"start":0,"end":4,"label":"Opening"}],
   "generationNotes": ["renderer-ready notes"]
 }
