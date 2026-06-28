@@ -6,13 +6,13 @@ import { prisma } from "@/lib/prisma";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
 import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
+import { createWorkspaceEventBus } from "@/lib/workspace-event-bus";
 import {
   askWorkspaceAgent,
   buildWorkspaceContext,
   classifyWorkspaceProviderFailure,
   countDiff,
   createWorkspaceSnapshot,
-  createWorkspaceTaskEvent,
   deleteProjectFile,
   detectWorkspaceContextLeak,
   getOwnedWorkspaceProject,
@@ -25,7 +25,6 @@ import {
   verifyStaticPreview,
   writeProjectFile,
   type WorkspaceAgentResponse,
-  type WorkspaceStreamEvent,
 } from "@/lib/ai-workspace";
 import {
   performanceReviewWorkspaceFiles,
@@ -43,10 +42,6 @@ const schema = z.object({
   queued: z.boolean().optional(),
   fork: z.boolean().optional(),
 });
-
-function encode(event: WorkspaceStreamEvent) {
-  return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
-}
 
 function streamChunks(content = "") {
   const size = content.length > 18000 ? 2400 : content.length > 7000 ? 1400 : 850;
@@ -119,21 +114,17 @@ export async function POST(
 
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        let sequence = 0;
         let taskId: string | null = null;
         let completed = false;
-        const send = async (type: string, message: string, payload?: Record<string, unknown>) => {
-          if (request.signal.aborted) throw new Error("Task cancelled");
-          sequence += 1;
-          if (!taskId) {
-            const event = { sequence, type, message, payload };
-            controller.enqueue(encoder.encode(encode(event)));
-            return event;
-          }
-          const event = await createWorkspaceTaskEvent({ userId: session.user.id, projectId: project.id, taskId, sequence, type, message, payload });
-          controller.enqueue(encoder.encode(encode(event)));
-          return event;
-        };
+        const eventBus = createWorkspaceEventBus({
+          controller,
+          encoder,
+          userId: session.user.id,
+          projectId: project.id,
+          getTaskId: () => taskId,
+          isAborted: () => request.signal.aborted,
+        });
+        const send = eventBus.emitWorkspaceEvent;
 
         try {
           const task = await prisma.workspaceTask.create({
@@ -215,7 +206,13 @@ export async function POST(
               classification: orchestration.classification,
               confidence: orchestration.confidence.score,
             });
-            response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
+            await send("current_step", "Waiting for model response", { stage: "model_generation" });
+            const stopHeartbeat = eventBus.heartbeat("Still working… waiting for model response", 3000);
+            try {
+              response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
+            } finally {
+              stopHeartbeat();
+            }
             for (const runtimeEvent of response.runtimeV4?.events || []) {
               await send(runtimeEvent.type, runtimeEvent.message, runtimeEvent.payload);
             }
@@ -327,14 +324,24 @@ TASK ISOLATION FIX:
           const performance = performanceReviewWorkspaceFiles(files);
           await send("performance_reviewed", performance.summary, { performance });
           const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
+          await send("file_operation_queue_created", `Queued ${files.length} file operation${files.length === 1 ? "" : "s"}`, {
+            operations: files.map((file, index) => ({ index, path: file.path, operation: file.operation })),
+          });
+          for (const [index, file] of files.entries()) {
+            if (!file.path) continue;
+            await send("file_operation_queued", `Queued ${file.operation} ${file.path}`, { index, path: file.path, operation: file.operation });
+          }
           for (const file of files) {
             if (!file.path) continue;
+            await send("file_operation_started", `${file.operation === "create" ? "Creating" : file.operation === "delete" ? "Deleting" : "Editing"} ${file.path}`, { path: file.path, operation: file.operation });
             await send("tool_start", `${file.operation === "create" ? "Creating" : file.operation === "delete" ? "Deleting" : "Editing"} ${file.path}`, { path: file.path, operation: file.operation });
             let oldContent = "";
             try {
               oldContent = await readProjectFile(session.user.id, project.id, file.path);
             } catch {}
 
+            await send("activeFile", `Active file ${file.path}`, { path: file.path, operation: file.operation });
+            await send("editorOpenFile", `Opening ${file.path}`, { path: file.path, operation: file.operation, content: oldContent });
             await send("file_opened", `Opening ${file.path}`, {
               path: file.path,
               operation: file.operation,
@@ -342,13 +349,18 @@ TASK ISOLATION FIX:
             });
 
             if (file.operation === "delete") {
+              await send("editorSaveState", `Deleting ${file.path}`, { path: file.path, operation: file.operation, state: "saving" });
               await send("file_save_started", `Deleting ${file.path}`, { path: file.path, operation: file.operation });
               await deleteProjectFile(session.user.id, project.id, file.path);
               await send("file_saved", `Deleted ${file.path}`, { path: file.path, operation: file.operation, content: "" });
+              await send("file_operation_completed", `Completed delete ${file.path}`, { path: file.path, operation: file.operation });
             } else {
               const finalContent = file.content || "";
               const initialStatus = oldContent ? "EDITING" : "CREATING";
               await writeProjectFile(session.user.id, project.id, file.path, oldContent, initialStatus);
+              await send(file.operation === "create" ? "creating_file" : "updating_file", `${file.operation === "create" ? "Creating" : "Updating"} ${file.path}`, { path: file.path, operation: file.operation });
+              await send("explorerRefresh", `Explorer updated for ${file.path}`, { path: file.path, operation: file.operation, status: initialStatus });
+              await send("file_writing", `Writing ${file.path}`, { path: file.path, operation: file.operation, totalBytes: Buffer.byteLength(finalContent) });
               await send("file_write_started", `Writing ${file.path}`, {
                 path: file.path,
                 operation: file.operation,
@@ -358,6 +370,20 @@ TASK ISOLATION FIX:
               for (const chunk of streamChunks(finalContent)) {
                 draft += chunk;
                 await writeProjectFile(session.user.id, project.id, file.path, draft, initialStatus);
+                await send("editorApplyChunk", `Applying changes to ${file.path}`, {
+                  path: file.path,
+                  operation: file.operation,
+                  chunk,
+                  writtenBytes: Buffer.byteLength(draft),
+                  totalBytes: Buffer.byteLength(finalContent),
+                });
+                await send("file_progress", `Writing ${file.path}`, {
+                  path: file.path,
+                  operation: file.operation,
+                  writtenBytes: Buffer.byteLength(draft),
+                  totalBytes: Buffer.byteLength(finalContent),
+                  percent: finalContent ? Math.min(100, Math.round((Buffer.byteLength(draft) / Buffer.byteLength(finalContent)) * 100)) : 100,
+                });
                 await send("file_write_chunk", `Writing ${file.path}`, {
                   path: file.path,
                   operation: file.operation,
@@ -366,6 +392,7 @@ TASK ISOLATION FIX:
                   totalBytes: Buffer.byteLength(finalContent),
                 });
               }
+              await send("editorSaveState", `Saving ${file.path}`, { path: file.path, operation: file.operation, state: "saving" });
               await send("file_save_started", `Saving ${file.path}`, { path: file.path, operation: file.operation });
               await writeProjectFile(session.user.id, project.id, file.path, finalContent, oldContent ? "EDITED" : "CREATED");
               await send("file_saved", `Saved ${file.path}`, {
@@ -373,6 +400,9 @@ TASK ISOLATION FIX:
                 operation: file.operation,
                 content: finalContent,
               });
+              await send("editorSaveState", `Saved ${file.path}`, { path: file.path, operation: file.operation, state: "saved" });
+              await send("explorerRefresh", `Explorer updated for ${file.path}`, { path: file.path, operation: file.operation, status: oldContent ? "EDITED" : "CREATED" });
+              await send("file_operation_completed", `Completed ${file.operation} ${file.path}`, { path: file.path, operation: file.operation });
             }
 
             const diff = countDiff(oldContent, file.operation === "delete" ? "" : file.content || "");
@@ -395,9 +425,11 @@ TASK ISOLATION FIX:
             await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
           }
 
+          await send("previewStatus", "Running preview", { status: "starting" });
           await send("server_starting", "Starting preview");
           if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);
           const verification = await verifyStaticPreview(session.user.id, project.id);
+          await send("previewStatus", verification.verified ? "Preview verified" : "Preview needs repair", { status: verification.verified ? "verified" : "failed", verification });
           await send("server_ready", "Preview URL ready", { url: verification.url });
           await send(verification.verified ? "preview_verified" : "error", verification.message, verification);
           if (!verification.verified) await send("error_fixed", "Preview issue recorded for debugger follow-up", { message: verification.message });
@@ -458,6 +490,10 @@ TASK ISOLATION FIX:
             status: updatedTask.status,
             qualityScore,
             previewVerified: verification.verified,
+          });
+          await send("taskStatus", updatedTask.status === "SUCCEEDED" ? "Task completed successfully" : "Task finished with issues", {
+            status: updatedTask.status,
+            taskId: task.id,
           });
           const memory = memoryGate.ok ? await updateWorkspaceMemorySnapshot({
             userId: session.user.id,
@@ -546,10 +582,12 @@ TASK ISOLATION FIX:
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode, creditsUsed: finalCredit.credits });
           await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage });
           completed = true;
-          controller.close();
+          try {
+            controller.close();
+          } catch {}
         } catch (err) {
           if (taskId) {
-            const status = request.signal.aborted || (err instanceof Error && err.message === "Task cancelled") ? "CANCELED" : "FAILED";
+            const status = err instanceof Error && err.message === "Task cancelled" ? "CANCELED" : "FAILED";
             await prisma.workspaceTask.update({
               where: { id: taskId },
               data: { status, summary: err instanceof Error ? err.message : "Workspace task failed", completedAt: new Date() },
@@ -566,7 +604,11 @@ TASK ISOLATION FIX:
             }
             await send(status === "CANCELED" ? "log" : "error", status === "CANCELED" ? "Task cancelled" : err instanceof Error ? err.message : "Workspace task failed").catch(() => undefined);
           }
-          if (!completed) controller.close();
+          if (!completed) {
+            try {
+              controller.close();
+            } catch {}
+          }
         }
       },
     });

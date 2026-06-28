@@ -370,6 +370,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     loadUsage().catch(() => undefined);
   }, [status, projectId, showHiddenFiles]);
 
+  useEffect(() => {
+    if (!state.project?.id || !activeTask || !["RUNNING", "QUEUED"].includes(activeTask.status)) return;
+    const timer = window.setInterval(() => {
+      loadWorkspace(state.project?.id).catch(() => undefined);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [activeTask?.id, activeTask?.status, state.project?.id, showHiddenFiles]);
+
   async function createProject(seedPrompt?: string) {
     setLoading(true);
     try {
@@ -437,7 +445,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           setStreamEvents((current) => [...current, event].sort((a, b) => a.sequence - b.sequence));
           setMessage(event.message);
           setTerminalOutput((current) => [`${event.type}: ${event.message}`, ...current].slice(0, 180));
-          if (event.type === "file_opened") {
+          if (event.type === "current_step" || event.type === "taskStatus" || event.type === "previewStatus" || event.type === "heartbeat") {
+            setMessage(event.message);
+          }
+          if (event.type === "file_opened" || event.type === "editorOpenFile") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
               const path = payload.path;
@@ -451,7 +462,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setLiveFileStatuses((current) => ({ ...current, [path]: "Reading" }));
             }
           }
-          if (event.type === "file_write_started") {
+          if (event.type === "file_write_started" || event.type === "file_writing" || event.type === "creating_file" || event.type === "updating_file") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
               const path = payload.path;
@@ -461,6 +472,21 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setSavedEditorContent("__meldex_live_write_pending__");
               setLiveFileStatuses((current) => ({ ...current, [path]: "Writing" }));
               await loadWorkspace(state.project.id).catch(() => undefined);
+            }
+          }
+          if (event.type === "editorApplyChunk") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              setSelectedFile(payload.path);
+              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: "Editing" }));
+            }
+          }
+          if (event.type === "file_progress") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              const percent = typeof payload.percent === "number" ? ` ${payload.percent}%` : "";
+              setSelectedFile(payload.path);
+              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: `Writing${percent}` }));
             }
           }
           if (event.type === "file_write_chunk") {
@@ -473,10 +499,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setLiveFileStatuses((current) => ({ ...current, [path]: "Editing" }));
             }
           }
-          if (event.type === "file_save_started") {
+          if (event.type === "file_save_started" || event.type === "editorSaveState") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
-              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: "Saving" }));
+              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: payload.state === "saved" ? "Completed" : "Saving" }));
             }
           }
           if (event.type === "file_saved") {
@@ -506,6 +532,9 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           if (event.type === "server_starting") {
             setBottomTab("PREVIEW LOGS");
             setBottomCollapsed(false);
+          }
+          if (event.type === "explorerRefresh") {
+            await loadWorkspace(state.project.id).catch(() => undefined);
           }
           if (event.type === "diff_ready" || event.type === "file_created" || event.type === "file_updated" || event.type === "file_deleted") {
             const payload = event.payload || {};
@@ -1326,7 +1355,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <div className="space-y-4 text-[14px] leading-7 text-[#111827] dark:text-[#F9FAFB]">
                 <p>{loading ? "I'll update the workspace and verify the result in preview." : activeTask?.summary || "Tell Meldex AI what to build or change next."}</p>
                 {currentPromptDiffs.length > 0 && <p className="flex items-center gap-2 text-[#6B7280] dark:text-[#D1D5DB]"><Edit3 className="size-4" /> Edited {currentPromptDiffs.length} file{currentPromptDiffs.length === 1 ? "" : "s"}</p>}
-                {loading && <p className="flex items-center gap-2">Thinking <span className="size-2 animate-pulse rounded-full bg-[#7C5CFF]" /></p>}
+                {loading && <p className="flex items-center gap-2">{message || "Working"} <span className="size-2 animate-pulse rounded-full bg-[#7C5CFF]" /></p>}
               </div>
               {currentPromptDiffs.length > 0 && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-5 overflow-hidden rounded-2xl border border-[#E5E7EB] bg-white/88 shadow-[0_16px_40px_rgba(15,23,42,0.08)] dark:border-[#22252D] dark:bg-[#111318]/86 dark:shadow-[0_16px_40px_rgba(0,0,0,0.28)]">
