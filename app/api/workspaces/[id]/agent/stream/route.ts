@@ -131,7 +131,7 @@ function runtimeModeForPrompt(prompt: string): RuntimeProfile["mode"] {
 }
 
 function isStaticEditPrompt(prompt: string) {
-  return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|glassmorphism)\b/i.test(prompt)
+  return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|theme|background|glassmorphism)\b/i.test(prompt)
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
 }
 
@@ -710,7 +710,7 @@ ${targetContext}`;
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
             elapsedMs: timings.parseMs,
           });
-          if (isStaticWebsitePrompt(body.data.prompt)) {
+          if (fastStaticPath && !patchMode) {
             const completenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
             if (completenessIssues.length) {
               autofixes += 1;
@@ -747,7 +747,7 @@ ${targetContext}`;
               files: files.map((file) => ({ path: file.path, operation: file.operation })),
             });
           }
-          let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
+          let leakCheck = patchMode ? { ok: true, missingRequiredEntities: [], repairHints: [], findings: [], optionalRequirements: [], repairRecommended: false, domain: "static_edit" } : detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
             retries += 1;
             const repairStartedAt = nowMs();
@@ -814,7 +814,10 @@ TASK ISOLATION FIX:
           }
 
           const validationStartedAt = nowMs();
-          let reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
+          const validationClassification = patchMode
+            ? { ...orchestration.classification, type: "website_edit", subtype: "static_site_patch_edit", labels: [...orchestration.classification.labels, "patch_mode"] }
+            : orchestration.classification;
+          let reviewer = reviewWorkspaceFiles(files, validationClassification, body.data.prompt);
           if (reviewer.status === "block") {
             retries += 1;
             const repairStartedAt = nowMs();
@@ -840,7 +843,7 @@ TASK ISOLATION FIX:
             if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
               throw new Error("Targeted regeneration returned no valid file actions; no files were saved.");
             }
-            reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
+            reviewer = reviewWorkspaceFiles(files, validationClassification, body.data.prompt);
             runtimeProfile.repair_ms = (runtimeProfile.repair_ms || 0) + elapsedMs(repairStartedAt);
             await send("targeted_repair_completed", "Targeted file repair completed", {
               fixed: reviewer.status !== "block",
@@ -1027,7 +1030,7 @@ TASK ISOLATION FIX:
           runtimeProfile.file_write_ms = elapsedMs(allFileWriteStartedAt);
           runtimeProfile.editor_stream_ms = editorStreamMs;
 
-          if (isStaticWebsitePrompt(body.data.prompt)) {
+          if (fastStaticPath && !patchMode) {
             const finalCompletenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
             if (finalCompletenessIssues.length) {
               await send("error", "Static file completeness check failed before preview", { issues: finalCompletenessIssues });
@@ -1148,7 +1151,7 @@ TASK ISOLATION FIX:
             projectId: project.id,
             taskId: task.id,
             prompt: body.data.prompt,
-            classification: orchestration.classification,
+            classification: validationClassification,
             qualityScore,
             reviewer,
             security,
