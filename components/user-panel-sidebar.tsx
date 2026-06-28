@@ -7,6 +7,7 @@ import {
   Bot,
   Box,
   ChevronRight,
+  Clapperboard,
   FileText,
   FolderKanban,
   HelpCircle,
@@ -26,6 +27,7 @@ import { useEffect, useState } from "react";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/workspace", label: "Workspaces", icon: FolderKanban },
+  { href: "/studio", label: "AI Studio", icon: Clapperboard },
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/agents", label: "Agents", icon: Workflow },
   { href: "/templates", label: "Templates", icon: Box },
