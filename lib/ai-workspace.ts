@@ -1842,6 +1842,7 @@ ${websiteDesignerRules}`;
     "Do not let old workspace content override this prompt. If old context conflicts, ignore the old context.",
     taskIsolation.standaloneGeneration ? "This is a fresh standalone generation. Generate files for this prompt only. Do not copy previous index.html/style.css/script.js concepts." : "",
   ].filter(Boolean).join("\n");
+  const staticEditOnly = staticEditPrompt && !isStaticWebsitePrompt(prompt);
   const userContent = staticFastPrompt
     ? `${dominanceBlock}
 
@@ -1849,8 +1850,8 @@ Task:
 ${prompt}
 
 Output contract:
-- Create complete index.html, style.css, and script.js.
-- index.html links ./style.css and ./script.js.
+- ${staticEditOnly ? "Return only the requested changed static file(s), with complete final content for each returned file." : "Create complete index.html, style.css, and script.js."}
+- ${staticEditOnly ? "Do not return unrelated files." : "index.html links ./style.css and ./script.js."}
 - No dependencies, no README, no package files, no old workspace content.
 - Keep output complete but concise.`
     : `${dominanceBlock}\n\n${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files list only:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || (taskIsolation.standaloneGeneration ? "(old generated file content intentionally isolated for this new task)" : "(empty workspace)")}`;
@@ -1909,18 +1910,18 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
     };
   }
   if (smallStaticEdit) {
-    if (/\bstyle\.css\b/i.test(prompt) && !/\bindex\.html|script\.js\b/i.test(prompt)) {
+    if (/\bstyle\.css\b/i.test(prompt) && (/\bonly\b|do not change|don'?t change|regenerate style\.css/i.test(prompt))) {
       return {
-        maxTokens: 1800,
+        maxTokens: 1200,
         category: "style_only_edit",
-        targetRange: "1200-2000",
+        targetRange: "900-1400",
         reason: "Style-only edit should not request a full-page budget.",
       };
     }
     return {
-      maxTokens: /\bfaq|accordion\b/i.test(prompt) ? 2400 : 2000,
+      maxTokens: /\bfaq|accordion\b/i.test(prompt) ? 1400 : 900,
       category: "small_edit",
-      targetRange: "1200-2500",
+      targetRange: "700-1500",
       reason: "Small static edit should avoid large output budgets.",
     };
   }

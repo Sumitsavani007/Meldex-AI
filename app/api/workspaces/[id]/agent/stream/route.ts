@@ -160,7 +160,7 @@ function compactProfile(profile: RuntimeProfile) {
 }
 
 function planWorkspaceFiles(prompt: string) {
-  if (/\bstyle\.css\b/i.test(prompt) && !/\bindex\.html|script\.js\b/i.test(prompt)) {
+  if (/\bstyle\.css\b/i.test(prompt) && (/\bonly\b|do not change|don'?t change|regenerate style\.css/i.test(prompt))) {
     return {
       projectType: "static_website_style_edit",
       complexity: "small",
