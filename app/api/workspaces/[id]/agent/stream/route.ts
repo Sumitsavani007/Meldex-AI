@@ -46,6 +46,13 @@ function encode(event: WorkspaceStreamEvent) {
   return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
+function streamChunks(content = "") {
+  const size = content.length > 18000 ? 2400 : content.length > 7000 ? 1400 : 850;
+  const chunks: string[] = [];
+  for (let index = 0; index < content.length; index += size) chunks.push(content.slice(index, index + size));
+  return chunks.length ? chunks : [""];
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -139,14 +146,18 @@ export async function POST(
           taskId = task.id;
 
           const snapshot = await createWorkspaceSnapshot(session.user.id, project.id, task.id);
-          await send("thinking", "Thinking", { taskId, snapshotId: snapshot.id });
+          await send("understanding_request", "Understanding request", { taskId, snapshotId: snapshot.id });
+          await send("native_prompt_expanding", "Expanding native language prompt", {
+            sourceLanguage: /[\u0A80-\u0AFF]/.test(body.data.prompt) ? "gujarati" : /[\u0900-\u097F]/.test(body.data.prompt) ? "hindi" : "english",
+          });
           await send("usage_checked", "Plan and credit limits checked", {
             estimatedCredits: preEstimate.credits,
             plan: creditCheck.summary.plan.name,
             model: activeModel.model,
           });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
-          await send("tool_start", "Reading workspace");
+          await send("loading_workspace", "Loading workspace");
+          await send("tool_start", "Reading project structure");
           const context = await buildWorkspaceContext(project.id, project.storagePath, memoryGate.ok ? session.user.id : undefined, body.data.prompt);
           const contextTokens = Math.ceil([
             body.data.prompt,
@@ -163,6 +174,9 @@ export async function POST(
           });
           if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length });
+          await send("relevant_files_searched", `Found ${context.relevantFiles.length} relevant file${context.relevantFiles.length === 1 ? "" : "s"}`, {
+            files: context.relevantFiles.map((file) => file.path),
+          });
           await send("memory_loaded", memoryGate.ok ? (context.memoryContext.relatedTaskCount ? "Loaded workspace memory and found related previous task" : "Loaded workspace memory") : "Workspace memory disabled by plan", {
             relatedTaskCount: memoryGate.ok ? context.memoryContext.relatedTaskCount : 0,
             reusedStyle: memoryGate.ok ? context.memoryContext.reusedStyle : false,
@@ -170,6 +184,10 @@ export async function POST(
           });
           if (memoryGate.ok && context.memoryContext.reusedStyle) await send("memory_reused_style", "Reused project style from memory");
           if (memoryGate.ok && context.memoryContext.avoidedIssue) await send("memory_avoided_issue", "Avoided previous known issue");
+          await send("dependencies_analyzed", "Analyzed dependencies", {
+            packageFiles: context.projectFiles.filter((file) => /(^|\/)package\.json$|(^|\/)requirements\.txt$|(^|\/)composer\.json$|(^|\/)pyproject\.toml$/i.test(file)).length,
+            contextTokens,
+          });
           const orchestration = await runWorkspaceOrchestration({
             workspaceId: project.id,
             taskId: task.id,
@@ -183,7 +201,7 @@ export async function POST(
           if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
             throw new Error(orchestration.confidence.reason);
           }
-          await send("thinking", "Planning files");
+          await send("selecting_files", "Selecting files");
 
           let response: WorkspaceAgentResponse;
           let offlineMode = false;
@@ -276,8 +294,45 @@ export async function POST(
               oldContent = await readProjectFile(session.user.id, project.id, file.path);
             } catch {}
 
-            if (file.operation === "delete") await deleteProjectFile(session.user.id, project.id, file.path);
-            else await writeProjectFile(session.user.id, project.id, file.path, file.content || "", oldContent ? "EDITED" : "CREATED");
+            await send("file_opened", `Opening ${file.path}`, {
+              path: file.path,
+              operation: file.operation,
+              content: oldContent,
+            });
+
+            if (file.operation === "delete") {
+              await send("file_save_started", `Deleting ${file.path}`, { path: file.path, operation: file.operation });
+              await deleteProjectFile(session.user.id, project.id, file.path);
+              await send("file_saved", `Deleted ${file.path}`, { path: file.path, operation: file.operation, content: "" });
+            } else {
+              const finalContent = file.content || "";
+              const initialStatus = oldContent ? "EDITING" : "CREATING";
+              await writeProjectFile(session.user.id, project.id, file.path, oldContent, initialStatus);
+              await send("file_write_started", `Writing ${file.path}`, {
+                path: file.path,
+                operation: file.operation,
+                totalBytes: Buffer.byteLength(finalContent),
+              });
+              let draft = "";
+              for (const chunk of streamChunks(finalContent)) {
+                draft += chunk;
+                await writeProjectFile(session.user.id, project.id, file.path, draft, initialStatus);
+                await send("file_write_chunk", `Writing ${file.path}`, {
+                  path: file.path,
+                  operation: file.operation,
+                  chunk,
+                  writtenBytes: Buffer.byteLength(draft),
+                  totalBytes: Buffer.byteLength(finalContent),
+                });
+              }
+              await send("file_save_started", `Saving ${file.path}`, { path: file.path, operation: file.operation });
+              await writeProjectFile(session.user.id, project.id, file.path, finalContent, oldContent ? "EDITED" : "CREATED");
+              await send("file_saved", `Saved ${file.path}`, {
+                path: file.path,
+                operation: file.operation,
+                content: finalContent,
+              });
+            }
 
             const diff = countDiff(oldContent, file.operation === "delete" ? "" : file.content || "");
             changedFiles.push({ path: file.path, operation: file.operation, added: diff.added, removed: diff.removed, description: file.description });

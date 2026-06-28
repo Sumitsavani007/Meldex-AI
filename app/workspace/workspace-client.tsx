@@ -201,6 +201,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [message, setMessage] = useState("Ready");
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
+  const [liveFileStatuses, setLiveFileStatuses] = useState<Record<string, string>>({});
   const [queuedPrompt, setQueuedPrompt] = useState("");
   const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
   const [previewStopped, setPreviewStopped] = useState(false);
@@ -403,7 +404,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     loadingRef.current = true;
     setStreamEvents([]);
     setLiveDiffs([]);
-    setMessage("Thinking");
+    setLiveFileStatuses({});
+    setMessage("Understanding request");
     setTerminalOutput((current) => [`$ meldex-agent workspace "${effectivePrompt}"`, "Starting managed agent stream...", ...current.slice(0, 80)]);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -435,8 +437,74 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           setStreamEvents((current) => [...current, event].sort((a, b) => a.sequence - b.sequence));
           setMessage(event.message);
           setTerminalOutput((current) => [`${event.type}: ${event.message}`, ...current].slice(0, 180));
+          if (event.type === "file_opened") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              const path = payload.path;
+              setCenterMode("code");
+              setPreviewFullscreen(false);
+              setEditorFullscreen(false);
+              setSelectedFile(path);
+              setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
+              setEditorContent(typeof payload.content === "string" ? payload.content : "");
+              setSavedEditorContent(typeof payload.content === "string" ? payload.content : "");
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Reading" }));
+            }
+          }
+          if (event.type === "file_write_started") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              const path = payload.path;
+              setSelectedFile(path);
+              setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
+              setEditorContent("");
+              setSavedEditorContent("__meldex_live_write_pending__");
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Writing" }));
+              await loadWorkspace(state.project.id).catch(() => undefined);
+            }
+          }
+          if (event.type === "file_write_chunk") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string" && typeof payload.chunk === "string") {
+              const path = payload.path;
+              setSelectedFile(path);
+              setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
+              setEditorContent((current) => current + payload.chunk);
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Editing" }));
+            }
+          }
+          if (event.type === "file_save_started") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: "Saving" }));
+            }
+          }
+          if (event.type === "file_saved") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              const path = payload.path;
+              if (typeof payload.content === "string") {
+                setSelectedFile(path);
+                setEditorContent(payload.content);
+                setSavedEditorContent(payload.content);
+              }
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Completed" }));
+              setTimeout(() => {
+                setLiveFileStatuses((current) => {
+                  const next = { ...current };
+                  delete next[path];
+                  return next;
+                });
+              }, 2200);
+              await loadWorkspace(state.project.id).catch(() => undefined);
+            }
+          }
           if (event.type === "error") {
             setBottomTab("PROBLEMS");
+            setBottomCollapsed(false);
+          }
+          if (event.type === "server_starting") {
+            setBottomTab("PREVIEW LOGS");
             setBottomCollapsed(false);
           }
           if (event.type === "diff_ready" || event.type === "file_created" || event.type === "file_updated" || event.type === "file_deleted") {
@@ -462,6 +530,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           if (event.type === "preview_verified" || event.type === "done") {
             await loadWorkspace(state.project.id).catch(() => undefined);
             await loadUsage().catch(() => undefined);
+            if (event.type === "preview_verified") setTimeout(() => setBottomCollapsed(true), 1400);
           }
         }
       }
@@ -917,7 +986,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     { label: "Rollback last task", action: () => setMessage("Rollback is available from task history; direct rollback requires task selection."), disabled: true, reason: "Select a task snapshot first" },
   ].filter((command) => command.label.toLowerCase().includes(commandQuery.toLowerCase()));
   const renderExplorerNode = (node: TreeNode, depth = 0): ReactNode => {
-    const badge = statusLabel(node.status);
+    const liveStatus = liveFileStatuses[node.path];
+    const badge = liveStatus || statusLabel(node.status);
     const internal = isInternalWorkspaceFile(node.path);
     if (node.type === "file") {
       const fileIcon = fileIconFor(node.name);
