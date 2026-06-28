@@ -82,11 +82,13 @@ export async function POST(request: Request) {
 
         send("language_detection", "Detecting language", { stage: "Language Detection" });
         send("prompt_enhancement", "Enhancing cinematic prompt", { styleLock: settings.styleLock });
-        send("scene_breakdown", "Planning scenes and storyboard", { durationSec: settings.durationSec });
+        send("story_generation", "Writing story/script", { mode: project.mode });
+        send("scene_breakdown", "Splitting scenes", { durationSec: settings.durationSec });
+        send("storyboard_started", "Creating storyboard", { aspectRatio: settings.aspectRatio });
 
         const result = await enhanceStudioPrompt(body.data.prompt, settings, { userId: session.user.id });
         send("storyboard_ready", "Storyboard ready", { scenes: result.plan.scenes.length, model: result.model, provider: result.provider });
-        send("shot_planner", "Shot planner prepared", { timeline: result.plan.timeline });
+        send("shot_planner", "Building cinematic shot plan", { timeline: result.plan.timeline });
 
         await prisma.studioScene.deleteMany({ where: { generationId: generation.id } });
         await prisma.studioScene.createMany({
@@ -108,6 +110,11 @@ export async function POST(request: Request) {
           })),
         });
         send("timeline_updated", "Timeline updated", { scenes: result.plan.scenes.length });
+        send("provider_status", "Checking local providers", {
+          openRouter: "connected",
+          localVideoProvider: "not_configured",
+          message: "Local video provider not configured",
+        });
 
         await prisma.studioGeneration.update({
           where: { id: generation.id },
@@ -158,7 +165,11 @@ export async function POST(request: Request) {
             settingsJson: settings as Prisma.InputJsonValue,
           },
         });
-        send("preview_ready", "Preview storyboard ready", { status: "storyboard_preview", renderer: "OpenRouter planning only" });
+        send("preview_ready", "Preview storyboard ready", {
+          status: "storyboard_preview",
+          renderer: "OpenRouter planning only",
+          nextAction: "Configure local ComfyUI + Wan 2.1 to render video",
+        });
         send("done", "Studio generation complete", { generationId: generation.id, projectId: project.id });
         controller.close();
       } catch (err) {
