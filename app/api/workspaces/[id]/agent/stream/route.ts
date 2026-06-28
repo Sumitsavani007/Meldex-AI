@@ -20,6 +20,7 @@ import {
   normalizeWorkspaceFileActions,
   offlineStaticWorkspace,
   readProjectFile,
+  staticFileCompletenessIssues,
   staticFallbackFiles,
   updateWorkspaceMemorySnapshot,
   verifyStaticPreview,
@@ -181,15 +182,35 @@ export async function POST(
             packageFiles: context.projectFiles.filter((file) => /(^|\/)package\.json$|(^|\/)requirements\.txt$|(^|\/)composer\.json$|(^|\/)pyproject\.toml$/i.test(file)).length,
             contextTokens,
           });
-          const orchestration = await runWorkspaceOrchestration({
-            workspaceId: project.id,
-            taskId: task.id,
-            userId: session.user.id,
-            prompt: body.data.prompt,
-            workspaceContext: context,
-            currentFiles: context.projectFiles,
-            provider: "openrouter",
-          });
+          const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
+          const orchestration = fastStaticPath
+            ? {
+                classification: { type: "website_generation", subtype: "static_site_fast_path", labels: ["static", "fast_path", "dependency_free"] },
+                confidence: { score: 0.91, decision: "auto_proceed" as const, reason: "Simple static website task uses fast path." },
+                finalInstruction: [
+                  "Static site fast path:",
+                  "Create complete dependency-free index.html, style.css, and script.js.",
+                  "index.html must link ./style.css and ./script.js.",
+                  "style.css must be non-empty and premium-quality.",
+                  "script.js must include real interactions for menus, FAQ, smooth scroll, or reveal animations when relevant.",
+                  "Do not include raw JSON, markdown, placeholders, package.json, server files, .cache, or internal files.",
+                ].join("\n"),
+                events: [
+                  { type: "intent_detected", message: "Intent detected", payload: { intent: { primary: "static_website_generation", secondary: [], flags: ["fast_path"] } } },
+                  { type: "task_classified", message: "Classified task", payload: { classification: { type: "website_generation", subtype: "static_site_fast_path", labels: ["static", "fast_path"] } } },
+                  { type: "planner_done", message: "Simple file plan ready", payload: { plan: { requiredFiles: ["index.html", "style.css", "script.js"], expectedSections: ["hero", "features", "plans", "faq"], validationPlan: ["file completeness", "preview HTTP 200"] } } },
+                ],
+              }
+            : await runWorkspaceOrchestration({
+                workspaceId: project.id,
+                taskId: task.id,
+                userId: session.user.id,
+                prompt: body.data.prompt,
+                workspaceContext: context,
+                currentFiles: context.projectFiles,
+                provider: "openrouter",
+              });
+          if (fastStaticPath) await send("static_fast_path_enabled", "Static website fast path enabled", { target: "model_call_under_5s" });
           for (const event of orchestration.events) await send(event.type, event.message, event.payload);
           if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
             throw new Error(orchestration.confidence.reason);
@@ -240,6 +261,21 @@ export async function POST(
           await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
           });
+          if (isStaticWebsitePrompt(body.data.prompt)) {
+            const completenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
+            if (completenessIssues.length) {
+              autofixes += 1;
+              await send("file_completeness_repair", "Completing required static files", { issues: completenessIssues });
+              files = normalizeWorkspaceFileActions(staticFallbackFiles(body.data.prompt, completenessIssues.join("; ")), body.data.prompt);
+              response = {
+                ...response,
+                files,
+                warnings: [...(response.warnings || []), `Static file completeness repair applied: ${completenessIssues.join("; ")}`],
+              };
+            } else {
+              await send("file_completeness_verified", "Required static files verified", { files: ["index.html", "style.css", "script.js"] });
+            }
+          }
           if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
             autofixes += 1;
             const fallback = offlineStaticWorkspace(body.data.prompt);
@@ -449,6 +485,13 @@ TASK ISOLATION FIX:
             await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
           }
 
+          if (isStaticWebsitePrompt(body.data.prompt)) {
+            const finalCompletenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
+            if (finalCompletenessIssues.length) {
+              await send("error", "Static file completeness check failed before preview", { issues: finalCompletenessIssues });
+              throw new Error(`Static file completeness check failed: ${finalCompletenessIssues.join("; ")}`);
+            }
+          }
           await send("previewStatus", "Running preview", { status: "starting" });
           await send("server_starting", "Starting preview");
           if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);

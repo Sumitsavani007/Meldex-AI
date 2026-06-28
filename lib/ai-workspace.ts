@@ -279,6 +279,106 @@ function promptDomain(prompt = "") {
 }
 
 export function staticFallbackFiles(prompt: string, reason: string): WorkspaceFileAction[] {
+  if (/booknest|book\s+summary|book\s+summar(?:y|ies)|reading|reader|bookshelf|library/i.test(prompt)) {
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BookNest AI - Premium AI Book Summary App</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="#top" aria-label="BookNest AI home"><span>BN</span>BookNest AI</a>
+    <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <nav class="nav-links" aria-label="Primary navigation">
+      <a href="#features">Features</a>
+      <a href="#library">Library</a>
+      <a href="#plans">Plans</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="header-cta" type="button" data-scroll="#plans">Start reading smarter</button>
+  </header>
+  <main id="top">
+    <section class="hero reveal">
+      <div class="hero-copy">
+        <p class="eyebrow">AI-powered book summaries</p>
+        <h1>Understand the best books in minutes, then go deeper when it matters.</h1>
+        <p class="lede">BookNest AI turns nonfiction, business, wellness, and product books into polished summaries, chapter insights, memorable quotes, and action plans for busy readers.</p>
+        <div class="hero-actions">
+          <button class="primary-btn" type="button" data-scroll="#library">Explore summaries</button>
+          <button class="secondary-btn" type="button" data-scroll="#features">See how it works</button>
+        </div>
+        <div class="trust-row" aria-label="BookNest AI metrics">
+          <span><strong>12k+</strong> summaries</span>
+          <span><strong>4.9/5</strong> reader rating</span>
+          <span><strong>7 min</strong> average read</span>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="BookNest AI app preview">
+        <div class="glow"></div>
+        <article class="app-card main-card">
+          <div class="card-top"><span>Reading brief</span><strong>Atomic Habits</strong></div>
+          <h2>Build better systems, not bigger goals.</h2>
+          <p>AI summary, chapter map, key ideas, quotes, and next actions in one elegant reading flow.</p>
+          <div class="progress"><span></span></div>
+        </article>
+        <article class="floating-card card-one"><strong>AI insight</strong><span>3 actions saved to your weekly plan</span></article>
+        <article class="floating-card card-two"><strong>Smart shelf</strong><span>Productivity · Psychology · Finance</span></article>
+      </div>
+    </section>
+    <section id="features" class="section reveal">
+      <p class="eyebrow">Why BookNest AI</p>
+      <h2>A premium reading companion for people who want knowledge to compound.</h2>
+      <div class="feature-grid">
+        <article><span>01</span><h3>Layered summaries</h3><p>Choose a 2-minute brief, a 7-minute summary, or a deeper chapter-by-chapter breakdown.</p></article>
+        <article><span>02</span><h3>Action extraction</h3><p>Turn ideas into tasks, habits, experiments, and reusable personal notes.</p></article>
+        <article><span>03</span><h3>Smart recommendations</h3><p>Discover the next book based on your goals, saved insights, and reading history.</p></article>
+      </div>
+    </section>
+    <section id="library" class="section reveal">
+      <p class="eyebrow">Popular summaries</p>
+      <h2>Explore sharp, beautifully organized book intelligence.</h2>
+      <div class="book-grid">
+        <article><small>Business</small><h3>The Lean Startup</h3><p>Validated learning, MVPs, and product feedback loops.</p></article>
+        <article><small>Mindset</small><h3>Deep Work</h3><p>Focus rituals, attention design, and distraction resistance.</p></article>
+        <article><small>Habits</small><h3>Atomic Habits</h3><p>Identity-based systems, cues, cravings, and compounding routines.</p></article>
+        <article><small>Finance</small><h3>Psychology of Money</h3><p>Behavior, risk, patience, and better wealth decisions.</p></article>
+      </div>
+    </section>
+    <section id="plans" class="section reveal">
+      <p class="eyebrow">Plans</p>
+      <h2>Start free. Upgrade when your reading habit becomes a system.</h2>
+      <div class="plans">
+        <article><h3>Reader</h3><strong>$9/mo</strong><p>50 summaries, highlights, and personal notes.</p><button type="button">Choose Reader</button></article>
+        <article class="featured"><h3>Scholar</h3><strong>$19/mo</strong><p>Unlimited summaries, action plans, and smart recommendations.</p><button type="button">Choose Scholar</button></article>
+        <article><h3>Team</h3><strong>$59/mo</strong><p>Shared shelves, team learning paths, and exportable briefs.</p><button type="button">Contact sales</button></article>
+      </div>
+    </section>
+    <section id="faq" class="section faq reveal">
+      <p class="eyebrow">FAQ</p>
+      <h2>Questions before you build your reading nest?</h2>
+      <button class="faq-item" type="button"><span>Does BookNest AI replace reading full books?</span><strong>+</strong></button>
+      <div class="faq-panel">No. It helps you decide what to read deeply and captures the most useful ideas before or after a full read.</div>
+      <button class="faq-item" type="button"><span>Can I save insights?</span><strong>+</strong></button>
+      <div class="faq-panel">Yes. Save quotes, actions, chapter notes, and personalized takeaways to your smart shelf.</div>
+      <button class="faq-item" type="button"><span>Is it useful for teams?</span><strong>+</strong></button>
+      <div class="faq-panel">Teams can create shared learning paths and turn books into concise internal briefs.</div>
+    </section>
+  </main>
+  <footer>© 2026 BookNest AI. Read less randomly. Learn more deliberately.</footer>
+  <script src="./script.js"></script>
+</body>
+</html>`;
+    const css = `:root{color-scheme:dark;--bg:#080914;--panel:rgba(255,255,255,.08);--panel-strong:rgba(255,255,255,.14);--text:#f8fafc;--muted:#a8b0c2;--border:rgba(255,255,255,.14);--accent:#8b5cf6;--gold:#f8c75c;--cyan:#38d5ff}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;min-height:100vh;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% 4%,rgba(139,92,246,.34),transparent 34rem),radial-gradient(circle at 86% 10%,rgba(248,199,92,.18),transparent 28rem),linear-gradient(180deg,#111326 0%,var(--bg) 58%,#060711 100%);color:var(--text);overflow-x:hidden}.site-header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:24px;padding:18px clamp(18px,4vw,64px);border-bottom:1px solid var(--border);background:rgba(8,9,20,.74);backdrop-filter:blur(18px)}.brand,.nav-links a{color:inherit;text-decoration:none}.brand{display:flex;align-items:center;gap:10px;margin-right:auto;font-weight:900;letter-spacing:-.04em}.brand span{display:grid;place-items:center;width:34px;height:34px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--gold));color:#080914}.nav-links{display:flex;gap:22px;color:var(--muted);font-size:14px}.nav-links a:hover{color:#fff}.menu-toggle{display:none;width:42px;height:42px;border:1px solid var(--border);border-radius:14px;background:rgba(255,255,255,.06)}.menu-toggle span{display:block;width:18px;height:2px;margin:4px auto;border-radius:99px;background:#fff}.header-cta,.primary-btn,.secondary-btn,.plans button{border:1px solid var(--border);border-radius:999px;padding:12px 18px;color:#fff;background:rgba(255,255,255,.07);font:inherit;font-weight:850;cursor:pointer;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease}.header-cta,.primary-btn,.plans .featured button{border-color:transparent;background:linear-gradient(135deg,var(--accent),#6d5dfc);box-shadow:0 16px 40px rgba(139,92,246,.26)}button:hover{transform:translateY(-2px)}button:focus-visible,a:focus-visible{outline:3px solid rgba(139,92,246,.38);outline-offset:4px}.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(360px,.95fr);gap:clamp(32px,5vw,76px);align-items:center;min-height:86vh;padding:clamp(56px,8vw,108px) clamp(18px,5vw,86px)}.eyebrow{margin:0 0 14px;color:var(--gold);font-size:12px;font-weight:900;letter-spacing:.16em;text-transform:uppercase}h1,h2,h3,p{margin-top:0}h1{max-width:880px;margin-bottom:24px;font-size:clamp(48px,7.6vw,98px);line-height:.9;letter-spacing:-.075em}.lede{max-width:720px;color:var(--muted);font-size:clamp(17px,2vw,22px);line-height:1.72}.hero-actions,.trust-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:28px}.trust-row span{border:1px solid var(--border);border-radius:18px;padding:12px 14px;color:var(--muted);background:rgba(255,255,255,.045)}.trust-row strong{display:block;color:#fff;font-size:22px}.hero-visual{position:relative;min-height:520px;display:grid;place-items:center}.glow{position:absolute;width:76%;aspect-ratio:1;border-radius:50%;background:conic-gradient(from 120deg,var(--accent),var(--cyan),var(--gold),var(--accent));filter:blur(48px);opacity:.28;animation:spin 14s linear infinite}.app-card{position:relative;z-index:2;width:min(460px,100%);border:1px solid var(--border);border-radius:34px;padding:28px;background:linear-gradient(145deg,var(--panel-strong),rgba(255,255,255,.055));box-shadow:0 34px 120px rgba(0,0,0,.42);backdrop-filter:blur(18px)}.card-top{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:13px}.main-card h2{margin:38px 0 14px;font-size:clamp(30px,4vw,48px);line-height:1}.main-card p{color:var(--muted);line-height:1.7}.progress{height:10px;border-radius:999px;background:rgba(255,255,255,.1);overflow:hidden}.progress span{display:block;width:72%;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--gold),var(--cyan))}.floating-card{position:absolute;z-index:3;display:grid;gap:4px;min-width:210px;border:1px solid var(--border);border-radius:20px;padding:15px 16px;background:rgba(12,14,29,.66);box-shadow:0 24px 70px rgba(0,0,0,.34);backdrop-filter:blur(18px);animation:floatY 4.8s ease-in-out infinite}.floating-card span{color:var(--muted);font-size:12px}.card-one{top:42px;right:0}.card-two{left:0;bottom:62px;animation-delay:-1.6s}.section{padding:78px clamp(18px,5vw,86px)}.section h2{max-width:890px;font-size:clamp(34px,4.8vw,62px);line-height:.98;letter-spacing:-.06em}.feature-grid,.book-grid,.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}.book-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.feature-grid article,.book-grid article,.plans article{min-height:220px;border:1px solid var(--border);border-radius:28px;padding:24px;background:linear-gradient(145deg,rgba(255,255,255,.095),rgba(255,255,255,.045));box-shadow:0 18px 60px rgba(0,0,0,.18);transition:transform .22s ease,border-color .22s ease}.feature-grid article:hover,.book-grid article:hover,.plans article:hover{transform:translateY(-6px);border-color:rgba(248,199,92,.42)}.feature-grid span,.book-grid small{color:var(--gold);font-weight:900}.feature-grid p,.book-grid p,.plans p,.faq-panel{color:var(--muted);line-height:1.65}.plans strong{display:block;margin:8px 0 12px;font-size:38px}.plans .featured{border-color:rgba(139,92,246,.64);background:linear-gradient(145deg,rgba(139,92,246,.18),rgba(255,255,255,.055))}.faq{max-width:980px}.faq-item{width:100%;display:flex;align-items:center;justify-content:space-between;border:0;border-bottom:1px solid var(--border);border-radius:0;padding:18px 0;color:#fff;background:transparent;text-align:left;font:inherit;font-weight:850}.faq-panel{display:none;padding:0 0 18px}.faq-panel.open{display:block}footer{border-top:1px solid var(--border);padding:32px clamp(18px,5vw,86px);color:var(--muted)}.reveal{opacity:0;transform:translateY(18px);transition:opacity .65s ease,transform .65s ease}.reveal.visible{opacity:1;transform:none}@keyframes spin{to{transform:rotate(360deg)}}@keyframes floatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}@media(max-width:980px){.menu-toggle{display:block}.nav-links{position:absolute;left:16px;right:16px;top:calc(100% + 10px);display:none;flex-direction:column;border:1px solid var(--border);border-radius:20px;padding:12px;background:rgba(8,9,20,.96)}.nav-links.open{display:flex}.header-cta{display:none}.hero{grid-template-columns:1fr;min-height:auto}.feature-grid,.book-grid,.plans{grid-template-columns:1fr 1fr}}@media(max-width:620px){.hero{padding-top:42px}.hero-visual{min-height:380px}.floating-card{position:relative;inset:auto;width:100%;animation:none;margin-bottom:10px}.feature-grid,.book-grid,.plans{grid-template-columns:1fr}.hero-actions button{width:100%}h1{font-size:44px}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}`;
+    const js = `const menuToggle=document.querySelector(".menu-toggle");const navLinks=document.querySelector(".nav-links");menuToggle?.addEventListener("click",()=>{const open=navLinks?.classList.toggle("open");menuToggle.setAttribute("aria-expanded",String(Boolean(open)))});document.querySelectorAll(".nav-links a").forEach(link=>link.addEventListener("click",()=>{navLinks?.classList.remove("open");menuToggle?.setAttribute("aria-expanded","false")}));document.querySelectorAll("[data-scroll]").forEach(button=>button.addEventListener("click",()=>{document.querySelector(button.dataset.scroll||"")?.scrollIntoView({behavior:"smooth",block:"start"})}));const observer=new IntersectionObserver(entries=>{entries.forEach(entry=>{if(entry.isIntersecting){entry.target.classList.add("visible");observer.unobserve(entry.target)}})},{threshold:.16});document.querySelectorAll(".reveal").forEach(item=>observer.observe(item));document.querySelectorAll(".faq-item").forEach(button=>button.addEventListener("click",()=>{const panel=button.nextElementSibling;const open=panel?.classList.toggle("open");const icon=button.querySelector("strong");if(icon)icon.textContent=open?"−":"+";}));`;
+    return [
+      { operation: "create", path: "index.html", content: html, description: `Generated BookNest AI fallback: ${reason}` },
+      { operation: "create", path: "style.css", content: css, description: "Premium responsive BookNest AI styling" },
+      { operation: "create", path: "script.js", content: js, description: "Menu, scroll, reveal, and FAQ interactions" },
+    ];
+  }
   if (isGujaratiFoodPrompt(prompt)) {
     const html = `<!doctype html>
 <html lang="en">
@@ -1261,18 +1361,21 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
   }
   nextFiles = nextFiles.map((file) => file.path === "index.html" ? { ...file, content: htmlContent } : file);
 
-  const hasCss = nextFiles.some((file) => file.path === "style.css" && file.operation !== "delete" && file.content && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
-  const hasJs = nextFiles.some((file) => file.path === "script.js" && file.operation !== "delete" && file.content && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
+  const interactionsRequired = staticInteractionsRequired(prompt, htmlContent);
+  const hasCss = nextFiles.some((file) => file.path === "style.css" && file.operation !== "delete" && (file.content || "").trim().length >= 500 && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
+  const hasJs = nextFiles.some((file) => file.path === "script.js" && file.operation !== "delete" && (file.content || "").trim().length >= (interactionsRequired ? 200 : 40) && !looksLikeRawModelDump(file.content) && !hasUnresolvedTemplatePlaceholder(file.content));
   const fallback = staticFallbackFiles(prompt, "missing required static asset");
   if (!hasCss) nextFiles.push(fallback.find((file) => file.path === "style.css")!);
   if (!hasJs) nextFiles.push(fallback.find((file) => file.path === "script.js")!);
+  nextFiles = [...new Map(nextFiles.map((file) => [file.path, file])).values()];
 
   const invalidContent = nextFiles.some((file) =>
     file.operation !== "delete" &&
     /\.(html|css|js)$/i.test(file.path) &&
     (looksLikeRawModelDump(file.content || "") || hasUnresolvedTemplatePlaceholder(file.content || ""))
   );
-  const finalFiles = invalidContent ? staticFallbackFiles(prompt, "raw model dump or unresolved placeholder detected") : nextFiles;
+  const completenessIssues = staticFileCompletenessIssues(nextFiles, prompt);
+  const finalFiles = invalidContent || completenessIssues.length ? staticFallbackFiles(prompt, invalidContent ? "raw model dump or unresolved placeholder detected" : completenessIssues.join("; ")) : nextFiles;
   return onlyStaticCoreFilesRequested(prompt) ? finalFiles.filter((file) => allowedCoreFiles.has(file.path)) : finalFiles;
 }
 
@@ -1549,10 +1652,59 @@ function extractFence(raw: string, language: string) {
   return raw.match(pattern)?.[1]?.trim();
 }
 
+function extractNamedFileSection(raw: string, fileName: string) {
+  const escaped = fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(?:^|\\n)\\s*(?:#{1,6}\\s*)?(?:file\\s*:?\\s*)?${escaped}\\s*(?:\\n|:)\\s*(?:\\\`\\\`\\\`[a-zA-Z0-9_-]*\\s*)?([\\s\\S]*?)(?=\\n\\s*(?:#{1,6}\\s*)?(?:file\\s*:?\\s*)?(?:index\\.html|style\\.css|script\\.js)\\s*(?:\\n|:)|\\n\\s*\\\`\\\`\\\`\\s*$|$)`, "i");
+  return raw.match(pattern)?.[1]?.replace(/```$/g, "").trim();
+}
+
+function splitInlineStaticAssets(html = "") {
+  let css = "";
+  let js = "";
+  let nextHtml = html;
+  nextHtml = nextHtml.replace(/<style[^>]*>([\s\S]*?)<\/style>/i, (_match, body) => {
+    css = String(body || "").trim();
+    return '<link rel="stylesheet" href="./style.css">';
+  });
+  nextHtml = nextHtml.replace(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i, (_match, body) => {
+    js = String(body || "").trim();
+    return '<script src="./script.js"></script>';
+  });
+  return { html: nextHtml, css, js };
+}
+
+function staticInteractionsRequired(prompt = "", html = "") {
+  return /\b(faq|accordion|menu|mobile menu|smooth|animation|animated|toggle|filter|modal|tabs|carousel|form|interactive|working buttons?)\b/i.test(`${prompt}\n${html}`);
+}
+
+export function staticFileCompletenessIssues(files: WorkspaceFileAction[], prompt = "") {
+  const byPath = new Map(files.filter((file) => file.operation !== "delete").map((file) => [file.path, (file.content || "").trim()]));
+  const html = byPath.get("index.html") || "";
+  const css = byPath.get("style.css") || "";
+  const js = byPath.get("script.js") || "";
+  const interactionsRequired = staticInteractionsRequired(prompt, html);
+  const issues: string[] = [];
+  if (html.length < 1500) issues.push("index.html is incomplete or too short.");
+  if (!/<!doctype html|<html[\s>]/i.test(html)) issues.push("index.html must contain a valid HTML shell.");
+  if (!/href=["']\.\/style\.css["']/i.test(html)) issues.push("index.html must link ./style.css.");
+  if (!/src=["']\.\/script\.js["']/i.test(html)) issues.push("index.html must load ./script.js.");
+  if (css.length < 500) issues.push("style.css is empty or too short for a premium page.");
+  if (interactionsRequired && js.length < 200) issues.push("script.js is empty or too short for requested interactions.");
+  if (/^[\s]*[{[]/.test(html)) issues.push("preview HTML looks like raw JSON/text.");
+  if (files.some((file) => hasUnresolvedTemplatePlaceholder(file.content || ""))) issues.push("generated files contain unresolved template placeholders.");
+  if (files.some((file) => looksLikeRawModelDump(file.content || ""))) issues.push("generated files contain raw model output.");
+  return issues;
+}
+
 function parseLooseWorkspaceResponse(raw: string): WorkspaceAgentResponse {
-  const html = extractFence(raw, "html") || (/<!doctype html|<html[\s>]/i.test(raw) && !looksLikeRawModelDump(raw) ? raw.trim() : "");
-  const css = extractFence(raw, "css");
-  const js = extractFence(raw, "js|javascript");
+  const sectionHtml = extractNamedFileSection(raw, "index.html");
+  const sectionCss = extractNamedFileSection(raw, "style.css");
+  const sectionJs = extractNamedFileSection(raw, "script.js");
+  const htmlCandidate = extractFence(raw, "html") || sectionHtml || (/<!doctype html|<html[\s>]/i.test(raw) && !looksLikeRawModelDump(raw) ? raw.trim() : "");
+  const split = splitInlineStaticAssets(htmlCandidate);
+  const html = split.html;
+  const css = extractFence(raw, "css") || sectionCss || split.css;
+  const js = extractFence(raw, "js|javascript") || sectionJs || split.js;
   const files: WorkspaceFileAction[] = [];
 
   if (html) {
