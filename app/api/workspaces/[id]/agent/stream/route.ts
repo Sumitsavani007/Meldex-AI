@@ -582,12 +582,23 @@ PATCH MODE BYPASSED:
 - Do not stop with an error.
 - Treat this as an empty or incomplete static workspace.
 - Create complete dependency-free index.html, style.css, and script.js so preview can run.
+- Do not create README, package files, .cache, .vscode, settings, or internal files.
 - Keep the visible result aligned with the user's current request.
 - Return JSON only with complete file contents.`;
-                  response = await askWorkspaceAgent(missingTargetFallbackPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, {
+                  const missingTargetResponse = await askWorkspaceAgent(missingTargetFallbackPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, {
                     userId: session.user.id,
                     taskType: "workspace_patch_missing_target_fallback",
                   });
+                  const allowedFallbackFiles = new Set(["index.html", "style.css", "script.js"]);
+                  response = {
+                    ...missingTargetResponse,
+                    files: normalizeWorkspaceFileActions(Array.isArray(missingTargetResponse.files) ? missingTargetResponse.files : [], body.data.prompt)
+                      .filter((file) => allowedFallbackFiles.has(file.path)),
+                    warnings: [
+                      ...(missingTargetResponse.warnings || []),
+                      "Patch target files were missing; created the required static preview files instead.",
+                    ],
+                  };
                 } else {
                   await send("patch_context_loaded", `Loaded ${targetFiles.length} patch target file${targetFiles.length === 1 ? "" : "s"}`, {
                     targetFiles: targetFiles.map((file) => ({ path: file.path, bytes: Buffer.byteLength(file.content) })),
