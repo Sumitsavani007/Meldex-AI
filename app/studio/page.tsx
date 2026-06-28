@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useSession } from "next-auth/react";
 import {
   Aperture,
   CheckCircle2,
@@ -107,6 +108,7 @@ function fallbackPrompt() {
 }
 
 export default function StudioPage() {
+  const { status } = useSession({ required: true });
   const [projects, setProjects] = useState<StudioProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProject, setSelectedProject] = useState<StudioProject | null>(null);
@@ -206,9 +208,10 @@ export default function StudioPage() {
   }
 
   useEffect(() => {
+    if (status !== "authenticated") return;
     loadProjects().catch((error) => setMessage(error instanceof Error ? error.message : "Unable to load AI Studio"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [status]);
 
   const progress = useMemo(() => {
     if (!loading && latestGeneration?.status === "COMPLETED") return 100;
