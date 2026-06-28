@@ -308,6 +308,12 @@ function affordableMaxTokens(reason: string, requested?: number) {
   return next;
 }
 
+function shouldRetryWithReducedTokens(options: CompletionOptions, reducedMaxTokens: number) {
+  const taskType = options.taskType || "";
+  if (/workspace_agent|workspace_patch/i.test(taskType) && reducedMaxTokens < 900) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // OpenRouter — reads model from runtime config (vault > env > default)
 // ---------------------------------------------------------------------------
@@ -354,7 +360,7 @@ async function callOpenRouter(options: CompletionOptions): Promise<CompletionRes
       }
 
       const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
-      if (reducedMaxTokens) {
+      if (reducedMaxTokens && shouldRetryWithReducedTokens(options, reducedMaxTokens)) {
         return callOpenAICompatible(
           baseUrl,
           apiKey,
@@ -433,7 +439,7 @@ async function callConfiguredProvider(config: Awaited<ReturnType<typeof resolveP
   } catch (err) {
     if (err instanceof ModelRouterError && err.code === "insufficient_credits") {
       const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
-      if (reducedMaxTokens) {
+      if (reducedMaxTokens && shouldRetryWithReducedTokens(options, reducedMaxTokens)) {
         result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs, maxTokens: reducedMaxTokens }, extraHeaders);
       } else {
         throw err;
