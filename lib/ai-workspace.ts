@@ -192,6 +192,16 @@ function decodeGeneratedContent(value: unknown) {
   return content.trim();
 }
 
+const generatedImageFallback =
+  "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%20800'%3E%3Cdefs%3E%3ClinearGradient%20id='g'%20x1='0'%20x2='1'%20y1='0'%20y2='1'%3E%3Cstop%20stop-color='%23111827'/%3E%3Cstop%20offset='1'%20stop-color='%237C5CFF'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect%20width='1200'%20height='800'%20rx='56'%20fill='url(%23g)'/%3E%3Ccircle%20cx='945'%20cy='170'%20r='160'%20fill='%23ffffff'%20opacity='.12'/%3E%3Ccircle%20cx='250'%20cy='650'%20r='190'%20fill='%23ffffff'%20opacity='.09'/%3E%3Cpath%20d='M255%20540h690a55%2055%200%200%200%2055-55V320a55%2055%200%200%200-55-55H255a55%2055%200%200%200-55%2055v165a55%2055%200%200%200%2055%2055Z'%20fill='%23ffffff'%20opacity='.13'/%3E%3Ctext%20x='600'%20y='430'%20font-family='Arial,sans-serif'%20font-size='54'%20font-weight='700'%20text-anchor='middle'%20fill='%23fff'%3EMeldex%20Visual%3C/text%3E%3C/svg%3E";
+
+function stabilizeGeneratedImages(html: string) {
+  return html
+    .replace(/<img\b([^>]*?)\bsrc=(["'])(?:\s*|#|about:blank|placeholder|image|undefined|null)\2([^>]*)>/gi, `<img$1src="${generatedImageFallback}"$3>`)
+    .replace(/<img\b(?![^>]*\bloading=)([^>]*)>/gi, "<img loading=\"lazy\"$1>")
+    .replace(/<img\b(?![^>]*\bonerror=)([^>]*)>/gi, `<img$1 onerror="this.onerror=null;this.src='${generatedImageFallback}'">`);
+}
+
 function hasUnresolvedTemplatePlaceholder(content = "") {
   return /\$\{[a-zA-Z0-9_.[\]\s'"`+-]+\}/.test(content);
 }
@@ -1388,6 +1398,7 @@ export function normalizeWorkspaceFileActions(files: WorkspaceFileAction[], prom
   if (!/src=["']\.\/script\.js["']/i.test(htmlContent)) {
     htmlContent = htmlContent.replace(/<\/body>/i, '  <script src="./script.js"></script>\n</body>');
   }
+  htmlContent = stabilizeGeneratedImages(htmlContent);
   nextFiles = nextFiles.map((file) => file.path === "index.html" ? { ...file, content: htmlContent } : file);
 
   const interactionsRequired = staticInteractionsRequired(prompt, htmlContent);
@@ -1931,6 +1942,7 @@ Static Website Quality Contract:
 - Keep output complete but concise. Do not include markdown, explanations, README, package files, raw JSON dumps, placeholders, or internal files.
 - Build a premium visual system with strong hero, polished sections, responsive cards, clear CTA hierarchy, accessible focus states, mobile navigation, FAQ/interactions when relevant, and reduced-motion support.
 - Include or preserve valid links from index.html to ./style.css and ./script.js.
+- For image requests, use reliable loading visuals: prefer inline SVG/CSS visual cards or stable external image URLs with alt text; never leave blank image boxes, empty src values, or broken placeholders.
 - Self-check before returning: non-empty HTML/CSS/JS, no overflow at mobile widths, no console-breaking JS, and visible copy must match the current prompt subject.` : "";
   const system = staticFastPrompt ? `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:

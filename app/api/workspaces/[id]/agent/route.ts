@@ -31,6 +31,8 @@ export const dynamic = "force-dynamic";
 
 const schema = z.object({
   prompt: z.string().min(1).max(12000),
+  fullAccess: z.boolean().optional(),
+  accessMode: z.enum(["scoped", "full"]).optional(),
 });
 
 export async function POST(
@@ -156,8 +158,17 @@ export async function POST(
         },
       });
     }
-    if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
+    const fullAccessGranted = body.fullAccess === true || body.accessMode === "full";
+    if (orchestration.confidence.decision === "block") {
       throw new Error(orchestration.confidence.reason);
+    }
+    if (orchestration.confidence.decision === "ask_user" && !fullAccessGranted) {
+      return NextResponse.json({
+        error: "Approval needed. Turn on Full access or confirm this edit in chat.",
+        code: "APPROVAL_REQUIRED",
+        reason: orchestration.confidence.reason,
+        action: "enable_full_access",
+      }, { status: 428, headers: { "Cache-Control": "no-store" } });
     }
     let response: WorkspaceAgentResponse;
     let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;

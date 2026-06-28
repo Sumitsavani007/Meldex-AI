@@ -45,6 +45,8 @@ const schema = z.object({
   prompt: z.string().min(1).max(12000),
   queued: z.boolean().optional(),
   fork: z.boolean().optional(),
+  fullAccess: z.boolean().optional(),
+  accessMode: z.enum(["scoped", "full"]).optional(),
 });
 
 type WorkspaceContext = Awaited<ReturnType<typeof buildWorkspaceContext>>;
@@ -534,8 +536,28 @@ export async function POST(
             });
           }
           for (const event of orchestration.events) await send(event.type, event.message, event.payload);
-          if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
+          const fullAccessGranted = body.data.fullAccess === true || body.data.accessMode === "full";
+          if (orchestration.confidence.decision === "block") {
+            await send("approval_blocked", "This action is blocked for safety", {
+              reason: orchestration.confidence.reason,
+              accessMode: fullAccessGranted ? "full" : "scoped",
+            });
             throw new Error(orchestration.confidence.reason);
+          }
+          if (orchestration.confidence.decision === "ask_user" && !fullAccessGranted) {
+            await send("approval_required", "Approval needed", {
+              reason: orchestration.confidence.reason,
+              message: "Enable Full access or confirm the risky edit before Meldex changes files.",
+              action: "enable_full_access",
+              codexStyle: true,
+            });
+            throw new Error("Approval needed. Turn on Full access or confirm this edit in chat.");
+          }
+          if (orchestration.confidence.decision === "ask_user" && fullAccessGranted) {
+            await send("full_access_granted", "Full access approved this edit", {
+              originalDecision: "ask_user",
+              reason: orchestration.confidence.reason,
+            });
           }
           const outputBudget = estimateWorkspaceOutputBudget(body.data.prompt);
           runtimeProfile.planning_ms = elapsedMs(taskStartedAt);

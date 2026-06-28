@@ -245,6 +245,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [sendShortcut, setSendShortcut] = useState("Enter");
   const [selectedAiModel, setSelectedAiModel] = useState("MelDex 1.0");
   const [workMode, setWorkMode] = useState("local");
+  const [fullAccess, setFullAccess] = useState(false);
   const [centerMode, setCenterMode] = useState<CenterMode>("split");
   const [splitRatio, setSplitRatio] = useState(52);
   const [previewRotated, setPreviewRotated] = useState(false);
@@ -449,7 +450,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       const response = await fetch(`/api/workspaces/${state.project.id}/agent/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: effectivePrompt }),
+        body: JSON.stringify({ prompt: effectivePrompt, fullAccess, accessMode: fullAccess ? "full" : "scoped" }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) {
@@ -604,9 +605,13 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               await loadWorkspace(state.project.id).catch(() => undefined);
             }
           }
-          if (event.type === "error") {
+          if (event.type === "error" && !event.message.toLowerCase().startsWith("approval needed")) {
             setBottomTab("PROBLEMS");
             setBottomCollapsed(false);
+          }
+          if (event.type === "approval_required") {
+            setMessage("Approval needed · enable Full access to continue");
+            setActiveRightTab("CHAT");
           }
           if (event.type === "server_starting") {
             setBottomTab("PREVIEW LOGS");
@@ -1562,7 +1567,19 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} onKeyDown={(event) => { if ((sendShortcut === "Enter" && event.key === "Enter" && !event.shiftKey) || ((event.metaKey || event.ctrlKey) && event.key === "Enter")) { event.preventDefault(); if (!loading && prompt.trim()) void runAgent(); } }} rows={3} className="w-full resize-none bg-transparent text-[14px] leading-6 outline-none placeholder:text-[#9CA3AF]" placeholder="Ask for follow-up changes..." />
               <div className="mt-3 flex items-center justify-between gap-3 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">
                 <div className="flex min-w-0 items-center gap-2">
-                  <button className="flex h-8 items-center gap-1.5 rounded-full border border-[#E5E7EB] px-3 text-amber-700 transition hover:bg-amber-50 dark:border-[#2A2E39] dark:text-amber-300 dark:hover:bg-amber-500/10" title="Workspace access is scoped to this project"><Sparkles className="size-3.5" /> Full access</button>
+                  <button
+                    type="button"
+                    onClick={() => setFullAccess((current) => !current)}
+                    aria-pressed={fullAccess}
+                    className={`flex h-8 items-center gap-1.5 rounded-full border px-3 transition ${
+                      fullAccess
+                        ? "border-[#7C5CFF] bg-[#7C5CFF] text-white shadow-[0_8px_20px_rgba(124,92,255,0.28)]"
+                        : "border-[#E5E7EB] text-amber-700 hover:bg-amber-50 dark:border-[#2A2E39] dark:text-amber-300 dark:hover:bg-amber-500/10"
+                    }`}
+                    title={fullAccess ? "Full access enabled for this prompt" : "Scoped mode. Risky edits will ask for approval."}
+                  >
+                    <Sparkles className="size-3.5" /> {fullAccess ? "Full access on" : "Full access"}
+                  </button>
                   <select value={selectedAiModel} onChange={(event) => setSelectedAiModel(event.target.value)} className="h-9 w-[142px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[12px] font-semibold leading-none text-[#374151] outline-none transition hover:bg-[#F6F7FB] dark:border-[#2A2E39] dark:bg-[#111318] dark:text-[#F3F4F6] dark:hover:bg-[#1A1E27]" title={`Model${usage?.plan.name ? ` · ${usage.plan.name}` : ""}`}>
                     <option>MelDex 1.0</option>
                   </select>
