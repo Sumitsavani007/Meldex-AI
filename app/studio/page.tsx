@@ -63,6 +63,7 @@ type StudioProject = {
 
 type StudioGeneration = {
   id: string;
+  type: string;
   status: string;
   sourcePrompt: string;
   detectedLanguage?: string | null;
@@ -125,8 +126,27 @@ type UploadedItem = {
   sizeBytes: number;
 };
 
+type ImageReference = {
+  id: string;
+  type: "Face" | "Character" | "Couple" | "Style";
+  name: string;
+  dataUrl: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type ImageResult = {
+  id: string;
+  url?: string;
+  enhancedPrompt: string;
+  negativePrompt: string;
+  providerMessage: string;
+  createdAt: string;
+};
+
 const navItems = [
   { key: "studio", label: "AI Studio", icon: Sparkles },
+  { key: "image", label: "Generate Image", icon: Frame },
   { key: "projects", label: "Projects", icon: Folder },
   { key: "templates", label: "Templates", icon: Grid2X2 },
   { key: "assets", label: "Assets", icon: ImageIcon },
@@ -147,6 +167,12 @@ const styles = ["Cinematic", "Realistic", "Anime", "3D Render", "Fantasy", "Vint
 const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam", "Zoom", "Tilt"];
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
+const imageModels = ["FLUX.1 Schnell", "SDXL"];
+const imageSizes = [512, 768, 1024];
+const imageQualities = ["Fast", "Balanced", "High"];
+const imageSteps = [4, 8, 16, 28];
+const imageStyles = ["Realistic", "Cinematic", "Anime", "3D", "Fashion", "Travel", "Product", "Wedding"];
+const imageReferenceTypes = ["Face", "Character", "Couple", "Style"] as const;
 const resolutions = [
   { label: "1080P", sub: "1920 x 1080", value: "1080p" },
   { label: "720P", sub: "1280 x 720", value: "720p" },
@@ -242,8 +268,29 @@ export default function StudioPage() {
     styleLock: "Cinematic",
     consistency: 74,
   });
+  const [imagePrompt, setImagePrompt] = useState("હું અને મારી પત્ની કાશ્મીરમાં હગ કરતા હોઈએ એવો રિયલિસ્ટિક ફોટો બનાવ.");
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageReferences, setImageReferences] = useState<ImageReference[]>([]);
+  const [imageResults, setImageResults] = useState<ImageResult[]>([]);
+  const [imageSettings, setImageSettings] = useState({
+    model: "OpenRouter active model",
+    imageModel: "FLUX.1 Schnell",
+    aspectRatio: "16:9",
+    size: 1024,
+    quality: "Balanced",
+    seedMode: "Random" as "Random" | "Custom",
+    seed: "",
+    steps: 8,
+    negativePrompt: "low quality, blurry, distorted face, bad anatomy, watermark",
+    style: "Realistic",
+    identityLock: false,
+    faceSimilarity: 90,
+    referenceType: "Face" as "Face" | "Character" | "Couple" | "Style",
+  });
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const imagePromptRef = useRef<HTMLTextAreaElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
+  const imageReferenceInputRef = useRef<HTMLInputElement | null>(null);
   const quickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const avatarUrls = useMemo(() => [...avatarSeed.map(avatarDataUrl), ...uploads.filter((item) => item.type === "avatar").map((item) => item.dataUrl)], [uploads]);
@@ -282,6 +329,12 @@ export default function StudioPage() {
     promptRef.current.style.height = "auto";
     promptRef.current.style.height = `${Math.max(216, promptRef.current.scrollHeight)}px`;
   }, [prompt]);
+
+  useEffect(() => {
+    if (!imagePromptRef.current) return;
+    imagePromptRef.current.style.height = "auto";
+    imagePromptRef.current.style.height = `${Math.max(156, imagePromptRef.current.scrollHeight)}px`;
+  }, [imagePrompt]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -323,6 +376,12 @@ export default function StudioPage() {
     }));
     const savedUploads = Array.isArray(savedSettings.uploads) ? savedSettings.uploads as UploadedItem[] : [];
     if (savedUploads.length) setUploads(savedUploads);
+    if (savedSettings.imageSettings && typeof savedSettings.imageSettings === "object") {
+      setImageSettings((current) => ({ ...current, ...(savedSettings.imageSettings as Partial<typeof current>) }));
+    }
+    if (typeof savedSettings.imagePrompt === "string") setImagePrompt(savedSettings.imagePrompt);
+    setImageReferences(Array.isArray(savedSettings.imageReferences) ? savedSettings.imageReferences as ImageReference[] : []);
+    setImageResults(Array.isArray(savedSettings.imageResults) ? savedSettings.imageResults as ImageResult[] : []);
   }
 
   async function createProject() {
@@ -355,7 +414,14 @@ export default function StudioPage() {
     if (!selectedProject) return;
     await updateProject({
       action: "settings",
-      settings: { ...nextSettings, uploads: nextUploads },
+      settings: {
+        ...nextSettings,
+        uploads: nextUploads,
+        imagePrompt,
+        imageSettings,
+        imageReferences,
+        imageResults,
+      },
       styleLock: nextSettings.styleLock,
       aspectRatio: nextSettings.aspectRatio,
       resolution: nextSettings.resolution,
@@ -424,6 +490,91 @@ export default function StudioPage() {
     setUploads(nextUploads);
     if (type === "avatar") setSelectedAvatar(avatarSeed.length);
     await saveSettings(settings, nextUploads).catch(() => setMessage("Upload saved locally; project save failed"));
+  }
+
+  async function saveImageState(next?: {
+    prompt?: string;
+    imageSettings?: typeof imageSettings;
+    references?: ImageReference[];
+    results?: ImageResult[];
+  }) {
+    if (!selectedProject) return;
+    await updateProject({
+      action: "settings",
+      settings: {
+        ...settings,
+        uploads,
+        imagePrompt: next?.prompt ?? imagePrompt,
+        imageSettings: next?.imageSettings ?? imageSettings,
+        imageReferences: next?.references ?? imageReferences,
+        imageResults: next?.results ?? imageResults,
+      },
+      styleLock: settings.styleLock,
+      aspectRatio: settings.aspectRatio,
+      resolution: settings.resolution,
+      durationSec: settings.durationSec,
+      fps: settings.fps,
+      seed: settings.seed || null,
+    }, false);
+  }
+
+  async function handleImageReferenceUpload(files?: FileList | null) {
+    const selectedFiles = Array.from(files || []).slice(0, 6 - imageReferences.length);
+    if (!selectedFiles.length) return;
+    const nextItems = await Promise.all(selectedFiles.map(async (file) => ({
+      id: `image-ref-${Date.now()}-${file.name}`,
+      type: imageSettings.referenceType,
+      name: file.name,
+      dataUrl: await readFileAsDataUrl(file),
+      mimeType: file.type,
+      sizeBytes: file.size,
+    } satisfies ImageReference)));
+    const next = [...nextItems, ...imageReferences].slice(0, 6);
+    setImageReferences(next);
+    await saveImageState({ references: next }).catch(() => setMessage("Reference saved locally; project save failed"));
+  }
+
+  function setImageSetting<K extends keyof typeof imageSettings>(key: K, value: (typeof imageSettings)[K]) {
+    const next = { ...imageSettings, [key]: value };
+    setImageSettings(next);
+    saveImageState({ imageSettings: next }).catch(() => undefined);
+  }
+
+  async function runImageGeneration() {
+    if (!selectedProject || !imagePrompt.trim() || imageLoading) return;
+    setImageLoading(true);
+    setMessage("Enhancing image prompt");
+    await saveImageState().catch(() => undefined);
+    try {
+      const response = await fetch("/api/studio/image/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId: selectedProject.id,
+          prompt: imagePrompt,
+          settings: imageSettings,
+          references: imageReferences,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Image generation failed");
+      const nextResult: ImageResult = {
+        id: data.generation.id,
+        enhancedPrompt: data.plan.enhancedPrompt,
+        negativePrompt: data.plan.negativePrompt,
+        providerMessage: data.providerMessage,
+        createdAt: data.generation.createdAt,
+      };
+      const nextResults = [nextResult, ...imageResults].slice(0, 12);
+      setImageResults(nextResults);
+      setMessage(data.providerConfigured ? "Image job prepared" : "Local image provider not configured. Prompts are ready.");
+      await saveImageState({ results: nextResults });
+      await loadProject(selectedProject.id);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Image generation failed");
+    } finally {
+      setImageLoading(false);
+    }
   }
 
   function exportJson() {
@@ -747,6 +898,190 @@ export default function StudioPage() {
     </aside>
   );
 
+  const imageReferencePanel = (
+    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
+      <h2 className="mb-4 flex items-center gap-3 text-base font-semibold"><ImageIcon className="size-5 text-violet-500" /> Reference Images</h2>
+      <div className={cn("rounded-2xl border border-dashed p-4 text-center", studioTokens.soft)}>
+        <button onClick={() => imageReferenceInputRef.current?.click()} className="mx-auto grid size-14 place-items-center rounded-full bg-violet-600/15 text-violet-500">
+          <Plus className="size-6" />
+        </button>
+        <p className="mt-3 text-sm font-semibold">Upload references</p>
+        <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Face, character, couple, or style images for identity guidance.</p>
+        <input ref={imageReferenceInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => void handleImageReferenceUpload(event.target.files)} />
+        <button onClick={() => imageReferenceInputRef.current?.click()} className="mt-4 h-10 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white">Add Images</button>
+      </div>
+      <div className="mt-4 space-y-3">
+        <label className="flex items-center justify-between gap-3 text-sm font-medium">
+          <span>Identity lock</span>
+          <button onClick={() => setImageSetting("identityLock", !imageSettings.identityLock)} className={cn("h-7 w-12 rounded-full p-1 transition", imageSettings.identityLock ? "bg-violet-600" : "bg-slate-300 dark:bg-white/12")}>
+            <span className={cn("block size-5 rounded-full bg-white transition", imageSettings.identityLock && "translate-x-5")} />
+          </button>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Reference type
+          <select value={imageSettings.referenceType} onChange={(event) => setImageSetting("referenceType", event.target.value as typeof imageSettings.referenceType)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+            {imageReferenceTypes.map((type) => <option key={type}>{type}</option>)}
+          </select>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Face similarity <span className="float-right font-medium">{imageSettings.faceSimilarity}</span>
+          <input type="range" min={50} max={100} step={5} value={imageSettings.faceSimilarity} onChange={(event) => setImageSetting("faceSimilarity", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
+          <div className={cn("mt-2 flex justify-between text-[11px]", studioTokens.faint)}><span>50</span><span>75</span><span>90</span><span>100</span></div>
+        </label>
+      </div>
+      <div className="mt-5 space-y-3">
+        {imageReferences.length ? imageReferences.map((reference) => (
+          <div key={reference.id} className={cn("overflow-hidden rounded-2xl border", studioTokens.soft)}>
+            <Image src={reference.dataUrl} alt={reference.name} width={220} height={132} unoptimized className="h-32 w-full object-cover" />
+            <div className="flex items-center justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold">{reference.name}</p>
+                <p className={cn("text-[11px]", studioTokens.muted)}>{reference.type} · {formatBytes(reference.sizeBytes)}</p>
+              </div>
+              <button onClick={() => { const next = imageReferences.filter((item) => item.id !== reference.id); setImageReferences(next); void saveImageState({ references: next }); }} className="grid size-8 place-items-center rounded-lg text-red-400 hover:bg-red-500/10">
+                <Trash2 className="size-4" />
+              </button>
+            </div>
+          </div>
+        )) : (
+          <p className={cn("rounded-2xl border border-dashed p-4 text-sm leading-6", studioTokens.soft)}>No reference images yet. Text-to-image will work as a normal prompt enhancer.</p>
+        )}
+      </div>
+    </aside>
+  );
+
+  const imageCenterPanel = (
+    <section className="min-w-0 space-y-4">
+      <div className="px-3 pt-2">
+        <h1 className="text-3xl font-bold tracking-tight">Generate Image</h1>
+        <p className={cn("mt-3 text-sm", studioTokens.muted)}>Create cinematic image prompts with Gujarati, Hindi, English, or mixed language.</p>
+        <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
+      </div>
+      <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Native Prompt</h2>
+          <button onClick={() => setImagePrompt("")} disabled={!imagePrompt} className={cn("h-9 rounded-xl border px-3 text-xs disabled:opacity-40", studioTokens.soft)}>Clear</button>
+        </div>
+        <textarea
+          ref={imagePromptRef}
+          value={imagePrompt}
+          onChange={(event) => setImagePrompt(event.target.value)}
+          onBlur={() => saveImageState({ prompt: imagePrompt }).catch(() => undefined)}
+          className={cn("min-h-[156px] w-full resize-none rounded-2xl p-4 text-sm leading-6", studioTokens.input)}
+          placeholder="Hu ane mari wife Kashmir ma hug karta hoy evo realistic photo banav..."
+        />
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className={cn("text-xs", studioTokens.muted)}>{imagePrompt.length} characters</span>
+          <button onClick={runImageGeneration} disabled={!selectedProject || imageLoading || !imagePrompt.trim()} className="flex h-12 min-w-[170px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-xl shadow-violet-700/30 disabled:opacity-45">
+            {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+            Generate
+          </button>
+        </div>
+      </section>
+      <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold">Results</h2>
+          <span className={cn("rounded-full border px-3 py-1 text-[11px]", studioTokens.soft)}>{imageResults.length} generated</span>
+        </div>
+        {imageResults.length ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {imageResults.map((result) => (
+              <article key={result.id} className={cn("rounded-2xl border p-4", studioTokens.soft)}>
+                <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-violet-400/35 bg-violet-500/8 text-center">
+                  <div>
+                    <ImageIcon className="mx-auto size-8 text-violet-500" />
+                    <p className="mt-3 text-sm font-semibold">Local image provider not configured</p>
+                    <p className={cn("mt-1 px-6 text-xs leading-5", studioTokens.muted)}>{result.providerMessage}</p>
+                  </div>
+                </div>
+                <p className="mt-4 line-clamp-4 text-sm leading-6">{result.enhancedPrompt}</p>
+                <p className={cn("mt-3 line-clamp-2 text-xs", studioTokens.muted)}>Negative: {result.negativePrompt}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button onClick={() => navigator.clipboard?.writeText(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}><Copy className="mr-1 inline size-3.5" /> Copy prompt</button>
+                  <button onClick={() => setImagePrompt(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}>Reuse</button>
+                  <button disabled className={cn("h-9 rounded-xl border px-3 text-xs font-medium opacity-45", studioTokens.soft)}>Upscale</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className={cn("grid min-h-[230px] place-items-center rounded-2xl border border-dashed text-center", studioTokens.soft)}>
+            <div>
+              <ImageIcon className="mx-auto size-10 text-violet-500" />
+              <p className="mt-3 font-semibold">No images yet</p>
+              <p className={cn("mt-2 max-w-md text-sm leading-6", studioTokens.muted)}>Generate will prepare enhanced prompt, negative prompt, reference summary, and provider setup status. It will not fake image output.</p>
+            </div>
+          </div>
+        )}
+      </section>
+    </section>
+  );
+
+  const imageSettingsPanel = (
+    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
+      <h2 className="mb-5 flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Settings</h2>
+      <div className="space-y-5">
+        <label className={cn("block text-xs", studioTokens.muted)}>Model
+          <select value={imageSettings.imageModel} onChange={(event) => setImageSetting("imageModel", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+            {imageModels.map((model) => <option key={model}>{model}</option>)}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={cn("block text-xs", studioTokens.muted)}>Aspect ratio
+            <select value={imageSettings.aspectRatio} onChange={(event) => setImageSetting("aspectRatio", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+              {ratios.map((ratio) => <option key={ratio}>{ratio}</option>)}
+            </select>
+          </label>
+          <label className={cn("block text-xs", studioTokens.muted)}>Size
+            <select value={imageSettings.size} onChange={(event) => setImageSetting("size", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+              {imageSizes.map((size) => <option key={size}>{size}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {ratios.map((ratio) => (
+            <button key={ratio} onClick={() => setImageSetting("aspectRatio", ratio)} className={cn("flex h-[62px] flex-col items-center justify-center gap-2 rounded-xl border text-xs transition", imageSettings.aspectRatio === ratio ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : `${studioTokens.soft} hover:border-violet-400/60`)}>
+              <span className={cn("block rounded border-2", ratio === "9:16" || ratio === "3:4" ? "h-5 w-3" : ratio === "1:1" ? "size-4" : "h-3 w-5")} />
+              {ratio}
+            </button>
+          ))}
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={cn("block text-xs", studioTokens.muted)}>Quality
+            <select value={imageSettings.quality} onChange={(event) => setImageSetting("quality", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+              {imageQualities.map((quality) => <option key={quality}>{quality}</option>)}
+            </select>
+          </label>
+          <label className={cn("block text-xs", studioTokens.muted)}>Steps
+            <select value={imageSettings.steps} onChange={(event) => setImageSetting("steps", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+              {imageSteps.map((step) => <option key={step}>{step}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={cn("block text-xs", studioTokens.muted)}>Seed
+            <select value={imageSettings.seedMode} onChange={(event) => setImageSetting("seedMode", event.target.value as typeof imageSettings.seedMode)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+              <option>Random</option><option>Custom</option>
+            </select>
+          </label>
+          <label className={cn("block text-xs", studioTokens.muted)}>Custom seed
+            <input value={imageSettings.seed} disabled={imageSettings.seedMode === "Random"} onChange={(event) => setImageSetting("seed", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm disabled:opacity-45", studioTokens.input)} placeholder="Optional" />
+          </label>
+        </div>
+        <label className={cn("block text-xs", studioTokens.muted)}>Style
+          <select value={imageSettings.style} onChange={(event) => setImageSetting("style", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+            {imageStyles.map((style) => <option key={style}>{style}</option>)}
+          </select>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Negative prompt
+          <textarea value={imageSettings.negativePrompt} onChange={(event) => setImageSetting("negativePrompt", event.target.value)} className={cn("mt-2 h-24 w-full resize-none rounded-xl p-3 text-sm", studioTokens.input)} />
+        </label>
+        <div className={cn("rounded-2xl border p-4 text-sm", studioTokens.soft)}>
+          <p className="font-semibold">Provider status</p>
+          <p className={cn("mt-2 text-xs leading-5", studioTokens.muted)}>ComfyUI + FLUX.1 Schnell will render images when configured. Until then Meldex shows enhanced prompts only.</p>
+        </div>
+      </div>
+    </aside>
+  );
+
   return (
     <div className={cn(theme === "dark" && "dark")}>
       <div className={cn("min-h-screen overflow-hidden transition-colors", studioTokens.app)}>
@@ -795,29 +1130,37 @@ export default function StudioPage() {
             <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
             </div>
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_344px_278px]">
-              <section className={cn("min-w-0 space-y-4", mobileTab !== "create" && "hidden lg:block")}>
-                <div className="px-3 pt-2">
-                  <div>
-                    <h1 className="text-3xl font-bold tracking-tight">AI Studio</h1>
-                    <p className={cn("mt-3 text-sm", studioTokens.muted)}>Describe your idea and AI will turn it into a cinematic video.</p>
-                    <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
-                  </div>
-                </div>
-                {activeNav === "projects" && (
-                  <div className={cn("rounded-2xl p-4", studioTokens.panel)}>
-                    <div className="mb-3 flex gap-2"><div className={cn("flex h-10 flex-1 items-center gap-2 rounded-xl border px-3", studioTokens.soft)}><Search className="size-4" /><input value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Search projects" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><button onClick={createProject} className="rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white">New</button></div>
-                    <div className="grid gap-2 md:grid-cols-2">
-                      {filteredProjects.map((project) => <button key={project.id} onClick={() => { void loadProject(project.id); setActiveNav("studio"); }} className={cn("rounded-xl border p-3 text-left", selectedProjectId === project.id ? "border-violet-500 bg-violet-600/12" : studioTokens.soft)}><p className="truncate text-sm font-semibold">{project.name}</p><p className={cn("mt-1 text-xs", studioTokens.muted)}>{project._count?.generations || 0} generations · {timeAgo(project.updatedAt)}</p></button>)}
+            {activeNav === "image" ? (
+              <div className="grid gap-4 xl:grid-cols-[278px_minmax(0,1fr)_344px]">
+                <div className={cn(mobileTab !== "assets" && "hidden xl:block")}>{imageReferencePanel}</div>
+                <div className={cn(mobileTab !== "create" && "hidden lg:block")}>{imageCenterPanel}</div>
+                <div className={cn(mobileTab !== "settings" && "hidden xl:block")}>{imageSettingsPanel}</div>
+              </div>
+            ) : (
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_344px_278px]">
+                <section className={cn("min-w-0 space-y-4", mobileTab !== "create" && "hidden lg:block")}>
+                  <div className="px-3 pt-2">
+                    <div>
+                      <h1 className="text-3xl font-bold tracking-tight">AI Studio</h1>
+                      <p className={cn("mt-3 text-sm", studioTokens.muted)}>Describe your idea and AI will turn it into a cinematic video.</p>
+                      <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
                     </div>
                   </div>
-                )}
-                {promptPanel}
-                {false && outputPanel}
-              </section>
-              <div className={cn("space-y-4", mobileTab !== "settings" && "hidden xl:block")}>{settingsPanel}</div>
-              <div className={cn("space-y-4", mobileTab !== "assets" && "hidden xl:block")}>{referencePanel}</div>
-            </div>
+                  {activeNav === "projects" && (
+                    <div className={cn("rounded-2xl p-4", studioTokens.panel)}>
+                      <div className="mb-3 flex gap-2"><div className={cn("flex h-10 flex-1 items-center gap-2 rounded-xl border px-3", studioTokens.soft)}><Search className="size-4" /><input value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="Search projects" className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></div><button onClick={createProject} className="rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white">New</button></div>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {filteredProjects.map((project) => <button key={project.id} onClick={() => { void loadProject(project.id); setActiveNav("studio"); }} className={cn("rounded-xl border p-3 text-left", selectedProjectId === project.id ? "border-violet-500 bg-violet-600/12" : studioTokens.soft)}><p className="truncate text-sm font-semibold">{project.name}</p><p className={cn("mt-1 text-xs", studioTokens.muted)}>{project._count?.generations || 0} generations · {timeAgo(project.updatedAt)}</p></button>)}
+                      </div>
+                    </div>
+                  )}
+                  {promptPanel}
+                  {false && outputPanel}
+                </section>
+                <div className={cn("space-y-4", mobileTab !== "settings" && "hidden xl:block")}>{settingsPanel}</div>
+                <div className={cn("space-y-4", mobileTab !== "assets" && "hidden xl:block")}>{referencePanel}</div>
+              </div>
+            )}
           </main>
         </div>
       </div>
