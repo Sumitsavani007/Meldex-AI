@@ -47,6 +47,12 @@ const schema = z.object({
 
 function streamChunks(filePath: string, content = "") {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  if (!content.includes("\n") && content.length > 1200) {
+    const size = ext === "css" ? 900 : 700;
+    const chunks: string[] = [];
+    for (let index = 0; index < content.length; index += size) chunks.push(content.slice(index, index + size));
+    return chunks;
+  }
   const patterns =
     ext === "html" ? [new RegExp("</head>", "i"), new RegExp("</header>", "i"), new RegExp("</section>", "i"), new RegExp("</main>", "i"), new RegExp("</footer>", "i")] :
     ext === "css" ? [new RegExp("}\\s*")] :
