@@ -29,9 +29,11 @@ export function createWorkspaceEventBus(input: WorkspaceEventBusInput) {
 
   const persistWorkspaceEvent = async (type: string, message: string, payload?: Record<string, unknown>) => {
     sequence += 1;
+    const timestamp = new Date().toISOString();
+    const eventPayload = { ...(payload || {}), timestamp };
     const taskId = input.getTaskId();
     if (!taskId) {
-      return { sequence, type, message, payload } satisfies WorkspaceStreamEvent;
+      return { sequence, type, message, payload: eventPayload } satisfies WorkspaceStreamEvent;
     }
     return createWorkspaceTaskEvent({
       userId: input.userId,
@@ -40,7 +42,7 @@ export function createWorkspaceEventBus(input: WorkspaceEventBusInput) {
       sequence,
       type,
       message,
-      payload,
+      payload: eventPayload,
     });
   };
 
@@ -52,11 +54,12 @@ export function createWorkspaceEventBus(input: WorkspaceEventBusInput) {
     return queue;
   };
 
-  const heartbeat = (message = "Still working… analyzing generation", intervalMs = 3000) => {
+  const heartbeat = (message: string | string[] = "Still working… analyzing generation", intervalMs = 3000, type = "heartbeat") => {
     let ticks = 0;
     const timer = setInterval(() => {
       ticks += 1;
-      void emitWorkspaceEvent("heartbeat", message, { ticks, source: "workspace-event-bus" }).catch(() => undefined);
+      const nextMessage = Array.isArray(message) ? message[(ticks - 1) % message.length] : message;
+      void emitWorkspaceEvent(type, nextMessage, { ticks, source: "workspace-event-bus" }).catch(() => undefined);
     }, intervalMs);
     return () => clearInterval(timer);
   };

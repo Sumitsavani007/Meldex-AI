@@ -52,6 +52,12 @@ export type WorkspaceAgentResponse = {
     dag: unknown;
     confidence: unknown;
     reflection: unknown;
+    outputBudget?: {
+      maxTokens: number;
+      category: string;
+      targetRange: string;
+      reason: string;
+    };
   };
 };
 
@@ -1820,6 +1826,7 @@ ${websiteDesignerRules}`;
 
   const fileContext = context.relevantFiles.map((file) => `### ${file.path}\n\`\`\`\n${file.content}\n\`\`\``).join("\n\n");
   const runtimePrompt = buildQwenRuntimePrompt(runtimeV4);
+  const outputBudget = estimateWorkspaceOutputBudget(prompt);
   const dominanceBlock = [
     "[CURRENT PROMPT - HIGHEST PRIORITY]",
     prompt,
@@ -1830,7 +1837,7 @@ ${websiteDesignerRules}`;
   ].filter(Boolean).join("\n");
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
-    maxTokens: 8192,
+    maxTokens: outputBudget.maxTokens,
     timeoutMs: 120_000,
     userId: runtime?.userId,
     taskType: runtime?.taskType || "workspace_agent",
@@ -1857,7 +1864,44 @@ ${websiteDesignerRules}`;
       dag: runtimeV4.dag,
       confidence: runtimeV4.confidence,
       reflection,
+      outputBudget,
     },
+  };
+}
+
+function estimateWorkspaceOutputBudget(prompt: string) {
+  const lower = prompt.toLowerCase();
+  const explicitLargeApp = /\b(full[- ]stack|large app|multi[- ]page|dashboard|admin|backend|api|database|auth|next\.?js|react|vite|typescript|tsx|e[- ]commerce app|saas app)\b/i.test(prompt);
+  const premiumStatic = isStaticWebsitePrompt(prompt) && /\b(premium|award|beautiful|animated|modern|luxury|saas|responsive|polished|pixel[- ]perfect)\b/i.test(prompt);
+  if (explicitLargeApp) {
+    return {
+      maxTokens: 8192,
+      category: "large_app",
+      targetRange: "8000+",
+      reason: "Prompt asks for an app or framework-level project.",
+    };
+  }
+  if (premiumStatic) {
+    return {
+      maxTokens: 5600,
+      category: "premium_static_page",
+      targetRange: "5000-6500",
+      reason: "Premium static website needs richer sections without using the old 8192 default.",
+    };
+  }
+  if (isStaticWebsitePrompt(prompt)) {
+    return {
+      maxTokens: lower.includes("simple") ? 3600 : 4400,
+      category: "static_landing_page",
+      targetRange: "3500-5000",
+      reason: "Static landing page fast path keeps output compact and quick.",
+    };
+  }
+  return {
+    maxTokens: 4200,
+    category: "standard_workspace_task",
+    targetRange: "3500-5000",
+    reason: "Default workspace task budget.",
   };
 }
 

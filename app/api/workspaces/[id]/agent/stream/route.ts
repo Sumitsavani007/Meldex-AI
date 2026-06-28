@@ -154,11 +154,22 @@ export async function POST(
           taskId = task.id;
 
           timings.taskCreatedMs = elapsedMs(taskStartedAt);
+          const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
+          await send("request_received", "Request received", {
+            taskId,
+            promptChars: body.data.prompt.length,
+            elapsedMs: elapsedMs(taskStartedAt),
+          });
           const snapshot = await createWorkspaceSnapshot(session.user.id, project.id, task.id);
           timings.snapshotCreatedMs = elapsedMs(taskStartedAt);
           await send("understanding_request", "Understanding request", { taskId, snapshotId: snapshot.id, elapsedMs: elapsedMs(taskStartedAt) });
           await send("native_prompt_expanding", "Expanding native language prompt", {
             sourceLanguage: /[\u0A80-\u0AFF]/.test(body.data.prompt) ? "gujarati" : /[\u0900-\u097F]/.test(body.data.prompt) ? "hindi" : "english",
+            elapsedMs: elapsedMs(taskStartedAt),
+          });
+          await send("prompt_expanded", "Prompt expanded", {
+            sourceLanguage: /[\u0A80-\u0AFF]/.test(body.data.prompt) ? "gujarati" : /[\u0900-\u097F]/.test(body.data.prompt) ? "hindi" : "english",
+            nativePrompt: /[\u0A80-\u0AFF\u0900-\u097F]/.test(body.data.prompt),
             elapsedMs: elapsedMs(taskStartedAt),
           });
           await send("usage_checked", "Plan and credit limits checked", {
@@ -170,7 +181,7 @@ export async function POST(
           await send("loading_workspace", "Loading workspace");
           await send("tool_start", "Reading project structure");
           const workspaceReadStartedAt = nowMs();
-          const context = await buildWorkspaceContext(project.id, project.storagePath, memoryGate.ok ? session.user.id : undefined, body.data.prompt);
+          const context = await buildWorkspaceContext(project.id, project.storagePath, fastStaticPath || !memoryGate.ok ? undefined : session.user.id, body.data.prompt);
           timings.workspaceReadMs = elapsedMs(workspaceReadStartedAt);
           const contextTokens = Math.ceil([
             body.data.prompt,
@@ -187,6 +198,13 @@ export async function POST(
           });
           if (!contextCheck.ok) throw new Error(`${contextCheck.code}: ${contextCheck.message}`);
           await send("tool_result", "Read workspace", { files: context.projectFiles.length, elapsedMs: timings.workspaceReadMs });
+          await send("context_packed", "Context packed", {
+            files: context.projectFiles.length,
+            relevantFiles: context.relevantFiles.length,
+            contextTokens,
+            memoryMode: fastStaticPath ? "minimal_fast_path" : memoryGate.ok ? "workspace_memory" : "disabled",
+            elapsedMs: elapsedMs(taskStartedAt),
+          });
           await send("relevant_files_searched", `Found ${context.relevantFiles.length} relevant file${context.relevantFiles.length === 1 ? "" : "s"}`, {
             files: context.relevantFiles.map((file) => file.path),
           });
@@ -214,7 +232,6 @@ export async function POST(
             elapsedMs: timings.providerSmokeMs,
           });
           if (!providerSmoke.ok) throw new Error(providerSmoke.userMessage);
-          const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
           const orchestration = fastStaticPath
             ? {
                 classification: { type: "website_generation", subtype: "static_site_fast_path", labels: ["static", "fast_path", "dependency_free"] },
@@ -242,7 +259,19 @@ export async function POST(
                 currentFiles: context.projectFiles,
                 provider: "openrouter",
               });
-          if (fastStaticPath) await send("static_fast_path_enabled", "Static website fast path enabled", { target: "model_call_under_5s" });
+          if (fastStaticPath) {
+            await send("static_fast_path_enabled", "Static website fast path enabled", { target: "model_call_under_5s" });
+            await send("fast_path_selected", "Fast path selected", {
+              reason: "Dependency-free static website prompt",
+              skipped: ["broad_memory_context", "full_graph_orchestration", "multi_repair_loop"],
+              target: "model_call_under_5s",
+            });
+          } else {
+            await send("fast_path_selected", "Standard orchestration selected", {
+              reason: "Prompt requires broader workspace reasoning",
+              target: "complete_project_context",
+            });
+          }
           for (const event of orchestration.events) await send(event.type, event.message, event.payload);
           if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
             throw new Error(orchestration.confidence.reason);
@@ -265,8 +294,19 @@ export async function POST(
               confidence: orchestration.confidence.score,
               elapsedMs: elapsedMs(taskStartedAt),
             });
+            await send("model_stream_started", "Model stream wait started", {
+              provider: "openrouter",
+              model: activeModel.model,
+              elapsedMs: elapsedMs(taskStartedAt),
+            });
             await send("current_step", "Waiting for model response", { stage: "model_generation" });
-            const stopHeartbeat = eventBus.heartbeat("Still working… waiting for model response", 2000);
+            const stopHeartbeat = eventBus.heartbeat([
+              "Contacting Qwen3-Coder via Novita...",
+              "Waiting for model response...",
+              "Receiving generation...",
+              "Still generating premium layout...",
+              "Preparing files...",
+            ], 2000, "model_stream_progress");
             const modelStartedAt = nowMs();
             try {
               response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
@@ -274,7 +314,12 @@ export async function POST(
               stopHeartbeat();
               timings.modelResponseMs = elapsedMs(modelStartedAt);
             }
-            await send("model_response_received", "Model response received", { elapsedMs: timings.modelResponseMs });
+            await send("model_response_received", "Model response received", {
+              elapsedMs: timings.modelResponseMs,
+              provider: response.provider,
+              model: response.model,
+              outputBudget: response.runtimeV4?.outputBudget,
+            });
             for (const runtimeEvent of response.runtimeV4?.events || []) {
               await send(runtimeEvent.type, runtimeEvent.message, runtimeEvent.payload);
             }
@@ -293,6 +338,7 @@ export async function POST(
           await send("changes_planned", "Planned changes");
 
           const parseStartedAt = nowMs();
+          await send("parsing_started", "Parsing model response", { elapsedMs: elapsedMs(taskStartedAt) });
           let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
           timings.parseMs = elapsedMs(parseStartedAt);
           if (response.runtimeV4?.reflection) {
@@ -303,6 +349,10 @@ export async function POST(
             );
           }
           await send("file_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
+            files: files.map((file) => ({ path: file.path, operation: file.operation })),
+            elapsedMs: timings.parseMs,
+          });
+          await send("files_extracted", `Extracted ${files.length} file action${files.length === 1 ? "" : "s"}`, {
             files: files.map((file) => ({ path: file.path, operation: file.operation })),
             elapsedMs: timings.parseMs,
           });
@@ -675,24 +725,24 @@ TASK ISOLATION FIX:
             provider: response.provider || activeModel.provider,
             model: response.model || activeModel.model,
             metadata: {
-            projectId: project.id,
-            taskId: task.id,
-            promptLength: body.data.prompt.length,
-            contextTokens,
-            inputTokens: tokenUsage.inputTokens,
-            outputTokens: tokenUsage.outputTokens,
-            reasoningTokens: tokenUsage.reasoningTokens,
-            cachedTokens: tokenUsage.cachedTokens,
-            estimated: tokenUsage.estimated,
-            filesChanged: changedFiles.length,
-            fileReads: context.relevantFiles.length,
-            fileWrites: changedFiles.length,
-            toolCalls: 8 + changedFiles.length,
-            retries,
-            autofixes,
-            previewRuns: 1,
-            previewVerified: verification.verified,
-            breakdown: finalCredit.breakdown,
+              projectId: project.id,
+              taskId: task.id,
+              promptLength: body.data.prompt.length,
+              contextTokens,
+              inputTokens: tokenUsage.inputTokens,
+              outputTokens: tokenUsage.outputTokens,
+              reasoningTokens: tokenUsage.reasoningTokens,
+              cachedTokens: tokenUsage.cachedTokens,
+              estimated: tokenUsage.estimated,
+              filesChanged: changedFiles.length,
+              fileReads: context.relevantFiles.length,
+              fileWrites: changedFiles.length,
+              toolCalls: 8 + changedFiles.length,
+              retries,
+              autofixes,
+              previewRuns: 1,
+              previewVerified: verification.verified,
+              breakdown: finalCredit.breakdown,
             },
           });
           await send("usage_recorded", "Recorded credit usage", {
@@ -703,12 +753,28 @@ TASK ISOLATION FIX:
             fiveHour: usage.windows.FIVE_HOUR,
           });
           timings.totalMs = elapsedMs(taskStartedAt);
+          const responseSeconds = Math.max(0.001, Number(timings.modelResponseMs || 0) / 1000);
+          const tokensPerSecond = Number((tokenUsage.outputTokens / responseSeconds).toFixed(2));
+          const runtimeStats = {
+            provider: response.provider || activeModel.provider,
+            model: response.model || activeModel.model,
+            modelLabel: "Qwen3-Coder 32B / Novita",
+            responseTimeMs: timings.modelResponseMs,
+            tokensPerSecond,
+            inputTokens: tokenUsage.inputTokens,
+            outputTokens: tokenUsage.outputTokens,
+            tokenUsageEstimated: tokenUsage.estimated,
+            filesWritten: changedFiles.length,
+            previewStatus: verification.verified ? "verified" : "failed",
+            outputBudget: response.runtimeV4?.outputBudget,
+          };
           await send("speed_benchmark", "Workspace speed benchmark recorded", {
             timings,
+            runtimeStats,
             target: "BookNest prompt should stream first event immediately and avoid silent batching.",
           });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode, creditsUsed: finalCredit.credits });
-          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage, timings });
+          await send("done", "Task complete", { task: updatedTask, changedFiles, preview, verification, qualityScore, offlineMode, memory, creditsUsed: finalCredit.credits, usage, timings, runtimeStats });
           completed = true;
           try {
             controller.close();

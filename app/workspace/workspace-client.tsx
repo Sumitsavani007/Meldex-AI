@@ -143,6 +143,24 @@ function statusLabel(status?: string) {
   return status === "CREATED" ? "Created" : status === "EDITED" ? "Edited" : status === "ROLLED_BACK" ? "Restored" : status;
 }
 
+function formatRuntimeMs(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "—";
+  if (numeric < 1000) return `${Math.round(numeric)}ms`;
+  return `${(numeric / 1000).toFixed(numeric > 10000 ? 1 : 2)}s`;
+}
+
+function runtimeStatsFromEvent(event?: StreamEvent) {
+  const payload = event?.payload || {};
+  const direct = payload.runtimeStats;
+  if (direct && typeof direct === "object") return direct as Record<string, unknown>;
+  const timings = payload.timings;
+  if (timings && typeof timings === "object") {
+    return { responseTimeMs: (timings as Record<string, unknown>).modelResponseMs };
+  }
+  return null;
+}
+
 function fileIconFor(name: string) {
   const lower = name.toLowerCase();
   if (lower.endsWith(".json")) return { Icon: FileJson, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-500/10" };
@@ -1009,6 +1027,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const conversationEvents = [...(activeTask?.events || []), ...streamEvents]
     .sort((a, b) => a.sequence - b.sequence)
     .filter((event, index, list) => list.findIndex((item) => item.type === event.type && item.message === event.message) === index);
+  const latestRuntimeEvent = [...conversationEvents].reverse().find((event) => event.type === "speed_benchmark" || event.type === "done");
+  const runtimeStats = runtimeStatsFromEvent(latestRuntimeEvent);
   const filteredActivityEvents = conversationEvents.filter((event) => {
     const query = activityFilter.trim().toLowerCase();
     return !query || event.type.toLowerCase().includes(query) || event.message.toLowerCase().includes(query);
@@ -1378,6 +1398,26 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               )}
               <div className="space-y-4 text-[14px] leading-7 text-[#111827] dark:text-[#F9FAFB]">
                 <p>{loading ? "I'll update the workspace and verify the result in preview." : activeTask?.summary || "Tell Meldex AI what to build or change next."}</p>
+                {runtimeStats && (
+                  <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-3 text-[12px] leading-5 text-[#6B7280] dark:border-[#22252D] dark:bg-[#0B0D12] dark:text-[#9CA3AF]">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-[#6B7280]">Model</div>
+                      <div className="truncate font-medium text-[#111827] dark:text-[#F9FAFB]">{String(runtimeStats.modelLabel || runtimeStats.model || "Meldex AI")}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-[#6B7280]">Response</div>
+                      <div className="font-medium text-[#111827] dark:text-[#F9FAFB]">{formatRuntimeMs(runtimeStats.responseTimeMs)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-[#6B7280]">Tokens/sec</div>
+                      <div className="font-medium text-[#111827] dark:text-[#F9FAFB]">{typeof runtimeStats.tokensPerSecond === "number" ? runtimeStats.tokensPerSecond : "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-[0.12em] text-[#94A3B8] dark:text-[#6B7280]">Result</div>
+                      <div className="font-medium text-[#111827] dark:text-[#F9FAFB]">{String(runtimeStats.filesWritten ?? "—")} files · {String(runtimeStats.previewStatus || "pending")}</div>
+                    </div>
+                  </div>
+                )}
                 {currentPromptDiffs.length > 0 && <p className="flex items-center gap-2 text-[#6B7280] dark:text-[#D1D5DB]"><Edit3 className="size-4" /> Edited {currentPromptDiffs.length} file{currentPromptDiffs.length === 1 ? "" : "s"}</p>}
                 {loading && <p className="flex items-center gap-2">{message || "Working"} <span className="size-2 animate-pulse rounded-full bg-[#7C5CFF]" /></p>}
               </div>
