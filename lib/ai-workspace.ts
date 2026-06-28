@@ -198,11 +198,70 @@ function promptRequiresPricing(prompt = "") {
   return /\b(pricing|price|plans?|subscription|billing|monthly|yearly)\b/i.test(prompt);
 }
 
+const GENERIC_PROMPT_SUBJECTS = new Set([
+  "a", "an", "the", "and", "or", "for", "with", "without", "called", "named",
+  "create", "make", "build", "generate", "design", "redesign", "fix", "add",
+  "premium", "modern", "responsive", "beautiful", "animated", "simple", "clean",
+  "requirements", "requirement", "important", "expected", "output", "final",
+  "page", "pages", "website", "site", "section", "sections", "landing", "platform",
+  "app", "application", "product", "saas", "ai", "dashboard", "hero", "footer",
+  "cards", "card", "buttons", "button", "faq", "accordion", "pricing", "price",
+  "plans", "plan", "mobile", "desktop", "style", "dark", "light", "theme",
+  "html", "css", "javascript", "script", "index", "file", "files",
+]);
+
+function cleanSubjectTerm(value = "") {
+  return value
+    .replace(/[^\p{L}\p{N}\s.-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isGenericSubject(value = "") {
+  const cleaned = cleanSubjectTerm(value).toLowerCase();
+  if (!cleaned || cleaned.length < 3) return true;
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  return words.every((word) => GENERIC_PROMPT_SUBJECTS.has(word) || word.length < 3);
+}
+
 function promptSubjectTerms(prompt = "") {
-  return [...new Set([
+  const explicitNames = [
     ...[...prompt.matchAll(/"([^"]{2,80})"/g)].map((match) => match[1]),
-    ...[...prompt.matchAll(/\b([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,3})\b/g)].map((match) => match[1]),
-  ].map((item) => item.trim()).filter((item) => !/Create|Premium|Responsive|Landing|Page|Section|SaaS|AI$/i.test(item)))].slice(0, 6);
+    ...[...prompt.matchAll(/\b(?:called|named|for)\s+["']?([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,4})["']?/g)].map((match) => match[1]),
+  ];
+  const knownDomainNames = [
+    /fitflow\s+ai/i.test(prompt) ? "FitFlow AI" : "",
+    /tasty\s+gujarat/i.test(prompt) ? "Tasty Gujarat" : "",
+    /\bmeldex\b/i.test(prompt) ? "Meldex" : "",
+  ];
+  return [...new Set([...explicitNames, ...knownDomainNames].map(cleanSubjectTerm).filter((item) => !isGenericSubject(item)))].slice(0, 5);
+}
+
+function promptRequiredEntities(prompt = "") {
+  const entities = promptSubjectTerms(prompt);
+  const domain = promptDomain(prompt);
+  if (domain === "fitness_saas") {
+    return [...new Set([...entities, /fitflow/i.test(prompt) ? "FitFlow AI" : "fitness"])].filter((item) => !isGenericSubject(item));
+  }
+  if (domain === "gujarati_food_delivery") {
+    return [...new Set([...entities, /tasty\s+gujarat/i.test(prompt) ? "Tasty Gujarat" : "Gujarati food"])].filter((item) => !isGenericSubject(item));
+  }
+  if (domain === "pricing") {
+    return [...new Set(entities.length ? entities : /\bmeldex\b/i.test(prompt) ? ["Meldex"] : [])].filter((item) => !isGenericSubject(item));
+  }
+  return entities;
+}
+
+function promptOptionalRequirements(prompt = "") {
+  const optional: string[] = [];
+  if (promptRequiresPricing(prompt)) optional.push("pricing or plan cards");
+  if (/\bfaq\b/i.test(prompt)) optional.push("FAQ");
+  if (/\bhero\b/i.test(prompt)) optional.push("hero section");
+  if (/\bmobile|responsive\b/i.test(prompt)) optional.push("responsive layout");
+  if (/\banimation|animated|smooth\b/i.test(prompt)) optional.push("animations");
+  if (/\bpopular dishes|menu|food\b/i.test(prompt)) optional.push("food/menu sections");
+  return [...new Set(optional)];
 }
 
 function promptDomain(prompt = "") {
@@ -1250,33 +1309,53 @@ export async function createWorkspaceSnapshot(userId: string, projectId: string,
 export function detectWorkspaceContextLeak(files: WorkspaceFileAction[], prompt = "") {
   const content = files.map((file) => `${file.path}\n${file.content || ""}`).join("\n").toLowerCase();
   const domain = promptDomain(prompt);
-  const subjects = promptSubjectTerms(prompt).map((item) => item.toLowerCase());
-  const findings: string[] = [];
+  const requiredEntities = promptRequiredEntities(prompt);
+  const optionalRequirements = promptOptionalRequirements(prompt);
+  const missingRequiredEntities: string[] = [];
+  const repairHints: string[] = [];
+  const hardFindings: string[] = [];
 
-  for (const subject of subjects) {
-    const words = subject.split(/\s+/).filter((word) => word.length > 2);
+  for (const subject of requiredEntities) {
+    const words = cleanSubjectTerm(subject).toLowerCase().split(/\s+/).filter((word) => word.length > 2 && !GENERIC_PROMPT_SUBJECTS.has(word));
     if (words.length && !words.some((word) => content.includes(word))) {
-      findings.push(`Missing current prompt subject: ${subject}`);
+      missingRequiredEntities.push(subject);
     }
   }
 
   if (domain === "gujarati_food_delivery") {
-    if (!/(tasty gujarat|gujarati|food|dhokla|fafda|khaman|thali|delivery)/i.test(content)) findings.push("Generated content does not match Gujarati food delivery intent.");
-    if (/\bmeldex pricing|choose the right meldex plan|ai saas pricing|monthly|yearly\s+save/i.test(content)) findings.push("Old Meldex pricing content leaked into Gujarati food task.");
+    if (!/(tasty gujarat|gujarati|food|dhokla|fafda|khaman|thali|delivery)/i.test(content)) missingRequiredEntities.push("Gujarati food delivery context");
+    if (/\bmeldex pricing|choose the right meldex plan|ai saas pricing|monthly|yearly\s+save/i.test(content)) hardFindings.push("Old Meldex pricing content leaked into Gujarati food task.");
   }
   if (domain === "fitness_saas") {
-    if (!/(fitflow|fitness|workout|training|coach|recovery|wellness)/i.test(content)) findings.push("Generated content does not match FitFlow/fitness SaaS intent.");
-    if (/\bmeldex pricing|tasty gujarat|gujarati|dhokla|fafda|khaman/i.test(content)) findings.push("Previous pricing or food content leaked into FitFlow task.");
+    if (!/(fitflow|fitness|workout|training|coach|recovery|wellness)/i.test(content)) missingRequiredEntities.push("FitFlow AI fitness context");
+    if (/\bmeldex pricing|tasty gujarat|gujarati|dhokla|fafda|khaman/i.test(content)) hardFindings.push("Previous pricing or food content leaked into FitFlow task.");
   }
   if (domain === "pricing") {
-    if (!/(pricing|price|plan|monthly|yearly|subscription)/i.test(content)) findings.push("Generated content does not match pricing intent.");
+    if (promptRequiresPricing(prompt) && !/(pricing|price|plan|monthly|yearly|subscription)/i.test(content)) missingRequiredEntities.push("pricing context");
   }
 
+  for (const requirement of optionalRequirements) {
+    if (requirement === "FAQ" && !/\bfaq|question|answer\b/i.test(content)) repairHints.push("FAQ section may be missing.");
+    if (requirement === "hero section" && !/\bhero|headline|section\b/i.test(content)) repairHints.push("Hero section may be missing.");
+    if (requirement === "animations" && !/\banimation|transition|intersectionobserver|reveal|hover\b/i.test(content)) repairHints.push("Animation behavior may be missing.");
+    if (requirement === "responsive layout" && !/@media|viewport|responsive/i.test(content)) repairHints.push("Responsive layout may be incomplete.");
+    if (requirement === "pricing or plan cards" && !/\bpricing|price|plan|monthly|yearly|subscription\b/i.test(content)) repairHints.push("Pricing or plan cards may be missing.");
+    if (requirement === "food/menu sections" && !/\bmenu|dish|food|delivery|thali|gujarati\b/i.test(content)) repairHints.push("Food/menu sections may be missing.");
+  }
+
+  const findings = [...new Set([...missingRequiredEntities.map((item) => `Missing required entity: ${item}`), ...hardFindings])];
   return {
     ok: findings.length === 0,
+    repairRecommended: repairHints.length > 0,
     findings,
+    repairHints: [...new Set(repairHints)],
+    missingRequiredEntities: [...new Set(missingRequiredEntities)],
+    requiredEntities,
+    optionalRequirements,
+    designRequirements: optionalRequirements.filter((item) => ["responsive layout", "animations"].includes(item)),
+    validationHints: optionalRequirements,
     domain,
-    subjects,
+    subjects: requiredEntities.map((item) => item.toLowerCase()),
   };
 }
 

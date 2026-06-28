@@ -260,7 +260,11 @@ export async function POST(
           let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
             retries += 1;
-            await send("context_leak_detected", "Detected old context mismatch; regenerating for current prompt", { leakCheck });
+            await send("context_leak_detected", "Output needs repair", {
+              missing: leakCheck.missingRequiredEntities,
+              repairHints: leakCheck.repairHints,
+              domain: leakCheck.domain,
+            });
             const isolationPrompt = `${body.data.prompt}
 
 TASK ISOLATION FIX:
@@ -278,9 +282,19 @@ TASK ISOLATION FIX:
               leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
             }
             response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
-            await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_blocked", leakCheck.ok ? "Regenerated output now matches current prompt" : "Context leak guard still found mismatched output", { leakCheck });
+            await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_blocked", leakCheck.ok ? "Auto repair completed" : "Output needs repair", {
+              missing: leakCheck.missingRequiredEntities,
+              repairHints: leakCheck.repairHints,
+              domain: leakCheck.domain,
+            });
           }
-          if (!leakCheck.ok) throw new Error(`Generated output did not match current prompt: ${leakCheck.findings.join("; ")}`);
+          if (!leakCheck.ok) throw new Error(`Output needs repair: ${leakCheck.missingRequiredEntities.length ? `Missing ${leakCheck.missingRequiredEntities.join(", ")}` : "Current prompt context was not preserved"}.`);
+          if (leakCheck.repairRecommended) {
+            await send("output_repair_recommended", "Output may need a small repair", {
+              repairHints: leakCheck.repairHints,
+              optionalRequirements: leakCheck.optionalRequirements,
+            });
+          }
 
           let reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
           if (reviewer.status === "block") {
