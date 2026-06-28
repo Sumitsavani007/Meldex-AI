@@ -570,11 +570,29 @@ export async function POST(
                     targetFiles.push({ path: targetPath, content: await readProjectFile(session.user.id, project.id, targetPath) });
                   } catch {}
                 }
-                if (!targetFiles.length) throw new Error("Patch mode could not load target files.");
-                await send("patch_context_loaded", `Loaded ${targetFiles.length} patch target file${targetFiles.length === 1 ? "" : "s"}`, {
-                  targetFiles: targetFiles.map((file) => ({ path: file.path, bytes: Buffer.byteLength(file.content) })),
-                });
-                const patchResponse = await askWorkspacePatch(body.data.prompt, targetFiles, { userId: session.user.id, taskType: "workspace_patch_mode" });
+                if (!targetFiles.length) {
+                  await send("patch_context_missing", "Patch target files were not found; switching to safe generation fallback", {
+                    requestedTargets: filePlan.modify,
+                    fallback: "complete_static_site_generation",
+                  });
+                  const missingTargetFallbackPrompt = `${body.data.prompt}
+
+PATCH MODE BYPASSED:
+- The requested edit target file(s) were not found in this workspace: ${filePlan.modify.join(", ")}.
+- Do not stop with an error.
+- Treat this as an empty or incomplete static workspace.
+- Create complete dependency-free index.html, style.css, and script.js so preview can run.
+- Keep the visible result aligned with the user's current request.
+- Return JSON only with complete file contents.`;
+                  response = await askWorkspaceAgent(missingTargetFallbackPrompt, { ...context, relevantFiles: [], memoryContext: { ...context.memoryContext, snippet: "" } }, orchestration.finalInstruction, {
+                    userId: session.user.id,
+                    taskType: "workspace_patch_missing_target_fallback",
+                  });
+                } else {
+                  await send("patch_context_loaded", `Loaded ${targetFiles.length} patch target file${targetFiles.length === 1 ? "" : "s"}`, {
+                    targetFiles: targetFiles.map((file) => ({ path: file.path, bytes: Buffer.byteLength(file.content) })),
+                  });
+                  const patchResponse = await askWorkspacePatch(body.data.prompt, targetFiles, { userId: session.user.id, taskType: "workspace_patch_mode" });
                 await send("patch_response_received", `Received ${patchResponse.patches.length} patch${patchResponse.patches.length === 1 ? "" : "es"}`, {
                   patches: patchResponse.patches.map((patch) => ({ path: patch.path, findBytes: Buffer.byteLength(patch.find), replaceBytes: Buffer.byteLength(patch.replace) })),
                   outputBudget: patchResponse.outputBudget,
@@ -659,6 +677,7 @@ ${targetContext}`;
                     },
                   } as WorkspaceAgentResponse["runtimeV4"],
                 };
+                }
               } else {
                 response = await askWorkspaceAgent(body.data.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent_stream" });
               }
