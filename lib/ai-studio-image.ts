@@ -3,6 +3,7 @@ import { generateChatCompletionWithUsage, ModelRouterError } from "@/lib/model-r
 export type ImageStudioSettings = {
   model?: string;
   imageModel: string;
+  mode: "Text only" | "My face" | "Couple photo" | "Two face references" | "Character reference" | "Style reference";
   aspectRatio: string;
   size: number;
   quality: string;
@@ -13,6 +14,11 @@ export type ImageStudioSettings = {
   style: string;
   identityLock: boolean;
   faceSimilarity: number;
+  referenceStrength: number;
+  preserveFaceStructure: boolean;
+  preserveSkinTone: boolean;
+  preserveHair: boolean;
+  preserveAge: boolean;
   referenceType: "Face" | "Character" | "Couple" | "Style";
 };
 
@@ -38,6 +44,11 @@ export type ImagePromptPlan = {
     style: string;
     identityLock: boolean;
     faceSimilarity: number;
+    referenceStrength: number;
+    preserveFaceStructure: boolean;
+    preserveSkinTone: boolean;
+    preserveHair: boolean;
+    preserveAge: boolean;
     referenceType: string;
   };
   notes: string[];
@@ -63,6 +74,11 @@ function fallbackImagePlan(prompt: string, settings: ImageStudioSettings, refere
       style: settings.style,
       identityLock: settings.identityLock,
       faceSimilarity: settings.faceSimilarity,
+      referenceStrength: settings.referenceStrength,
+      preserveFaceStructure: settings.preserveFaceStructure,
+      preserveSkinTone: settings.preserveSkinTone,
+      preserveHair: settings.preserveHair,
+      preserveAge: settings.preserveAge,
       referenceType: settings.referenceType,
     },
     notes: ["Local image provider was not contacted by this fallback plan."],
@@ -116,6 +132,11 @@ Return JSON only:
     "style": "Realistic",
     "identityLock": true,
     "faceSimilarity": 90,
+    "referenceStrength": 80,
+    "preserveFaceStructure": true,
+    "preserveSkinTone": true,
+    "preserveHair": true,
+    "preserveAge": true,
     "referenceType": "Couple"
   },
   "notes": ["renderer-ready note"]

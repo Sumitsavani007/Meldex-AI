@@ -70,7 +70,11 @@ type StudioGeneration = {
   enhancedPrompt?: string | null;
   negativePrompt?: string | null;
   storyboardJson?: StudioPlan | null;
+  model?: string | null;
+  provider?: string | null;
   createdAt: string;
+  outputUrl?: string | null;
+  error?: string | null;
   scenes?: StudioScene[];
 };
 
@@ -95,6 +99,8 @@ type StudioPlan = {
   negativePrompt?: string;
   scenes?: StudioScene[];
   timeline?: Array<{ scene: number; start: number; end: number; label: string }>;
+  outputs?: Array<Partial<ImageResult>>;
+  providerStatus?: { message?: string; selectedProvider?: string };
 };
 
 type StreamEvent = {
@@ -141,6 +147,11 @@ type ImageResult = {
   enhancedPrompt: string;
   negativePrompt: string;
   providerMessage: string;
+  provider?: string;
+  model?: string;
+  seed?: string | number | null;
+  size?: number;
+  aspectRatio?: string;
   createdAt: string;
 };
 
@@ -168,6 +179,7 @@ const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam",
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
 const imageModels = ["FLUX.1 Schnell", "SDXL"];
+const imageModes = ["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"] as const;
 const imageSizes = [512, 768, 1024];
 const imageQualities = ["Fast", "Balanced", "High"];
 const imageSteps = [4, 8, 16, 28];
@@ -275,6 +287,7 @@ export default function StudioPage() {
   const [imageSettings, setImageSettings] = useState({
     model: "OpenRouter active model",
     imageModel: "FLUX.1 Schnell",
+    mode: "Text only" as typeof imageModes[number],
     aspectRatio: "16:9",
     size: 1024,
     quality: "Balanced",
@@ -285,6 +298,11 @@ export default function StudioPage() {
     style: "Realistic",
     identityLock: false,
     faceSimilarity: 90,
+    referenceStrength: 80,
+    preserveFaceStructure: true,
+    preserveSkinTone: true,
+    preserveHair: true,
+    preserveAge: true,
     referenceType: "Face" as "Face" | "Character" | "Couple" | "Style",
   });
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
@@ -382,6 +400,31 @@ export default function StudioPage() {
     if (typeof savedSettings.imagePrompt === "string") setImagePrompt(savedSettings.imagePrompt);
     setImageReferences(Array.isArray(savedSettings.imageReferences) ? savedSettings.imageReferences as ImageReference[] : []);
     setImageResults(Array.isArray(savedSettings.imageResults) ? savedSettings.imageResults as ImageResult[] : []);
+    await loadImageHistory(id).catch(() => undefined);
+  }
+
+  async function loadImageHistory(projectId = selectedProjectId) {
+    if (!projectId) return;
+    const response = await fetch(`/api/studio/image/history?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.generations)) return;
+    const history = data.generations.map((generation: StudioGeneration) => {
+      const payload = generation.storyboardJson || {};
+      const outputs = Array.isArray(payload.outputs) ? payload.outputs : [];
+      const firstOutput = outputs[0] as Partial<ImageResult> | undefined;
+      const providerStatus = payload.providerStatus as { message?: string; selectedProvider?: string } | undefined;
+      return {
+        id: generation.id,
+        url: generation.outputUrl || firstOutput?.url,
+        enhancedPrompt: generation.enhancedPrompt || generation.sourcePrompt,
+        negativePrompt: generation.negativePrompt || "",
+        providerMessage: providerStatus?.message || generation.error || generation.status,
+        provider: providerStatus?.selectedProvider,
+        model: generation.model || undefined,
+        createdAt: generation.createdAt,
+      } satisfies ImageResult;
+    });
+    if (history.length) setImageResults(history);
   }
 
   async function createProject() {
@@ -558,14 +601,31 @@ export default function StudioPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Image generation failed");
-      const nextResult: ImageResult = {
+      const outputs = Array.isArray(data.outputs) ? data.outputs : [];
+      const mappedOutputs: ImageResult[] = outputs.length ? outputs.map((output: Partial<ImageResult>, index: number) => ({
+        id: `${data.generation.id}-${index}`,
+        url: output.url,
+        enhancedPrompt: data.plan.enhancedPrompt,
+        negativePrompt: data.plan.negativePrompt,
+        providerMessage: data.providerMessage,
+        provider: data.selectedProvider,
+        model: imageSettings.imageModel,
+        seed: output.seed,
+        size: imageSettings.size,
+        aspectRatio: imageSettings.aspectRatio,
+        createdAt: data.generation.createdAt,
+      })) : [{
         id: data.generation.id,
         enhancedPrompt: data.plan.enhancedPrompt,
         negativePrompt: data.plan.negativePrompt,
         providerMessage: data.providerMessage,
+        provider: data.selectedProvider,
+        model: imageSettings.imageModel,
+        size: imageSettings.size,
+        aspectRatio: imageSettings.aspectRatio,
         createdAt: data.generation.createdAt,
-      };
-      const nextResults = [nextResult, ...imageResults].slice(0, 12);
+      }];
+      const nextResults = [...mappedOutputs, ...imageResults].slice(0, 12);
       setImageResults(nextResults);
       setMessage(data.providerConfigured ? "Image job prepared" : "Local image provider not configured. Prompts are ready.");
       await saveImageState({ results: nextResults });
@@ -575,6 +635,28 @@ export default function StudioPage() {
     } finally {
       setImageLoading(false);
     }
+  }
+
+  async function deleteImageResult(result: ImageResult) {
+    await fetch(`/api/studio/image/${encodeURIComponent(result.id.split("-")[0])}`, { method: "DELETE" }).catch(() => undefined);
+    const next = imageResults.filter((item) => item.id !== result.id);
+    setImageResults(next);
+    await saveImageState({ results: next }).catch(() => undefined);
+  }
+
+  async function reuseImageAsReference(result: ImageResult) {
+    if (!result.url) return;
+    const reference: ImageReference = {
+      id: `image-ref-${Date.now()}`,
+      type: imageSettings.referenceType,
+      name: "Generated reference",
+      dataUrl: result.url,
+      mimeType: "image/webp",
+      sizeBytes: 0,
+    };
+    const next = [reference, ...imageReferences].slice(0, 6);
+    setImageReferences(next);
+    await saveImageState({ references: next }).catch(() => undefined);
   }
 
   function exportJson() {
@@ -917,6 +999,11 @@ export default function StudioPage() {
             <span className={cn("block size-5 rounded-full bg-white transition", imageSettings.identityLock && "translate-x-5")} />
           </button>
         </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Mode
+          <select value={imageSettings.mode} onChange={(event) => setImageSetting("mode", event.target.value as typeof imageSettings.mode)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
+            {imageModes.map((mode) => <option key={mode}>{mode}</option>)}
+          </select>
+        </label>
         <label className={cn("block text-xs", studioTokens.muted)}>Reference type
           <select value={imageSettings.referenceType} onChange={(event) => setImageSetting("referenceType", event.target.value as typeof imageSettings.referenceType)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
             {imageReferenceTypes.map((type) => <option key={type}>{type}</option>)}
@@ -925,6 +1012,9 @@ export default function StudioPage() {
         <label className={cn("block text-xs", studioTokens.muted)}>Face similarity <span className="float-right font-medium">{imageSettings.faceSimilarity}</span>
           <input type="range" min={50} max={100} step={5} value={imageSettings.faceSimilarity} onChange={(event) => setImageSetting("faceSimilarity", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
           <div className={cn("mt-2 flex justify-between text-[11px]", studioTokens.faint)}><span>50</span><span>75</span><span>90</span><span>100</span></div>
+        </label>
+        <label className={cn("block text-xs", studioTokens.muted)}>Reference strength <span className="float-right font-medium">{imageSettings.referenceStrength}</span>
+          <input type="range" min={0} max={100} step={5} value={imageSettings.referenceStrength} onChange={(event) => setImageSetting("referenceStrength", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
         </label>
       </div>
       <div className="mt-5 space-y-3">
@@ -985,19 +1075,28 @@ export default function StudioPage() {
           <div className="grid gap-3 md:grid-cols-2">
             {imageResults.map((result) => (
               <article key={result.id} className={cn("rounded-2xl border p-4", studioTokens.soft)}>
-                <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-violet-400/35 bg-violet-500/8 text-center">
-                  <div>
-                    <ImageIcon className="mx-auto size-8 text-violet-500" />
-                    <p className="mt-3 text-sm font-semibold">Local image provider not configured</p>
-                    <p className={cn("mt-1 px-6 text-xs leading-5", studioTokens.muted)}>{result.providerMessage}</p>
+                {result.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={result.url} alt="Generated image" className="h-52 w-full rounded-2xl object-cover" />
+                ) : (
+                  <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-violet-400/35 bg-violet-500/8 text-center">
+                    <div>
+                      <ImageIcon className="mx-auto size-8 text-violet-500" />
+                      <p className="mt-3 text-sm font-semibold">Provider setup required</p>
+                      <p className={cn("mt-1 px-6 text-xs leading-5", studioTokens.muted)}>{result.providerMessage}</p>
+                    </div>
                   </div>
-                </div>
+                )}
                 <p className="mt-4 line-clamp-4 text-sm leading-6">{result.enhancedPrompt}</p>
                 <p className={cn("mt-3 line-clamp-2 text-xs", studioTokens.muted)}>Negative: {result.negativePrompt}</p>
+                <p className={cn("mt-3 text-[11px]", studioTokens.faint)}>{result.provider || "provider"} · {result.model || imageSettings.imageModel} · {result.aspectRatio || imageSettings.aspectRatio} · {result.size || imageSettings.size}px</p>
                 <div className="mt-4 flex flex-wrap gap-2">
+                  {result.url && <a href={result.url} download className={cn("h-9 rounded-xl border px-3 pt-2 text-xs font-medium", studioTokens.soft)}>Download</a>}
                   <button onClick={() => navigator.clipboard?.writeText(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}><Copy className="mr-1 inline size-3.5" /> Copy prompt</button>
                   <button onClick={() => setImagePrompt(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}>Reuse</button>
+                  <button onClick={() => void reuseImageAsReference(result)} disabled={!result.url} className={cn("h-9 rounded-xl border px-3 text-xs font-medium disabled:opacity-40", studioTokens.soft)}>As ref</button>
                   <button disabled className={cn("h-9 rounded-xl border px-3 text-xs font-medium opacity-45", studioTokens.soft)}>Upscale</button>
+                  <button onClick={() => void deleteImageResult(result)} className="grid size-9 place-items-center rounded-xl border border-red-400/30 text-red-400"><Trash2 className="size-4" /></button>
                 </div>
               </article>
             ))}
@@ -1071,6 +1170,22 @@ export default function StudioPage() {
             {imageStyles.map((style) => <option key={style}>{style}</option>)}
           </select>
         </label>
+        <div className="grid grid-cols-2 gap-2">
+          {[
+            ["preserveFaceStructure", "Face structure"],
+            ["preserveSkinTone", "Skin tone"],
+            ["preserveHair", "Hair"],
+            ["preserveAge", "Age"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setImageSetting(key as keyof typeof imageSettings, !imageSettings[key as keyof typeof imageSettings] as never)}
+              className={cn("flex h-10 items-center justify-center rounded-xl border text-xs font-medium", imageSettings[key as keyof typeof imageSettings] ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : studioTokens.soft)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <label className={cn("block text-xs", studioTokens.muted)}>Negative prompt
           <textarea value={imageSettings.negativePrompt} onChange={(event) => setImageSetting("negativePrompt", event.target.value)} className={cn("mt-2 h-24 w-full resize-none rounded-xl p-3 text-sm", studioTokens.input)} />
         </label>

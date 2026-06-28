@@ -57,6 +57,8 @@ export const HOT_RELOAD = new Set([
   "R2_SECRET_ACCESS_KEY",
   "R2_BUCKET",
   "R2_PUBLIC_URL",
+  "FAL_KEY",
+  "FAL_API_KEY",
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "GITHUB_ID",

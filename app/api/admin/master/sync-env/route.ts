@@ -31,6 +31,8 @@ const SYNC_KEYS: Array<{ key: string; category: string; isSecret: boolean }> = [
   { key: "QWEN_ACTION_MODE", category: "qwen", isSecret: false },
   { key: "SERPER_API_KEY", category: "search", isSecret: true },
   { key: "BRAVE_API_KEY", category: "search", isSecret: true },
+  { key: "FAL_KEY", category: "image-provider", isSecret: true },
+  { key: "FAL_API_KEY", category: "image-provider", isSecret: true },
   { key: "R2_ACCOUNT_ID", category: "r2", isSecret: true },
   { key: "R2_ACCESS_KEY_ID", category: "r2", isSecret: true },
   { key: "R2_SECRET_ACCESS_KEY", category: "r2", isSecret: true },

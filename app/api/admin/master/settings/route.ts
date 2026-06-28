@@ -41,6 +41,8 @@ const KNOWN_KEYS: Array<{
   { key: "GROQ_API_KEY", label: "Groq API Key", category: "ai-provider", isSecret: true },
   { key: "TOGETHER_API_KEY", label: "Together API Key", category: "ai-provider", isSecret: true },
   { key: "CUSTOM_AI_API_KEY", label: "Custom AI API Key", category: "ai-provider", isSecret: true },
+  { key: "FAL_KEY", label: "fal.ai API Key", category: "image-provider", isSecret: true, description: "Enables FLUX Schnell and reference image generation" },
+  { key: "FAL_API_KEY", label: "fal.ai API Key (alias)", category: "image-provider", isSecret: true },
   { key: "CUSTOM_AI_BASE_URL", label: "Custom AI Base URL", category: "ai-provider", isSecret: false },
   { key: "CUSTOM_AI_MODEL", label: "Custom AI Model", category: "ai-provider", isSecret: false },
   { key: "MELDEX_BRAIN_PROVIDER", label: "Brain Provider", category: "openrouter", isSecret: false },

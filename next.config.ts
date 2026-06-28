@@ -47,8 +47,8 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // Fonts
               "font-src 'self' https://fonts.gstatic.com",
-              // Images: self + data URIs + R2 public URL
-              `img-src 'self' data: blob: ${process.env.R2_PUBLIC_URL ?? ""}`,
+              // Images: self + data URIs + generated/provider image URLs
+              `img-src 'self' data: blob: https: ${process.env.R2_PUBLIC_URL ?? ""}`,
               // Connect: self + OpenRouter + Ollama + auth providers + Google OAuth
               "connect-src 'self' https://openrouter.ai https://api.openai.com https://api.anthropic.com https://accounts.google.com https://oauth2.googleapis.com",
               // Worker: blob (Monaco editor web workers)
