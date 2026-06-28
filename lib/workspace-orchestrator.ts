@@ -33,7 +33,28 @@ type OrchestrationInput = {
   model?: string;
 };
 
+export type EnhancedPromptContract = {
+  language: "gujarati" | "hindi" | "english" | "hinglish" | "mixed";
+  intent: string;
+  projectType: "website" | "saas_dashboard" | "android_app" | "ai_studio" | "backend" | "bug_fix" | "coding_task";
+  qualityMode: "premium";
+  assumptions: string[];
+  requirements: string[];
+  filesExpected: string[];
+  designDirection: {
+    tone: string;
+    palette: string[];
+    typography: string;
+    layout: string;
+  };
+  interactions: string[];
+  validationPlan: string[];
+  enhancedPrompt: string;
+  shortSummary: string;
+};
+
 type OrchestrationResult = {
+  enhancedTask: EnhancedPromptContract;
   intent: {
     primary: string;
     secondary: string[];
@@ -90,19 +111,130 @@ function role(role: string, summary: string, confidence: number, decisions: stri
   return { role, summary, confidence, decisions, risks, nextAction };
 }
 
+function detectLanguage(prompt: string): EnhancedPromptContract["language"] {
+  const hasGujarati = /[\u0A80-\u0AFF]/.test(prompt);
+  const hasDevanagari = /[\u0900-\u097F]/.test(prompt);
+  const hasEnglish = /[A-Za-z]/.test(prompt);
+  if (hasGujarati && hasEnglish) return "mixed";
+  if (hasDevanagari && hasEnglish) return "hinglish";
+  if (hasGujarati) return "gujarati";
+  if (hasDevanagari) return "hindi";
+  if (/\b(banav|bana|banao|kr|kar|mara|meri|mera|mate|ke liye)\b/i.test(prompt)) return "hinglish";
+  return "english";
+}
+
+function detectDomain(prompt: string) {
+  const lower = prompt.toLowerCase();
+  if (/પાવભાજી|હોટેલ|ગુજરાતી|ફૂડ|pav\s?bhaji|restaurant|hotel|cafe|food|delivery|menu|thali|gujarati/.test(lower)) return "restaurant_food";
+  if (/billing|invoice|payment|revenue|usage|subscription|બિલિંગ/.test(lower)) return "billing";
+  if (/video|image|generator|studio|ai video|વિડિયો|ઇમેજ/.test(lower)) return "ai_studio";
+  if (/expense|tracker|android|apk|mobile app|એન્ડ્રોઇડ/.test(lower)) return "android";
+  if (/api|backend|server|database|prisma/.test(lower)) return "backend";
+  return "general";
+}
+
+function detectProjectType(prompt: string): EnhancedPromptContract["projectType"] {
+  const lower = prompt.toLowerCase();
+  if (/bug|fix|error|broken|issue/.test(lower)) return "bug_fix";
+  if (/android|apk|mobile app|એન્ડ્રોઇડ/.test(lower)) return "android_app";
+  if (/dashboard|admin|billing|ડેશબોર્ડ/.test(lower)) return "saas_dashboard";
+  if (/video|image|generator|studio|વિડિયો|ઇમેજ/.test(lower)) return "ai_studio";
+  if (/api|backend|server|database|prisma/.test(lower)) return "backend";
+  if (/website|web\s?site|landing|page|site|વેબસાઇટ|લેન્ડિંગ|પેજ|બનાવ|बनाव|बनाओ/.test(lower) || /[\u0A80-\u0AFF]/.test(prompt)) return "website";
+  return "coding_task";
+}
+
+function detectExplicitFiles(prompt: string) {
+  const files = ["index.html", "style.css", "script.js", "README.md"].filter((file) => new RegExp(file.replace(".", "\\."), "i").test(prompt));
+  const onlyThree = /only\s+(?:use\s+)?(?:index\.html|html)[\s,]*(?:style\.css|css)[\s,]*(?:and\s+)?(?:script\.js|js)/i.test(prompt);
+  if (onlyThree) return ["index.html", "style.css", "script.js"];
+  return files.length ? files : [];
+}
+
+export function enhanceNativePrompt(prompt: string): EnhancedPromptContract {
+  const language = detectLanguage(prompt);
+  const projectType = detectProjectType(prompt);
+  const domain = detectDomain(prompt);
+  const explicitFiles = detectExplicitFiles(prompt);
+  const isWebsite = projectType === "website";
+  const isFood = domain === "restaurant_food";
+  const isBilling = domain === "billing";
+  const filesExpected = explicitFiles.length
+    ? explicitFiles
+    : isWebsite
+      ? ["index.html", "style.css", "script.js", "README.md"]
+      : projectType === "saas_dashboard"
+        ? ["dashboard page/component files", "styles", "supporting client logic"]
+        : projectType === "android_app"
+          ? ["Android project structure", "main screen", "state/storage files", "README/build notes"]
+          : ["targeted project files"];
+  const requirements = isFood
+    ? ["premium restaurant/food landing page", "strong hero with order CTA", "popular dishes/menu cards", "how it works section", "pricing or meal plan cards", "FAQ accordion", "location/contact/order-ready CTA", "mobile responsive navigation"]
+    : isBilling
+      ? ["SaaS billing dashboard layout", "usage cards", "plan status", "transactions/table", "filters", "clean empty/loading/error states"]
+      : projectType === "android_app"
+        ? ["expense tracker product plan", "add/list expenses", "category summary", "local persistence plan", "mobile-first UX"]
+        : isWebsite
+          ? ["premium landing page", "hero", "feature/content sections", "CTA", "FAQ/contact where relevant", "mobile responsive"]
+          : ["understand existing project", "minimal safe implementation", "validation"];
+  const interactions = isWebsite
+    ? ["smooth scroll", "mobile menu", "section reveal animations", "card hover states", "FAQ accordion", "keyboard focus states", "reduced-motion support"]
+    : projectType === "saas_dashboard"
+      ? ["filters", "table actions", "responsive navigation", "loading and error states"]
+      : ["safe actions appropriate to the project type"];
+  const designDirection = {
+    tone: isFood ? "premium Gujarati food delivery with warm luxury and local flavor" : projectType === "saas_dashboard" ? "quiet premium SaaS operations UI" : "premium production-ready product UI",
+    palette: isFood ? ["saffron", "rose", "charcoal", "warm cream"] : ["neutral", "violet accent", "soft surfaces"],
+    typography: "Inter/system font with strong hierarchy and readable mobile sizing",
+    layout: isWebsite ? "large hero, structured sections, rhythmic cards, polished CTA flow" : "task-appropriate production layout",
+  };
+  const assumptions = [
+    "Proceed without clarification because the request is non-destructive.",
+    isWebsite ? "Use dependency-free static files unless the user explicitly asks for a framework." : "Use existing project conventions where available.",
+    language === "gujarati" || language === "mixed" ? "Use Gujarati-friendly domain copy where it improves clarity." : "Use clear English product copy.",
+  ];
+  const validationPlan = isWebsite
+    ? ["create expected files", "verify HTML shell", "verify CSS and JS links", "verify interactions", "verify mobile responsiveness", "verify preview HTTP 200", "reject raw JSON/placeholders"]
+    : ["read relevant files", "apply minimal patch", "run available validation", "record result"];
+  const intent = isFood ? "build_premium_food_landing_page" : projectType === "saas_dashboard" ? "build_dashboard_ui" : projectType;
+  const enhancedPrompt = [
+    "Enhanced professional task brief:",
+    `Original user prompt: ${prompt}`,
+    `Detected language: ${language}`,
+    `Project type: ${projectType}`,
+    `Intent: ${intent}`,
+    "Quality mode: premium / production-ready / pixel-polished",
+    `Assumptions: ${assumptions.join(" | ")}`,
+    `Requirements: ${requirements.join(" | ")}`,
+    `Expected files: ${filesExpected.join(", ")}`,
+    `Design direction: ${designDirection.tone}; palette ${designDirection.palette.join(", ")}; ${designDirection.typography}; ${designDirection.layout}.`,
+    `Interactions: ${interactions.join(" | ")}`,
+    `Validation: ${validationPlan.join(" | ")}`,
+    "Do not ask unnecessary questions. Do not show this full enhanced prompt to the user. Generate professional output directly.",
+  ].join("\n");
+  const shortSummary = isFood
+    ? "Understood. I’ll build a premium food/restaurant landing page with menu, animations, plans, FAQ, and mobile support."
+    : projectType === "saas_dashboard"
+      ? "Understood. I’ll build a polished SaaS dashboard with useful cards, tables, states, and responsive layout."
+      : isWebsite
+        ? "Understood. I’ll build a premium responsive landing page with polished sections, interactions, and preview validation."
+        : "Understood. I’ll expand the request into a safe professional task and validate the result.";
+  return { language, intent, projectType, qualityMode: "premium", assumptions, requirements, filesExpected, designDirection, interactions, validationPlan, enhancedPrompt, shortSummary };
+}
+
 function detectIntent(prompt: string) {
   const lower = prompt.toLowerCase();
   const flags = unique([
-    includesAny(lower, ["website", "site", "landing", "page", "pricing", "portfolio"]) ? "website" : "",
+    includesAny(lower, ["website", "site", "landing", "page", "pricing", "portfolio", "વેબસાઇટ", "લેન્ડિંગ", "પેજ"]) ? "website" : "",
     includesAny(lower, ["pricing", "price", "plan", "subscription"]) ? "pricing" : "",
     includesAny(lower, ["landing", "hero"]) ? "landing" : "",
-    includesAny(lower, ["dashboard", "admin"]) ? "dashboard" : "",
+    includesAny(lower, ["dashboard", "admin", "ડેશબોર્ડ"]) ? "dashboard" : "",
     includesAny(lower, ["bug", "fix", "error", "broken"]) ? "bug_fix" : "",
     includesAny(lower, ["refactor", "cleanup"]) ? "refactor" : "",
     includesAny(lower, ["api", "backend", "server"]) ? "backend" : "",
     includesAny(lower, ["database", "prisma", "schema"]) ? "database" : "",
-    includesAny(lower, ["style", "responsive", "ui", "design", "premium"]) ? "style" : "",
-    includesAny(lower, ["animation", "animated", "motion"]) ? "animation" : "",
+    includesAny(lower, ["style", "responsive", "ui", "design", "premium", "સુંદર", "સરસ"]) ? "style" : "",
+    includesAny(lower, ["animation", "animated", "motion", "એનિમેટેડ"]) ? "animation" : "",
     includesAny(lower, ["preview", "render"]) ? "preview" : "",
     includesAny(lower, ["run", "start"]) ? "run" : "",
     includesAny(lower, ["deploy", "aws", "production"]) ? "deploy" : "",
@@ -139,23 +271,24 @@ function classifyTask(prompt: string, intent: ReturnType<typeof detectIntent>) {
 function buildPlan(prompt: string, classification: OrchestrationResult["classification"], currentFiles: string[]) {
   const isPricing = classification.labels.includes("pricing_section");
   const isStaticWebsite = classification.type === "website_generation";
+  const enhanced = enhanceNativePrompt(prompt);
   return {
     objective: prompt,
-    requiredFiles: isStaticWebsite ? ["index.html", "style.css", "script.js", "README.md"] : currentFiles.slice(0, 8),
+    requiredFiles: isStaticWebsite ? enhanced.filesExpected : currentFiles.slice(0, 8),
     expectedSections: isPricing
       ? ["pricing hero", "pricing cards", "monthly/yearly toggle", "responsive layout", "call to action"]
       : isStaticWebsite
-        ? ["hero", "content sections", "call to action", "footer"]
+        ? enhanced.requirements
         : ["targeted implementation", "validation"],
     validationPlan: isStaticWebsite
-      ? ["extract files only", "verify index.html", "verify CSS/JS links", "verify preview HTTP 200", "reject raw JSON/placeholders"]
+      ? enhanced.validationPlan
       : ["minimal patch review", "run relevant validation"],
     riskLevel: isStaticWebsite ? "low" as const : includesAny(prompt, ["delete", "migration", "deploy", "production"]) ? "high" as const : "medium" as const,
     expectedOutputQuality: isStaticWebsite ? 92 : 85,
   };
 }
 
-function buildRoles(classification: OrchestrationResult["classification"], plan: OrchestrationResult["plan"]) {
+function buildRoles(classification: OrchestrationResult["classification"], plan: OrchestrationResult["plan"], enhanced: EnhancedPromptContract) {
   const isWebsite = classification.type === "website_generation";
   const roles = [
     role("Planner", `Plan ${plan.requiredFiles.join(", ")} with validation before completion.`, 94, plan.validationPlan, [], "Prepare Qwen instruction."),
@@ -164,9 +297,9 @@ function buildRoles(classification: OrchestrationResult["classification"], plan:
   if (isWebsite) {
     roles.push(role(
       "Designer",
-      "Use premium SaaS visual direction with responsive pricing cards and tasteful interaction.",
+      `Use ${enhanced.designDirection.tone}.`,
       92,
-      ["dark SaaS palette", "Inter/system typography", "cards", "toggle interaction", "mobile responsive"],
+      [...enhanced.designDirection.palette, enhanced.designDirection.typography, enhanced.designDirection.layout, ...enhanced.interactions],
       [],
       "Inject design brief into Qwen instruction."
     ));
@@ -220,6 +353,7 @@ function scoreConfidence(plan: OrchestrationResult["plan"], classification: Orch
 
 function buildFinalInstruction(input: {
   prompt: string;
+  enhanced: EnhancedPromptContract;
   classification: OrchestrationResult["classification"];
   plan: OrchestrationResult["plan"];
   roles: RoleSummary[];
@@ -228,6 +362,8 @@ function buildFinalInstruction(input: {
   const designer = input.roles.find((item) => item.role === "Designer");
   return [
     "[Workspace Codex Orchestration]",
+    "[Native Language Prompt Enhancer]",
+    input.enhanced.enhancedPrompt,
     `Classification: ${input.classification.type} / ${input.classification.subtype} (${input.classification.labels.join(", ")})`,
     `Objective: ${input.plan.objective}`,
     `Required files: ${input.plan.requiredFiles.join(", ")}`,
@@ -235,7 +371,8 @@ function buildFinalInstruction(input: {
     designer ? `Designer direction: ${designer.decisions.join("; ")}` : "",
     `Tool rules: ${input.toolPlan.rules.join(" ")}`,
     "Return JSON only with files[].content containing complete file content.",
-    "For static website tasks, create only index.html, style.css, script.js, README.md.",
+    input.enhanced.filesExpected.length ? `Create exactly these expected files unless editing existing required files: ${input.enhanced.filesExpected.join(", ")}.` : "",
+    "For static website tasks, do not create hidden/internal files, .cache, .vscode, settings.json, package.json, server.js, or dependencies unless explicitly requested.",
     "index.html must link ./style.css and ./script.js.",
     "Do not include raw planning JSON in any file content.",
     "Do not include unresolved placeholders like ${price}, ${plan.description}, or ${plan.period}.",
@@ -244,16 +381,19 @@ function buildFinalInstruction(input: {
 }
 
 export async function runWorkspaceOrchestration(input: OrchestrationInput): Promise<OrchestrationResult> {
-  const intent = detectIntent(input.prompt);
-  const classification = classifyTask(input.prompt, intent);
-  const plan = buildPlan(input.prompt, classification, input.currentFiles);
-  const roles = buildRoles(classification, plan);
+  const enhancedTask = enhanceNativePrompt(input.prompt);
+  const promptForPlanning = `${input.prompt}\n\n${enhancedTask.enhancedPrompt}`;
+  const intent = detectIntent(promptForPlanning);
+  const classification = classifyTask(promptForPlanning, intent);
+  const plan = buildPlan(promptForPlanning, classification, input.currentFiles);
+  const roles = buildRoles(classification, plan, enhancedTask);
   const toolPlan = buildToolPlan(classification);
   const confidence = scoreConfidence(plan, classification);
   const securityReview: ReviewResult = { status: "pass", findings: [], summary: "No pre-generation security blocker found." };
   const performanceReview: ReviewResult = { status: "pass", findings: [], summary: "No pre-generation performance blocker found." };
-  const finalInstruction = buildFinalInstruction({ prompt: input.prompt, classification, plan, roles, toolPlan });
+  const finalInstruction = buildFinalInstruction({ prompt: input.prompt, enhanced: enhancedTask, classification, plan, roles, toolPlan });
   return {
+    enhancedTask,
     intent,
     classification,
     plan,
@@ -265,6 +405,7 @@ export async function runWorkspaceOrchestration(input: OrchestrationInput): Prom
     finalInstruction,
     validationPlan: plan.validationPlan,
     events: [
+      { type: "native_prompt_expanded", message: "Expanding native prompt", payload: { enhancedTask: { language: enhancedTask.language, intent: enhancedTask.intent, projectType: enhancedTask.projectType, qualityMode: enhancedTask.qualityMode, assumptions: enhancedTask.assumptions, requirements: enhancedTask.requirements, filesExpected: enhancedTask.filesExpected, designDirection: enhancedTask.designDirection, interactions: enhancedTask.interactions, validationPlan: enhancedTask.validationPlan }, summary: enhancedTask.shortSummary } },
       { type: "intent_detected", message: "Intent detected", payload: { intent } },
       { type: "task_classified", message: "Classified task", payload: { classification } },
       { type: "planner_done", message: "Planner produced execution plan", payload: { plan } },

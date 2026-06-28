@@ -25,6 +25,7 @@ import type { WorkspaceAgentResponse } from "@/lib/ai-workspace";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
 import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
+import { runWorkspaceOrchestration } from "@/lib/workspace-orchestrator";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -136,13 +137,38 @@ export async function POST(
         metadata: { relatedTaskCount: memoryGate.ok ? context.memoryContext.relatedTaskCount : 0, reusedStyle: memoryGate.ok ? context.memoryContext.reusedStyle : false, avoidedIssue: memoryGate.ok ? context.memoryContext.avoidedIssue : false },
       },
     });
+    const orchestration = await runWorkspaceOrchestration({
+      workspaceId: project.id,
+      taskId: task.id,
+      userId: session.user.id,
+      prompt: body.prompt,
+      workspaceContext: context,
+      currentFiles: context.projectFiles,
+      provider: activeModel.provider,
+      model: activeModel.model,
+    });
+    for (const event of orchestration.events) {
+      await prisma.workspaceLog.create({
+        data: {
+          userId: session.user.id,
+          projectId: project.id,
+          taskId: task.id,
+          event: event.type,
+          message: event.message,
+          metadata: event.payload as Prisma.InputJsonValue,
+        },
+      });
+    }
+    if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
+      throw new Error(orchestration.confidence.reason);
+    }
     let response: WorkspaceAgentResponse;
     let providerFailure: ReturnType<typeof classifyWorkspaceProviderFailure> | null = null;
     let offlineMode = false;
     const retries = 0;
     let autofixes = 0;
     try {
-      response = await askWorkspaceAgent(body.prompt, context, "", { userId: session.user.id, taskType: "workspace_agent" });
+      response = await askWorkspaceAgent(body.prompt, context, orchestration.finalInstruction, { userId: session.user.id, taskType: "workspace_agent" });
       for (const runtimeEvent of response.runtimeV4?.events || []) {
         await prisma.workspaceLog.create({
           data: {

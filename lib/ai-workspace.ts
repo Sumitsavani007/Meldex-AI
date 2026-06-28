@@ -1471,7 +1471,8 @@ export function classifyWorkspaceProviderFailure(error: unknown, prompt = ""): W
 }
 
 export function isStaticWebsitePrompt(prompt: string) {
-  return /\b(website|landing|portfolio|pricing|contact|static|html|page|site)\b/i.test(prompt);
+  return /\b(website|landing|portfolio|pricing|contact|static|html|page|site)\b/i.test(prompt) ||
+    /(વેબસાઇટ|લેન્ડિંગ|પેજ|સાઇટ|હોટેલ|ફૂડ|ડિલિવરી|બનાવ|बनाव|बनाओ|पेज|वेबसाइट|साइट)/i.test(prompt);
 }
 
 export function offlineStaticWorkspace(prompt: string): WorkspaceAgentResponse {
