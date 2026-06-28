@@ -1697,6 +1697,31 @@ function parseAgentJson(raw: string): WorkspaceAgentResponse {
   }
 }
 
+function providerErrorFromModelContent(raw: string, model?: string): ModelRouterError | null {
+  const text = raw.trim();
+  if (!text) return null;
+  let message = "";
+  let code = "";
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string; code?: string | number } };
+    message = parsed.error?.message || "";
+    code = String(parsed.error?.code || "");
+  } catch {
+    message = text;
+  }
+  const lower = `${code} ${message}`.toLowerCase();
+  if (!lower.includes("requires more credits") && !lower.includes("can only afford") && !lower.includes("insufficient") && !lower.includes("rate limit") && !lower.includes("provider error")) {
+    return null;
+  }
+  if (lower.includes("requires more credits") || lower.includes("can only afford") || lower.includes("insufficient")) {
+    return new ModelRouterError(message || "OpenRouter credits are insufficient for this generation.", "insufficient_credits", 402, model);
+  }
+  if (lower.includes("rate limit")) {
+    return new ModelRouterError(message || "Provider rate limit exceeded.", "rate_limit", 429, model);
+  }
+  return new ModelRouterError(message || "Provider returned an error response.", "provider_error", undefined, model);
+}
+
 function extractFence(raw: string, language: string) {
   const pattern = new RegExp(`\\\`\\\`\\\`${language}\\\\s*([\\\\s\\\\S]*?)\\\`\\\`\\\``, "i");
   return raw.match(pattern)?.[1]?.trim();
@@ -1868,6 +1893,8 @@ Rules:
       },
     ],
   });
+  const providerError = providerErrorFromModelContent(completion.content, completion.model);
+  if (providerError) throw providerError;
   const parsed = parsePatchJson(completion.content);
   return {
     ...parsed,
@@ -1980,6 +2007,8 @@ Output contract:
       { role: "user", content: userContent },
     ],
   });
+  const providerError = providerErrorFromModelContent(completion.content, completion.model);
+  if (providerError) throw providerError;
   const parsed = parseAgentJson(completion.content);
   const reflection = localReflectRuntimeOutput(parsed.files || [], prompt);
   return {
