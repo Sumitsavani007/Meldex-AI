@@ -220,6 +220,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
   const [liveFileStatuses, setLiveFileStatuses] = useState<Record<string, string>>({});
+  const [lastSubmittedPrompt, setLastSubmittedPrompt] = useState("");
   const [liveCursor, setLiveCursor] = useState<{ path: string; line: number; column: number; percent?: number; lines?: number; characters?: number; fileSize?: number } | null>(null);
   const [livePreviewVersion, setLivePreviewVersion] = useState("");
   const [queuedPrompt, setQueuedPrompt] = useState("");
@@ -422,8 +423,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
 
   async function runAgent(overridePrompt?: string) {
     const effectivePrompt = overridePrompt || prompt;
+    if (!effectivePrompt.trim()) return;
     if (loadingRef.current) {
       setQueuedPrompt(effectivePrompt);
+      setPrompt("");
       setMessage("Queued · will run next");
       return;
     }
@@ -436,6 +439,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     setStreamEvents([]);
     setLiveDiffs([]);
     setLiveFileStatuses({});
+    setLastSubmittedPrompt(effectivePrompt);
+    setPrompt("");
     setMessage("Understanding request");
     setTerminalOutput((current) => [`$ meldex-agent workspace "${effectivePrompt}"`, "Starting managed agent stream...", ...current.slice(0, 80)]);
     const controller = new AbortController();
@@ -655,7 +660,6 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
       if (queuedPrompt.trim()) {
         const next = queuedPrompt;
         setQueuedPrompt("");
-        setPrompt(next);
         setTimeout(() => void runAgent(next), 100);
       }
     }
@@ -1444,7 +1448,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               <div className="mb-4 flex items-center gap-3">
                 <button onClick={() => router.push("/workspace")} className="grid size-8 place-items-center rounded-lg text-[#6B7280] transition hover:bg-[#F6F7FB] hover:text-[#111827] dark:text-[#D1D5DB] dark:hover:bg-[#1A1E27] dark:hover:text-white" title="Back to workspaces"><ArrowLeft className="size-4" /></button>
                 <div className="min-w-0">
-                  <div className="truncate text-[15px] font-semibold text-[#111827] dark:text-white">{activeTask?.prompt || prompt || "Run Meldex AI"}</div>
+                  <div className="truncate text-[15px] font-semibold text-[#111827] dark:text-white">{lastSubmittedPrompt || activeTask?.prompt || "Run Meldex AI"}</div>
                   <div className="mt-1 text-[12px] text-[#6B7280] dark:text-[#9CA3AF]">{loading ? "Working" : message}</div>
                 </div>
               </div>
@@ -1456,7 +1460,14 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 </button>
               )}
               <div className="space-y-4 text-[14px] leading-7 text-[#111827] dark:text-[#F9FAFB]">
-                <p>{loading ? "I'll update the workspace and verify the result in preview." : activeTask?.summary || "Tell Meldex AI what to build or change next."}</p>
+                {(lastSubmittedPrompt || activeTask?.prompt) && (
+                  <div className="ml-auto max-w-[92%] rounded-2xl border border-[#E5E7EB] bg-[#F6F7FB] px-4 py-3 text-[13px] leading-6 text-[#111827] shadow-sm dark:border-[#2A2E39] dark:bg-[#1A1E27] dark:text-[#F9FAFB]">
+                    {lastSubmittedPrompt || activeTask?.prompt}
+                  </div>
+                )}
+                <div className="max-w-[94%] rounded-2xl border border-[#E5E7EB] bg-white px-4 py-3 text-[13px] leading-6 text-[#374151] shadow-sm dark:border-[#22252D] dark:bg-[#111318] dark:text-[#D1D5DB]">
+                  {loading ? (message || "I'll update the workspace and verify the result in preview.") : activeTask?.summary || "Tell Meldex AI what to build or change next."}
+                </div>
                 {runtimeStats && (
                   <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] p-3 text-[12px] leading-5 text-[#6B7280] dark:border-[#22252D] dark:bg-[#0B0D12] dark:text-[#9CA3AF]">
                     <div>

@@ -50,6 +50,11 @@ const schema = z.object({
 
 type WorkspaceContext = Awaited<ReturnType<typeof buildWorkspaceContext>>;
 
+let providerHealthCache: {
+  checkedAt: number;
+  result: Awaited<ReturnType<typeof testOpenRouterHealth>>;
+} | null = null;
+
 function streamChunks(filePath: string, content = "") {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   if (!content.includes("\n") && content.length > 1200) {
@@ -131,7 +136,7 @@ function runtimeModeForPrompt(prompt: string): RuntimeProfile["mode"] {
 }
 
 function isStaticEditPrompt(prompt: string) {
-  return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|theme|background|glassmorphism)\b/i.test(prompt)
+  return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|click|dialog|modal|popup|open|faq|accordion|color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|theme|background|glassmorphism)\b/i.test(prompt)
     && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
 }
 
@@ -199,15 +204,16 @@ function planWorkspaceFiles(prompt: string) {
       expectedOutputSize: "small edit: 1200-2500 tokens",
     };
   }
-  if (isStaticEditPrompt(prompt) && !isStaticWebsitePrompt(prompt)) {
+  if (isStaticEditPrompt(prompt)) {
     const styleOnlyEdit = /\b(color|colour|spacing|margin|padding|gap|radius|shadow|glow|font|typography|style|css|glassmorphism|theme|background)\b/i.test(prompt)
       && !/\b(headline|title|copy|text|faq|accordion|section|add|remove)\b/i.test(prompt);
     const htmlOnlyEdit = /\b(headline|title|copy|text|faq|accordion|section|hero copy|paragraph)\b/i.test(prompt);
+    const interactionEdit = /\b(button|click|dialog|modal|popup|open|close|toggle|drawer)\b/i.test(prompt);
     return {
       projectType: styleOnlyEdit ? "static_website_style_edit" : "static_website_edit",
       complexity: "small",
       create: [] as string[],
-      modify: styleOnlyEdit ? ["style.css"] : htmlOnlyEdit ? ["index.html"] : ["index.html", "style.css"],
+      modify: styleOnlyEdit ? ["style.css"] : interactionEdit ? ["index.html", "script.js", "style.css"] : htmlOnlyEdit ? ["index.html"] : ["index.html", "style.css"],
       delete: [] as string[],
       dependencies: [] as string[],
       expectedOutputSize: styleOnlyEdit ? "style patch: 400-800 tokens" : "small edit patch: 600-1200 tokens",
@@ -360,8 +366,9 @@ export async function POST(
           taskId = task.id;
 
           timings.taskCreatedMs = elapsedMs(taskStartedAt);
-          const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
-          const turboStaticPath = fastStaticPath || isStaticEditPrompt(body.data.prompt);
+          const staticEditIntent = isStaticEditPrompt(body.data.prompt);
+          const fastStaticPath = !staticEditIntent && isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
+          const turboStaticPath = fastStaticPath || staticEditIntent;
           runtimeProfile.request_received_ms = elapsedMs(taskStartedAt);
           await send("request_received", "Request received", {
             taskId,
@@ -454,10 +461,15 @@ export async function POST(
             contextTokens,
           });
           const providerSmokeStartedAt = nowMs();
-          const providerSmoke = await testOpenRouterHealth();
+          const cachedProviderSmoke = providerHealthCache && Date.now() - providerHealthCache.checkedAt < 60_000 && providerHealthCache.result.ok
+            ? providerHealthCache.result
+            : null;
+          const providerSmoke = cachedProviderSmoke || await testOpenRouterHealth();
+          if (!cachedProviderSmoke && providerSmoke.ok) providerHealthCache = { checkedAt: Date.now(), result: providerSmoke };
           timings.providerSmokeMs = elapsedMs(providerSmokeStartedAt);
           await send(providerSmoke.ok ? "provider_smoke_test" : "provider_failed", providerSmoke.ok ? "Provider smoke test passed" : providerSmoke.userMessage, {
             ok: providerSmoke.ok,
+            cached: Boolean(cachedProviderSmoke),
             provider: providerSmoke.provider,
             model: providerSmoke.model,
             statusCode: providerSmoke.statusCode,
