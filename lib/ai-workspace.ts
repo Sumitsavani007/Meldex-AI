@@ -1781,13 +1781,16 @@ export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnT
     styleRules: taskIsolation.standaloneGeneration ? [] : context.memory?.designStyle || [],
     taskType: runtime?.taskType || "workspace_agent",
   });
-  const staticFastPrompt = isStaticWebsitePrompt(prompt) && runtime?.taskType === "workspace_agent_stream";
-  const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
+  const staticEditPrompt = /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|glassmorphism)\b/i.test(prompt)
+    && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
+  const staticFastPrompt = (isStaticWebsitePrompt(prompt) || staticEditPrompt) && runtime?.taskType === "workspace_agent_stream";
+  const websiteDesignerRules = (isStaticWebsitePrompt(prompt) || staticEditPrompt) ? `
 Static Website Quality Contract:
 - Return complete dependency-free files only. Use index.html, style.css, and script.js for static landing pages unless the user explicitly requests more.
+- For edit prompts, return only the requested changed static files.
 - Keep output complete but concise. Do not include markdown, explanations, README, package files, raw JSON dumps, placeholders, or internal files.
 - Build a premium visual system with strong hero, polished sections, responsive cards, clear CTA hierarchy, accessible focus states, mobile navigation, FAQ/interactions when relevant, and reduced-motion support.
-- Include valid links from index.html to ./style.css and ./script.js.
+- Include or preserve valid links from index.html to ./style.css and ./script.js.
 - Self-check before returning: non-empty HTML/CSS/JS, no overflow at mobile widths, no console-breaking JS, and visible copy must match the current prompt subject.` : "";
   const system = staticFastPrompt ? `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:
@@ -1895,6 +1898,8 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
   const explicitLargeApp = /\b(full[- ]stack|large app|multi[- ]page|dashboard|admin|backend|api|database|auth|next\.?js|react|vite|typescript|tsx|e[- ]commerce app|saas app)\b/i.test(prompt);
   const landingPage = isStaticWebsitePrompt(prompt) && /\b(landing|website|site|homepage|hero)\b/i.test(prompt);
   const premiumStatic = isStaticWebsitePrompt(prompt) && /\b(premium|award|beautiful|animated|modern|luxury|saas|responsive|polished|pixel[- ]perfect)\b/i.test(prompt);
+  const smallStaticEdit = /\b(change|update|fix|edit|modify|color|headline|copy|button|faq|accordion|style\.css|script\.js|index\.html|regenerate)\b/i.test(prompt)
+    && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
   if (explicitLargeApp) {
     return {
       maxTokens: /\b(scaffold|full[- ]stack|multi[- ]page|large app)\b/i.test(prompt) ? 8600 : 7000,
@@ -1903,12 +1908,28 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
       reason: "Prompt asks for an app or framework-level project.",
     };
   }
+  if (smallStaticEdit) {
+    if (/\bstyle\.css\b/i.test(prompt) && !/\bindex\.html|script\.js\b/i.test(prompt)) {
+      return {
+        maxTokens: 1800,
+        category: "style_only_edit",
+        targetRange: "1200-2000",
+        reason: "Style-only edit should not request a full-page budget.",
+      };
+    }
+    return {
+      maxTokens: /\bfaq|accordion\b/i.test(prompt) ? 2400 : 2000,
+      category: "small_edit",
+      targetRange: "1200-2500",
+      reason: "Small static edit should avoid large output budgets.",
+    };
+  }
   if (premiumStatic) {
     return {
-      maxTokens: 5200,
+      maxTokens: 3800,
       category: "premium_static_page",
-      targetRange: "4500-6000",
-      reason: "Premium static website uses a balanced budget for richer sections without 8192-token default.",
+      targetRange: "3500-4200",
+      reason: "Premium static website uses a compact turbo budget to avoid provider timeouts.",
     };
   }
   if (landingPage) {
@@ -1925,14 +1946,6 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
       category: "static_landing_page",
       targetRange: "3000-4000",
       reason: "Static landing page fast path keeps output compact and quick.",
-    };
-  }
-  if (/\b(change|update|fix|edit|modify|color|headline|copy|button)\b/i.test(prompt)) {
-    return {
-      maxTokens: 2200,
-      category: "small_edit",
-      targetRange: "1200-2500",
-      reason: "Small edit should avoid large output budgets.",
     };
   }
   return {

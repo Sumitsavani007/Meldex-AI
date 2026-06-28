@@ -128,6 +128,11 @@ function runtimeModeForPrompt(prompt: string): RuntimeProfile["mode"] {
   return "balanced";
 }
 
+function isStaticEditPrompt(prompt: string) {
+  return /\b(change|update|edit|modify|add|regenerate|style\.css|script\.js|index\.html|hero|headline|button|faq|accordion|color|glassmorphism)\b/i.test(prompt)
+    && !/\b(next|react|vite|api|backend|database|prisma|auth|typescript|tsx|server|route)\b/i.test(prompt);
+}
+
 function bottleneckFromProfile(profile: RuntimeProfile) {
   const entries: Array<[string, number]> = [
     ["model", profile.model_response_ms || 0],
@@ -155,6 +160,28 @@ function compactProfile(profile: RuntimeProfile) {
 }
 
 function planWorkspaceFiles(prompt: string) {
+  if (/\bstyle\.css\b/i.test(prompt) && !/\bindex\.html|script\.js\b/i.test(prompt)) {
+    return {
+      projectType: "static_website_style_edit",
+      complexity: "small",
+      create: [] as string[],
+      modify: ["style.css"],
+      delete: [] as string[],
+      dependencies: [] as string[],
+      expectedOutputSize: "small edit: 1200-2500 tokens",
+    };
+  }
+  if (isStaticEditPrompt(prompt) && !isStaticWebsitePrompt(prompt)) {
+    return {
+      projectType: "static_website_edit",
+      complexity: "small",
+      create: [] as string[],
+      modify: /\bfaq|accordion\b/i.test(prompt) ? ["index.html", "script.js", "style.css"] : ["index.html", "style.css"],
+      delete: [] as string[],
+      dependencies: [] as string[],
+      expectedOutputSize: "small edit: 1200-2500 tokens",
+    };
+  }
   if (isStaticWebsitePrompt(prompt)) {
     const exactStatic = /only\s+index\.html,\s*style\.css,\s*script\.js|index\.html,\s*style\.css,\s*script\.js/i.test(prompt);
     return {
@@ -303,6 +330,7 @@ export async function POST(
 
           timings.taskCreatedMs = elapsedMs(taskStartedAt);
           const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
+          const turboStaticPath = fastStaticPath || isStaticEditPrompt(body.data.prompt);
           runtimeProfile.request_received_ms = elapsedMs(taskStartedAt);
           await send("request_received", "Request received", {
             taskId,
@@ -336,7 +364,7 @@ export async function POST(
           await send("tool_start", "Reading project structure");
           const workspaceReadStartedAt = nowMs();
           const cacheEntry = workspacePerformanceCache.get(project.id);
-          const cacheHit = Boolean(fastStaticPath && cacheEntry && Date.now() - cacheEntry.updatedAt < 5 * 60_000);
+          const cacheHit = Boolean(turboStaticPath && cacheEntry && Date.now() - cacheEntry.updatedAt < 5 * 60_000);
           await send(cacheHit ? "performance_cache_hit" : "performance_cache_miss", cacheHit ? "Workspace performance cache loaded" : "Workspace performance cache warming", {
             cached: cacheHit,
             target: "workspace_load + context_pack under 500ms for static tasks",
@@ -352,7 +380,7 @@ export async function POST(
                 rankedFiles: [],
                 taskIsolation: { standaloneGeneration: true, domain: "static_website", subjectTerms: [], continuity: false },
               } as unknown as WorkspaceContext
-            : await buildWorkspaceContext(project.id, project.storagePath, fastStaticPath || !memoryGate.ok ? undefined : session.user.id, body.data.prompt);
+            : await buildWorkspaceContext(project.id, project.storagePath, turboStaticPath || !memoryGate.ok ? undefined : session.user.id, body.data.prompt);
           timings.workspaceReadMs = elapsedMs(workspaceReadStartedAt);
           runtimeProfile.workspace_load_ms = Number(timings.workspaceReadMs || 0);
           runtimeProfile.memory_load_ms = fastStaticPath || !memoryGate.ok ? 0 : Number(timings.workspaceReadMs || 0);
@@ -376,7 +404,7 @@ export async function POST(
             files: context.projectFiles.length,
             relevantFiles: context.relevantFiles.length,
             contextTokens,
-            memoryMode: fastStaticPath ? "minimal_fast_path" : memoryGate.ok ? "workspace_memory" : "disabled",
+            memoryMode: turboStaticPath ? "minimal_turbo_path" : memoryGate.ok ? "workspace_memory" : "disabled",
             elapsedMs: elapsedMs(taskStartedAt),
           });
           runtimeProfile.context_pack_ms = elapsedMs(workspaceReadStartedAt);
@@ -407,22 +435,23 @@ export async function POST(
             elapsedMs: timings.providerSmokeMs,
           });
           if (!providerSmoke.ok) throw new Error(providerSmoke.userMessage);
-          const orchestration = fastStaticPath
+          const filePlan = planWorkspaceFiles(body.data.prompt);
+          const orchestration = turboStaticPath
             ? {
-                classification: { type: "website_generation", subtype: "static_site_fast_path", labels: ["static", "fast_path", "dependency_free"] },
-                confidence: { score: 0.91, decision: "auto_proceed" as const, reason: "Simple static website task uses fast path." },
+                classification: { type: "website_generation", subtype: fastStaticPath ? "static_site_fast_path" : "static_site_edit_turbo_path", labels: ["static", "turbo_path", "dependency_free"] },
+                confidence: { score: 0.91, decision: "auto_proceed" as const, reason: "Static website task uses turbo path." },
                 finalInstruction: [
-                  "Static site fast path:",
-                  "Create complete dependency-free index.html, style.css, and script.js.",
-                  "index.html must link ./style.css and ./script.js.",
-                  "style.css must be non-empty and premium-quality.",
-                  "script.js must include real interactions for menus, FAQ, smooth scroll, or reveal animations when relevant.",
-                  "Do not include raw JSON, markdown, placeholders, package.json, server files, .cache, or internal files.",
+                  "Static site turbo path:",
+                  fastStaticPath ? "Create complete dependency-free index.html, style.css, and script.js." : `Modify only the requested static file(s): ${filePlan.modify.join(", ") || "selected files"}.`,
+                  fastStaticPath ? "index.html must link ./style.css and ./script.js." : "Do not create unrelated files. Preserve existing links unless explicitly asked.",
+                  "CSS/JS must be non-empty when returned.",
+                  "Include real interactions only when relevant to the requested change.",
+                  "Do not include raw JSON, markdown, placeholders, package.json, server files, .cache, README, or internal files.",
                 ].join("\n"),
                 events: [
-                  { type: "intent_detected", message: "Intent detected", payload: { intent: { primary: "static_website_generation", secondary: [], flags: ["fast_path"] } } },
-                  { type: "task_classified", message: "Classified task", payload: { classification: { type: "website_generation", subtype: "static_site_fast_path", labels: ["static", "fast_path"] } } },
-                  { type: "planner_done", message: "Simple file plan ready", payload: { plan: { requiredFiles: ["index.html", "style.css", "script.js"], expectedSections: ["hero", "features", "plans", "faq"], validationPlan: ["file completeness", "preview HTTP 200"] } } },
+                  { type: "intent_detected", message: "Intent detected", payload: { intent: { primary: fastStaticPath ? "static_website_generation" : "static_website_edit", secondary: [], flags: ["turbo_path"] } } },
+                  { type: "task_classified", message: "Classified task", payload: { classification: { type: "website_generation", subtype: fastStaticPath ? "static_site_fast_path" : "static_site_edit_turbo_path", labels: ["static", "turbo_path"] } } },
+                  { type: "planner_done", message: "Simple file plan ready", payload: { plan: { requiredFiles: fastStaticPath ? ["index.html", "style.css", "script.js"] : filePlan.modify, expectedSections: fastStaticPath ? ["hero", "features", "plans", "faq"] : ["requested edits only"], validationPlan: ["file completeness", "preview HTTP 200"] } } },
                 ],
               }
             : await runWorkspaceOrchestration({
@@ -434,7 +463,7 @@ export async function POST(
                 currentFiles: context.projectFiles,
                 provider: "openrouter",
               });
-          if (fastStaticPath) {
+          if (turboStaticPath) {
             await send("static_fast_path_enabled", "Static website fast path enabled", { target: "model_call_under_5s" });
             await send("fast_path_selected", "Fast path selected", {
               reason: "Dependency-free static website prompt",
@@ -451,7 +480,6 @@ export async function POST(
           if (orchestration.confidence.decision === "ask_user" || orchestration.confidence.decision === "block") {
             throw new Error(orchestration.confidence.reason);
           }
-          const filePlan = planWorkspaceFiles(body.data.prompt);
           const outputBudget = estimateWorkspaceOutputBudget(body.data.prompt);
           runtimeProfile.planning_ms = elapsedMs(taskStartedAt);
           await send("single_agent_plan_ready", "Planning", {
