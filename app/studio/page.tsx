@@ -171,7 +171,7 @@ const studioTokens = {
   line: "border-slate-200/80 dark:border-white/10",
   panel: "border border-slate-200/80 bg-white/86 shadow-xl shadow-slate-950/5 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b121c]/78 dark:shadow-black/30",
   soft: "border border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-white/[0.035]",
-  input: "border border-slate-300/80 bg-white text-slate-950 shadow-inner shadow-slate-950/5 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10 dark:bg-[#080d16]/92 dark:text-white dark:placeholder:text-white/38 dark:focus:border-violet-300/70 dark:focus:ring-violet-300/15",
+  input: "border border-slate-300/80 bg-white text-slate-950 shadow-inner shadow-slate-950/5 outline-none transition placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10 dark:bg-[#080d16]/92 dark:text-white dark:placeholder:text-white/38 dark:focus:border-violet-300/70 dark:focus:ring-violet-300/15 [color-scheme:light] dark:[color-scheme:dark] [&>option]:bg-white [&>option]:text-slate-950 dark:[&>option]:bg-[#080d16] dark:[&>option]:text-white",
   muted: "text-slate-500 dark:text-white/58",
   faint: "text-slate-400 dark:text-white/38",
 };
@@ -380,21 +380,6 @@ export default function StudioPage() {
     await loadProjects(selectedProject.id);
   }
 
-  async function deleteProject() {
-    if (!selectedProject || !window.confirm(`Delete ${selectedProject.name}?`)) return;
-    const response = await fetch(`/api/studio/projects/${selectedProject.id}`, { method: "DELETE" });
-    if (!response.ok) throw new Error("Delete project failed");
-    setSelectedProject(null);
-    setSelectedProjectId("");
-    await loadProjects("");
-  }
-
-  async function duplicateProject() {
-    if (!selectedProject) return;
-    await updateProject({ action: "duplicate" });
-    await loadProjects();
-  }
-
   function applyTemplate(name: string) {
     const preset = templatePresets.find((template) => template.name === name);
     if (!preset) return;
@@ -552,7 +537,7 @@ export default function StudioPage() {
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           maxLength={2000}
-          className="min-h-[216px] w-full resize-none bg-transparent text-sm leading-6 outline-none placeholder:text-slate-500 dark:placeholder:text-white/36"
+          className="min-h-[216px] w-full resize-none bg-transparent text-sm leading-6 text-slate-950 outline-none placeholder:text-slate-500 dark:text-white dark:placeholder:text-white/36"
           placeholder="Enter your story idea in any language..."
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -725,24 +710,6 @@ export default function StudioPage() {
             </div>
           )}
         </div>
-        <div className={cn("rounded-2xl border p-3", studioTokens.soft)}>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">Provider Layer</h3>
-            <button onClick={() => void loadProviderStatus()} className="text-xs text-violet-500">Refresh</button>
-          </div>
-          <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-            {providerStatuses.length ? providerStatuses.map((provider) => (
-              <div key={provider.key} className="rounded-xl bg-slate-100 px-3 py-2 text-xs dark:bg-white/[0.04]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{provider.name}</span>
-                  <span className={cn("shrink-0 rounded-full px-2 py-0.5", provider.status === "running" || provider.status === "installed" ? "bg-emerald-500/15 text-emerald-500" : provider.status === "failed" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-500")}>{provider.status.replaceAll("_", " ")}</span>
-                </div>
-                <p className={cn("mt-1 line-clamp-2", studioTokens.muted)}>{provider.message}</p>
-                {(provider.version || provider.gpuMemory) && <p className={cn("mt-1", studioTokens.faint)}>{provider.version || ""} {provider.gpuMemory || ""}</p>}
-              </div>
-            )) : <p className={cn("text-xs", studioTokens.muted)}>Provider status loads after login.</p>}
-          </div>
-        </div>
       </div>
     </aside>
   );
@@ -773,13 +740,8 @@ export default function StudioPage() {
         <p className={cn("mt-1 text-sm", studioTokens.muted)}>{new Date(latestGeneration?.createdAt || Date.now()).toLocaleString()}</p>
         <div className="mt-5 grid grid-cols-[1fr_1fr_44px] gap-2">
           <button onClick={() => latestGeneration?.enhancedPrompt && setPrompt(latestGeneration.enhancedPrompt)} disabled={!latestGeneration?.enhancedPrompt} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Use</button>
-          <button onClick={() => void requestRender("draft_preview")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Preview</button>
+          <button onClick={runGeneration} disabled={!selectedProject || loading} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>{loading ? "Running" : "Rerun"}</button>
           <button onClick={() => setUploads(uploads.filter((item) => item.type !== "frame" && item.type !== "clip"))} className="grid h-11 place-items-center rounded-xl border border-violet-500/35 text-violet-500"><Trash2 className="size-4" /></button>
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <button onClick={() => void requestRender("voice")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Voice</button>
-          <button onClick={() => void requestRender("music")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Music</button>
-          <button onClick={() => void requestRender("export")} disabled={!latestGeneration} className={cn("h-9 rounded-xl border text-xs disabled:opacity-40", studioTokens.soft)}>Export</button>
         </div>
       </div>
     </aside>
@@ -836,17 +798,10 @@ export default function StudioPage() {
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_344px_278px]">
               <section className={cn("min-w-0 space-y-4", mobileTab !== "create" && "hidden lg:block")}>
                 <div className="px-3 pt-2">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h1 className="text-3xl font-bold tracking-tight">AI Studio</h1>
-                      <p className={cn("mt-3 text-sm", studioTokens.muted)}>Describe your idea and AI will turn it into a cinematic video.</p>
-                      <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={createProject} className={cn("rounded-xl border px-3 py-2 text-xs font-semibold", studioTokens.soft)}><Plus className="mr-1 inline size-3.5" /> New</button>
-                      <button onClick={duplicateProject} disabled={!selectedProject} className={cn("rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-40", studioTokens.soft)}>Duplicate</button>
-                      <button onClick={deleteProject} disabled={!selectedProject} className="rounded-xl border border-red-400/30 px-3 py-2 text-xs font-semibold text-red-400 disabled:opacity-40">Delete</button>
-                    </div>
+                  <div>
+                    <h1 className="text-3xl font-bold tracking-tight">AI Studio</h1>
+                    <p className={cn("mt-3 text-sm", studioTokens.muted)}>Describe your idea and AI will turn it into a cinematic video.</p>
+                    <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
                   </div>
                 </div>
                 {activeNav === "projects" && (
@@ -858,7 +813,7 @@ export default function StudioPage() {
                   </div>
                 )}
                 {promptPanel}
-                {outputPanel}
+                {false && outputPanel}
               </section>
               <div className={cn("space-y-4", mobileTab !== "settings" && "hidden xl:block")}>{settingsPanel}</div>
               <div className={cn("space-y-4", mobileTab !== "assets" && "hidden xl:block")}>{referencePanel}</div>
