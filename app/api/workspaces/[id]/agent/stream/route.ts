@@ -45,11 +45,30 @@ const schema = z.object({
   fork: z.boolean().optional(),
 });
 
-function streamChunks(content = "") {
-  const size = content.length > 18000 ? 2400 : content.length > 7000 ? 1400 : 850;
+function streamChunks(filePath: string, content = "") {
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const patterns =
+    ext === "html" ? [new RegExp("</head>", "i"), new RegExp("</header>", "i"), new RegExp("</section>", "i"), new RegExp("</main>", "i"), new RegExp("</footer>", "i")] :
+    ext === "css" ? [new RegExp("}\\s*")] :
+    ext === "js" ? [new RegExp("}\\);?\\s*"), new RegExp("}\\s*")] :
+    [/\n\n/];
   const chunks: string[] = [];
-  for (let index = 0; index < content.length; index += size) chunks.push(content.slice(index, index + size));
+  let buffer = "";
+  for (const line of content.split(/(?<=\n)/)) {
+    buffer += line;
+    const largeEnough = buffer.length >= 420;
+    const logicalBoundary = patterns.some((pattern) => pattern.test(buffer));
+    if ((largeEnough && logicalBoundary) || buffer.length >= 1200) {
+      chunks.push(buffer);
+      buffer = "";
+    }
+  }
+  if (buffer) chunks.push(buffer);
   return chunks.length ? chunks : [""];
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function nowMs() {
@@ -540,31 +559,87 @@ TASK ISOLATION FIX:
                 totalBytes: Buffer.byteLength(finalContent),
               });
               let draft = "";
-              for (const chunk of streamChunks(finalContent)) {
+              const chunks = streamChunks(file.path, finalContent);
+              await send("live_typing_started", `Typing ${file.path}`, {
+                path: file.path,
+                operation: file.operation,
+                chunks: chunks.length,
+                totalBytes: Buffer.byteLength(finalContent),
+                totalLines: finalContent.split(/\r?\n/).length,
+              });
+              for (const [chunkIndex, chunk] of chunks.entries()) {
                 draft += chunk;
                 await writeProjectFile(session.user.id, project.id, file.path, draft, initialStatus);
+                const draftLines = draft.split(/\r?\n/);
+                const draftBytes = Buffer.byteLength(draft);
+                const totalBytes = Buffer.byteLength(finalContent);
+                const liveDiff = countDiff(oldContent, draft);
                 await send("editorApplyChunk", `Applying changes to ${file.path}`, {
                   path: file.path,
                   operation: file.operation,
                   chunk,
-                  writtenBytes: Buffer.byteLength(draft),
-                  totalBytes: Buffer.byteLength(finalContent),
+                  chunkIndex,
+                  chunks: chunks.length,
+                  cursorLine: draftLines.length,
+                  cursorColumn: draftLines.at(-1)?.length || 0,
+                  activeLine: draftLines.length,
+                  writtenBytes: draftBytes,
+                  totalBytes,
                 });
                 await send("file_progress", `Writing ${file.path}`, {
                   path: file.path,
                   operation: file.operation,
-                  writtenBytes: Buffer.byteLength(draft),
-                  totalBytes: Buffer.byteLength(finalContent),
-                  percent: finalContent ? Math.min(100, Math.round((Buffer.byteLength(draft) / Buffer.byteLength(finalContent)) * 100)) : 100,
+                  chunkIndex,
+                  chunks: chunks.length,
+                  lines: draftLines.length,
+                  characters: draft.length,
+                  fileSize: draftBytes,
+                  added: liveDiff.added,
+                  removed: liveDiff.removed,
+                  cursorLine: draftLines.length,
+                  writtenBytes: draftBytes,
+                  totalBytes,
+                  percent: finalContent ? Math.min(100, Math.round((draftBytes / totalBytes) * 100)) : 100,
                 });
                 await send("file_write_chunk", `Writing ${file.path}`, {
                   path: file.path,
                   operation: file.operation,
                   chunk,
-                  writtenBytes: Buffer.byteLength(draft),
-                  totalBytes: Buffer.byteLength(finalContent),
+                  chunkIndex,
+                  chunks: chunks.length,
+                  cursorLine: draftLines.length,
+                  cursorColumn: draftLines.at(-1)?.length || 0,
+                  activeLine: draftLines.length,
+                  writtenBytes: draftBytes,
+                  totalBytes,
                 });
+                await send("live_diff_updated", `Updated diff for ${file.path}`, {
+                  path: file.path,
+                  operation: file.operation,
+                  added: liveDiff.added,
+                  removed: liveDiff.removed,
+                  lines: draftLines.length,
+                  characters: draft.length,
+                  fileSize: draftBytes,
+                });
+                if (/\.(html|css|js)$/i.test(file.path)) {
+                  await send("preview_hot_reload", `Preview hot reload after ${file.path}`, {
+                    path: file.path,
+                    status: file.path.endsWith(".html") ? "html_available" : "asset_updated",
+                    version: `${task.id}:${file.path}:${chunkIndex}:${draftBytes}`,
+                  });
+                }
+                if (chunkIndex < chunks.length - 1) {
+                  await sleep(24);
+                }
               }
+              await send("live_typing_completed", `Finished typing ${file.path}`, {
+                path: file.path,
+                operation: file.operation,
+                lines: finalContent.split(/\r?\n/).length,
+                characters: finalContent.length,
+                fileSize: Buffer.byteLength(finalContent),
+                });
               await send("editorSaveState", `Saving ${file.path}`, { path: file.path, operation: file.operation, state: "saving" });
               await send("file_save_started", `Saving ${file.path}`, { path: file.path, operation: file.operation });
               await writeProjectFile(session.user.id, project.id, file.path, finalContent, oldContent ? "EDITED" : "CREATED");

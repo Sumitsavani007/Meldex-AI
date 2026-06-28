@@ -220,6 +220,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [liveDiffs, setLiveDiffs] = useState<Diff[]>([]);
   const [liveFileStatuses, setLiveFileStatuses] = useState<Record<string, string>>({});
+  const [liveCursor, setLiveCursor] = useState<{ path: string; line: number; column: number; percent?: number; lines?: number; characters?: number; fileSize?: number } | null>(null);
+  const [livePreviewVersion, setLivePreviewVersion] = useState("");
   const [queuedPrompt, setQueuedPrompt] = useState("");
   const [previewAction, setPreviewAction] = useState<"idle" | "refreshing" | "stopping">("idle");
   const [previewStopped, setPreviewStopped] = useState(false);
@@ -254,6 +256,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
   const [editorContent, setEditorContent] = useState("");
   const [savedEditorContent, setSavedEditorContent] = useState("");
   const [savingFile, setSavingFile] = useState(false);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
   const [bottomTab, setBottomTab] = useState<BottomTab>("TERMINAL");
   const [bottomHeight, setBottomHeight] = useState(210);
   const [bottomCollapsed, setBottomCollapsed] = useState(true);
@@ -305,6 +308,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     state.preview?.lastCheckedAt,
     state.preview?.httpStatus,
     state.preview?.status,
+    livePreviewVersion,
   ].filter(Boolean).join(":");
   const previewUrl = state.project ? `/api/workspaces/${state.project.id}/preview?v=${encodeURIComponent(previewVersion || String(Date.now()))}` : "";
   const previewDisplayUrl = state.preview?.url || (hasPreviewFile && state.project ? `/api/workspaces/${state.project.id}/preview` : "");
@@ -489,7 +493,8 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
               setEditorContent("");
               setSavedEditorContent("__meldex_live_write_pending__");
-              setLiveFileStatuses((current) => ({ ...current, [path]: "Writing" }));
+              setLiveCursor({ path, line: 1, column: 0, percent: 0, lines: 0, characters: 0, fileSize: 0 });
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Queued" }));
               await loadWorkspace(state.project.id).catch(() => undefined);
             }
           }
@@ -506,16 +511,30 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
           if (event.type === "editorApplyChunk") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
-              setSelectedFile(payload.path);
-              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: "Editing" }));
+              const path = payload.path;
+              const line = Number(payload.cursorLine || 1);
+              const column = Number(payload.cursorColumn || 0);
+              setSelectedFile(path);
+              setLiveCursor((current) => ({ ...(current || { path, line, column }), path, line, column }));
+              setLiveFileStatuses((current) => ({ ...current, [path]: "Typing" }));
             }
           }
           if (event.type === "file_progress") {
             const payload = event.payload || {};
             if (typeof payload.path === "string") {
               const percent = typeof payload.percent === "number" ? ` ${payload.percent}%` : "";
-              setSelectedFile(payload.path);
-              setLiveFileStatuses((current) => ({ ...current, [payload.path as string]: `Writing${percent}` }));
+              const path = payload.path;
+              setSelectedFile(path);
+              setLiveCursor({
+                path,
+                line: Number(payload.cursorLine || 1),
+                column: Number(payload.cursorColumn || 0),
+                percent: typeof payload.percent === "number" ? payload.percent : undefined,
+                lines: typeof payload.lines === "number" ? payload.lines : undefined,
+                characters: typeof payload.characters === "number" ? payload.characters : undefined,
+                fileSize: typeof payload.fileSize === "number" ? payload.fileSize : undefined,
+              });
+              setLiveFileStatuses((current) => ({ ...current, [path]: `Typing${percent}` }));
             }
           }
           if (event.type === "file_write_chunk") {
@@ -526,6 +545,31 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
               setOpenTabs((current) => current.includes(path) ? current : [...current, path]);
               setEditorContent((current) => current + payload.chunk);
               setLiveFileStatuses((current) => ({ ...current, [path]: "Editing" }));
+            }
+          }
+          if (event.type === "live_diff_updated") {
+            const payload = event.payload || {};
+            if (typeof payload.path === "string") {
+              setLiveDiffs((current) => {
+                const next = current.filter((item) => item.path !== payload.path);
+                next.push({
+                  path: payload.path as string,
+                  operation: String(payload.operation || "edit"),
+                  added: Number(payload.added || 0),
+                  removed: Number(payload.removed || 0),
+                });
+                return next;
+              });
+            }
+          }
+          if (event.type === "preview_hot_reload") {
+            const payload = event.payload || {};
+            setPreviewStopped(false);
+            setLivePreviewVersion(String(payload.version || Date.now()));
+            const now = Date.now();
+            if (now - latestPreviewRefresh > 500) {
+              latestPreviewRefresh = now;
+              await loadWorkspace(state.project.id).catch(() => undefined);
             }
           }
           if (event.type === "file_save_started" || event.type === "editorSaveState") {
@@ -544,6 +588,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                 setSavedEditorContent(payload.content);
               }
               setLiveFileStatuses((current) => ({ ...current, [path]: "Completed" }));
+              setLiveCursor((current) => current?.path === path ? null : current);
               setTimeout(() => {
                 setLiveFileStatuses((current) => {
                   const next = { ...current };
@@ -814,6 +859,17 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
+
+  useEffect(() => {
+    if (!editorRef.current || !liveCursor || liveCursor.path !== selectedFile) return;
+    const lines = editorContent.split("\n");
+    const targetLine = Math.max(1, Math.min(liveCursor.line, lines.length));
+    const prefix = lines.slice(0, targetLine - 1).join("\n");
+    const position = prefix.length + (targetLine > 1 ? 1 : 0) + Math.min(liveCursor.column, lines[targetLine - 1]?.length || 0);
+    editorRef.current.selectionStart = position;
+    editorRef.current.selectionEnd = position;
+    editorRef.current.scrollTop = editorRef.current.scrollHeight;
+  }, [editorContent, liveCursor, selectedFile]);
 
   useEffect(() => {
     const left = window.localStorage.getItem("meldex.workspace.leftWidth");
@@ -1278,8 +1334,10 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                       <span className="truncate font-medium text-[#374151] dark:text-[#D1D5DB]">{selectedFile}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-3">
+                      {liveCursor?.path === selectedFile ? <span className="rounded-full bg-[#7C5CFF]/10 px-2 py-0.5 font-semibold text-[#6D4AFF] dark:bg-[#7C5CFF]/20 dark:text-violet-200">Ln {liveCursor.line}, Col {liveCursor.column}</span> : null}
                       <span>{editorLanguage}</span>
                       <span>{editorContent.split("\n").length} lines</span>
+                      {liveCursor?.path === selectedFile && typeof liveCursor.percent === "number" ? <span>{liveCursor.percent}% typed</span> : null}
                       <span>{fileDirty ? "unsaved" : "saved"}</span>
                     </div>
                   </div>
@@ -1288,6 +1346,7 @@ export function WorkspaceClient({ projectId }: { projectId?: string }) {
                   {selectedFile ? (
                     <textarea
                       key={selectedFile}
+                      ref={editorRef}
                       value={editorContent}
                       onChange={(event) => setEditorContent(event.target.value)}
                       spellCheck={false}
