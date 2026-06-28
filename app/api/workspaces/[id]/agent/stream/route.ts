@@ -46,6 +46,8 @@ const schema = z.object({
   fork: z.boolean().optional(),
 });
 
+type WorkspaceContext = Awaited<ReturnType<typeof buildWorkspaceContext>>;
+
 function streamChunks(filePath: string, content = "") {
   const ext = filePath.split(".").pop()?.toLowerCase() || "";
   if (!content.includes("\n") && content.length > 1200) {
@@ -86,6 +88,72 @@ function elapsedMs(startedAt: number) {
   return Math.max(0, Date.now() - startedAt);
 }
 
+type RuntimeProfile = {
+  request_received_ms?: number;
+  auth_check_ms?: number;
+  workspace_load_ms?: number;
+  memory_load_ms?: number;
+  context_pack_ms?: number;
+  planning_ms?: number;
+  model_request_ms?: number;
+  model_response_ms?: number;
+  parser_ms?: number;
+  validation_ms?: number;
+  repair_ms?: number;
+  file_write_ms?: number;
+  editor_stream_ms?: number;
+  preview_start_ms?: number;
+  preview_verify_ms?: number;
+  total_ms?: number;
+  bottleneck?: string;
+  cache?: { hit: boolean; reason: string };
+  mode?: "fast" | "balanced" | "premium";
+};
+
+const workspacePerformanceCache = new Map<string, {
+  projectFiles: string[];
+  projectType: string;
+  isStaticSite: boolean;
+  fileMetadata: Array<{ path: string; language?: string; status?: string }>;
+  recentActiveFiles: string[];
+  projectSummary: string;
+  stylePreferences: string[];
+  lastSuccessfulOutputPattern: string[];
+  updatedAt: number;
+}>();
+
+function runtimeModeForPrompt(prompt: string): RuntimeProfile["mode"] {
+  if (/\b(fast|quick|simple|minimal)\b/i.test(prompt)) return "fast";
+  if (/\b(premium|award|pixel[- ]perfect|beautiful|luxury)\b/i.test(prompt)) return "premium";
+  return "balanced";
+}
+
+function bottleneckFromProfile(profile: RuntimeProfile) {
+  const entries: Array<[string, number]> = [
+    ["model", profile.model_response_ms || 0],
+    ["workspace", (profile.workspace_load_ms || 0) + (profile.context_pack_ms || 0) + (profile.memory_load_ms || 0)],
+    ["files", profile.file_write_ms || 0],
+    ["preview", profile.preview_verify_ms || 0],
+    ["validation", profile.validation_ms || 0],
+    ["repair", profile.repair_ms || 0],
+  ];
+  return entries.sort((a, b) => b[1] - a[1])[0]?.[0] || "unknown";
+}
+
+function compactProfile(profile: RuntimeProfile) {
+  const total = profile.total_ms || 0;
+  const model = profile.model_response_ms || 0;
+  const files = profile.file_write_ms || 0;
+  const preview = profile.preview_verify_ms || 0;
+  return {
+    totalMs: total,
+    modelMs: model,
+    fileMs: files,
+    previewMs: preview,
+    bottleneck: profile.bottleneck || bottleneckFromProfile(profile),
+  };
+}
+
 function planWorkspaceFiles(prompt: string) {
   if (isStaticWebsitePrompt(prompt)) {
     const exactStatic = /only\s+index\.html,\s*style\.css,\s*script\.js|index\.html,\s*style\.css,\s*script\.js/i.test(prompt);
@@ -124,8 +192,10 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const routeReceivedAt = nowMs();
   const { session, error } = await requireAuth();
   if (error) return error;
+  const authCheckMs = elapsedMs(routeReceivedAt);
 
   const { id } = await params;
   const body = schema.safeParse(await request.json().catch(() => ({})));
@@ -157,10 +227,12 @@ export async function POST(
     if (!agentGate.ok) return NextResponse.json(featureBlockedResponse(agentGate), { status: 402, headers: { "Cache-Control": "no-store" } });
     if (!parallelCheck.ok) return NextResponse.json(parallelCheck, { status: 402, headers: { "Cache-Control": "no-store" } });
     const promptTokens = Math.ceil(body.data.prompt.length / 4);
+    const initialOutputBudget = estimateWorkspaceOutputBudget(body.data.prompt);
     const preEstimate = await calculateCredits({
       provider: activeModel.provider,
       model: activeModel.model,
       inputTokens: promptTokens,
+      outputTokens: initialOutputBudget.maxTokens,
       toolCalls: 2,
       memoryReads: memoryGate.ok ? 1 : 0,
     });
@@ -200,6 +272,11 @@ export async function POST(
           taskStartedAt: new Date(taskStartedAt).toISOString(),
           promptChars: body.data.prompt.length,
         };
+        const runtimeProfile: RuntimeProfile = {
+          request_received_ms: 0,
+          auth_check_ms: authCheckMs,
+          mode: runtimeModeForPrompt(body.data.prompt),
+        };
         let taskId: string | null = null;
         let completed = false;
         const eventBus = createWorkspaceEventBus({
@@ -226,6 +303,7 @@ export async function POST(
 
           timings.taskCreatedMs = elapsedMs(taskStartedAt);
           const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
+          runtimeProfile.request_received_ms = elapsedMs(taskStartedAt);
           await send("request_received", "Request received", {
             taskId,
             promptChars: body.data.prompt.length,
@@ -248,12 +326,37 @@ export async function POST(
             plan: creditCheck.summary.plan.name,
             model: activeModel.model,
           });
+          await send("credit_aware_token_budget", "Credit-aware output budget checked", {
+            outputBudget: initialOutputBudget,
+            estimatedCredits: preEstimate.credits,
+            result: "allowed",
+          });
           await prisma.workspaceTask.update({ where: { id: task.id }, data: { status: "RUNNING" } });
           await send("loading_workspace", "Loading workspace");
           await send("tool_start", "Reading project structure");
           const workspaceReadStartedAt = nowMs();
-          const context = await buildWorkspaceContext(project.id, project.storagePath, fastStaticPath || !memoryGate.ok ? undefined : session.user.id, body.data.prompt);
+          const cacheEntry = workspacePerformanceCache.get(project.id);
+          const cacheHit = Boolean(fastStaticPath && cacheEntry && Date.now() - cacheEntry.updatedAt < 5 * 60_000);
+          await send(cacheHit ? "performance_cache_hit" : "performance_cache_miss", cacheHit ? "Workspace performance cache loaded" : "Workspace performance cache warming", {
+            cached: cacheHit,
+            target: "workspace_load + context_pack under 500ms for static tasks",
+          });
+          const context: WorkspaceContext = cacheHit && cacheEntry
+            ? {
+                projectId: project.id,
+                projectFiles: cacheEntry.projectFiles,
+                relevantFiles: [],
+                memory: undefined,
+                memoryContext: { snippet: "", relatedTaskCount: 0, reusedStyle: false, avoidedIssue: false },
+                knowledgeGraph: null,
+                rankedFiles: [],
+                taskIsolation: { standaloneGeneration: true, domain: "static_website", subjectTerms: [], continuity: false },
+              } as unknown as WorkspaceContext
+            : await buildWorkspaceContext(project.id, project.storagePath, fastStaticPath || !memoryGate.ok ? undefined : session.user.id, body.data.prompt);
           timings.workspaceReadMs = elapsedMs(workspaceReadStartedAt);
+          runtimeProfile.workspace_load_ms = Number(timings.workspaceReadMs || 0);
+          runtimeProfile.memory_load_ms = fastStaticPath || !memoryGate.ok ? 0 : Number(timings.workspaceReadMs || 0);
+          runtimeProfile.cache = { hit: cacheHit, reason: cacheHit ? "fast_static_workspace_cache" : "cache_empty_or_invalidated" };
           const contextTokens = Math.ceil([
             body.data.prompt,
             context.projectFiles.join("\n"),
@@ -276,6 +379,7 @@ export async function POST(
             memoryMode: fastStaticPath ? "minimal_fast_path" : memoryGate.ok ? "workspace_memory" : "disabled",
             elapsedMs: elapsedMs(taskStartedAt),
           });
+          runtimeProfile.context_pack_ms = elapsedMs(workspaceReadStartedAt);
           await send("relevant_files_searched", `Found ${context.relevantFiles.length} relevant file${context.relevantFiles.length === 1 ? "" : "s"}`, {
             files: context.relevantFiles.map((file) => file.path),
           });
@@ -349,6 +453,7 @@ export async function POST(
           }
           const filePlan = planWorkspaceFiles(body.data.prompt);
           const outputBudget = estimateWorkspaceOutputBudget(body.data.prompt);
+          runtimeProfile.planning_ms = elapsedMs(taskStartedAt);
           await send("single_agent_plan_ready", "Planning", {
             plan: {
               request: "understood",
@@ -378,6 +483,7 @@ export async function POST(
               confidence: orchestration.confidence.score,
               elapsedMs: elapsedMs(taskStartedAt),
             });
+            runtimeProfile.model_request_ms = elapsedMs(taskStartedAt);
             await send("model_stream_started", "Model stream wait started", {
               provider: "openrouter",
               model: activeModel.model,
@@ -397,6 +503,7 @@ export async function POST(
             } finally {
               stopHeartbeat();
               timings.modelResponseMs = elapsedMs(modelStartedAt);
+              runtimeProfile.model_response_ms = Number(timings.modelResponseMs || 0);
             }
             await send("model_response_received", "Model response received", {
               elapsedMs: timings.modelResponseMs,
@@ -425,6 +532,7 @@ export async function POST(
           await send("parsing_started", "Parsing model response", { elapsedMs: elapsedMs(taskStartedAt) });
           let files = normalizeWorkspaceFileActions(Array.isArray(response.files) ? response.files : [], body.data.prompt);
           timings.parseMs = elapsedMs(parseStartedAt);
+          runtimeProfile.parser_ms = Number(timings.parseMs || 0);
           if (response.runtimeV4?.reflection) {
             await send(
               (response.runtimeV4.reflection as { ok?: boolean }).ok ? "local_reflection_done" : "local_reflection_failed",
@@ -480,6 +588,7 @@ export async function POST(
           let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {
             retries += 1;
+            const repairStartedAt = nowMs();
             await send("context_leak_detected", "Checking output", {
               missing: leakCheck.missingRequiredEntities,
               repairHints: leakCheck.repairHints,
@@ -519,6 +628,7 @@ TASK ISOLATION FIX:
               }
               response = { ...response, files, summary: isolatedResponse.summary || response.summary, warnings: [...(response.warnings || []), ...(isolatedResponse.warnings || []), ...leakCheck.findings] };
             }
+            runtimeProfile.repair_ms = (runtimeProfile.repair_ms || 0) + elapsedMs(repairStartedAt);
             await send(leakCheck.ok ? "context_leak_fixed" : "context_leak_warning", leakCheck.ok ? "Auto repair completed" : "Continuing with validation warning", {
               missing: leakCheck.missingRequiredEntities,
               repairHints: leakCheck.repairHints,
@@ -541,9 +651,11 @@ TASK ISOLATION FIX:
             });
           }
 
+          const validationStartedAt = nowMs();
           let reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
           if (reviewer.status === "block") {
             retries += 1;
+            const repairStartedAt = nowMs();
             await send("reviewer_needs_fix", reviewer.summary, { reviewer });
             const repairPaths = targetedRepairPaths(reviewer.findings, files);
             const repairSet = new Set(repairPaths);
@@ -567,6 +679,7 @@ TASK ISOLATION FIX:
               throw new Error("Targeted regeneration returned no valid file actions; no files were saved.");
             }
             reviewer = reviewWorkspaceFiles(files, orchestration.classification, body.data.prompt);
+            runtimeProfile.repair_ms = (runtimeProfile.repair_ms || 0) + elapsedMs(repairStartedAt);
             await send("targeted_repair_completed", "Targeted file repair completed", {
               fixed: reviewer.status !== "block",
               findings: reviewer.findings,
@@ -580,6 +693,7 @@ TASK ISOLATION FIX:
           if (security.status === "block") throw new Error(`Security reviewer blocked generated files: ${security.findings.join("; ")}`);
           const performance = performanceReviewWorkspaceFiles(files);
           await send("performance_reviewed", performance.summary, { performance });
+          runtimeProfile.validation_ms = elapsedMs(validationStartedAt);
           const changedFiles: Array<{ path: string; operation: string; added: number; removed: number; description?: string }> = [];
           await send("file_operation_queue_created", `Queued ${files.length} file operation${files.length === 1 ? "" : "s"}`, {
             operations: files.map((file, index) => ({ index, path: file.path, operation: file.operation })),
@@ -588,6 +702,8 @@ TASK ISOLATION FIX:
             if (!file.path) continue;
             await send("file_operation_queued", `Queued ${file.operation} ${file.path}`, { index, path: file.path, operation: file.operation });
           }
+          const allFileWriteStartedAt = nowMs();
+          let editorStreamMs = 0;
           for (const file of files) {
             const fileStartedAt = nowMs();
             if (!file.path) continue;
@@ -630,6 +746,7 @@ TASK ISOLATION FIX:
               });
               let draft = "";
               const chunks = streamChunks(file.path, finalContent);
+              const editorStreamStartedAt = nowMs();
               await send("live_typing_started", `Typing ${file.path}`, {
                 path: file.path,
                 operation: file.operation,
@@ -703,6 +820,7 @@ TASK ISOLATION FIX:
                   await sleep(24);
                 }
               }
+              editorStreamMs += elapsedMs(editorStreamStartedAt);
               await send("live_typing_completed", `Finished typing ${file.path}`, {
                 path: file.path,
                 operation: file.operation,
@@ -742,8 +860,10 @@ TASK ISOLATION FIX:
             });
             const eventType = file.operation === "create" ? "file_created" : file.operation === "delete" ? "file_deleted" : "file_updated";
             await send(eventType, `${file.operation === "create" ? "Created" : file.operation === "delete" ? "Deleted" : "Updated"} ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
-            await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
+              await send("diff_ready", `Diff ready for ${file.path}`, { path: file.path, operation: file.operation, added: diff.added, removed: diff.removed });
           }
+          runtimeProfile.file_write_ms = elapsedMs(allFileWriteStartedAt);
+          runtimeProfile.editor_stream_ms = editorStreamMs;
 
           if (isStaticWebsitePrompt(body.data.prompt)) {
             const finalCompletenessIssues = staticFileCompletenessIssues(files, body.data.prompt);
@@ -755,10 +875,12 @@ TASK ISOLATION FIX:
           await send("previewStatus", "Running preview", { status: "starting" });
           await send("server_starting", "Starting preview");
           await send("preview_started", "Starting preview", { status: "starting" });
+          runtimeProfile.preview_start_ms = elapsedMs(taskStartedAt);
           if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);
           const previewStartedAt = nowMs();
           const verification = await verifyStaticPreview(session.user.id, project.id);
           timings.previewVerifyMs = elapsedMs(previewStartedAt);
+          runtimeProfile.preview_verify_ms = Number(timings.previewVerifyMs || 0);
           await send("previewStatus", verification.verified ? "Preview verified" : "Preview needs repair", { status: verification.verified ? "verified" : "failed", verification });
           await send("server_ready", "Preview URL ready", { url: verification.url });
           await send(verification.verified ? "preview_verified" : "error", verification.message, { ...verification, elapsedMs: timings.previewVerifyMs });
@@ -807,6 +929,17 @@ TASK ISOLATION FIX:
             include: { diffs: true, runs: true, previews: true, logs: true, events: { orderBy: { sequence: "asc" } } },
           });
           await prisma.workspaceProject.update({ where: { id: project.id }, data: { qualityScore, lastPreviewUrl: verification.url } });
+          workspacePerformanceCache.set(project.id, {
+            projectFiles: files.filter((file) => file.operation !== "delete").map((file) => file.path).slice(0, 120),
+            projectType: fastStaticPath ? "static_website" : "workspace",
+            isStaticSite: fastStaticPath,
+            fileMetadata: files.map((file) => ({ path: file.path, language: file.path.split(".").pop(), status: file.operation })),
+            recentActiveFiles: files.map((file) => file.path).slice(0, 8),
+            projectSummary: summary,
+            stylePreferences: fastStaticPath ? ["static", "dependency_free", runtimeProfile.mode || "balanced"] : [],
+            lastSuccessfulOutputPattern: changedFiles.map((file) => `${file.operation}:${file.path}`),
+            updatedAt: Date.now(),
+          });
           await createNotification({
             userId: session.user.id,
             type: verification.verified ? "agent_task_completed" : "agent_task_failed",
@@ -909,6 +1042,19 @@ TASK ISOLATION FIX:
             fiveHour: usage.windows.FIVE_HOUR,
           });
           timings.totalMs = elapsedMs(taskStartedAt);
+          runtimeProfile.total_ms = Number(timings.totalMs || 0);
+          runtimeProfile.bottleneck = bottleneckFromProfile(runtimeProfile);
+          await prisma.workspaceLog.create({
+            data: {
+              userId: session.user.id,
+              projectId: project.id,
+              taskId: task.id,
+              level: "info",
+              event: "runtime_profile",
+              message: `Runtime profile: bottleneck=${runtimeProfile.bottleneck}`,
+              metadata: runtimeProfile,
+            },
+          }).catch(() => undefined);
           const responseSeconds = Math.max(0.001, Number(timings.modelResponseMs || 0) / 1000);
           const tokensPerSecond = Number((tokenUsage.outputTokens / responseSeconds).toFixed(2));
           const runtimeStats = {
@@ -923,10 +1069,18 @@ TASK ISOLATION FIX:
             filesWritten: changedFiles.length,
             previewStatus: verification.verified ? "verified" : "failed",
             outputBudget: response.runtimeV4?.outputBudget,
+            runtimeProfile: compactProfile(runtimeProfile),
+            performanceCache: runtimeProfile.cache,
+            speedMode: runtimeProfile.mode,
           };
+          await send("runtime_profile", "Runtime profile ready", {
+            profile: runtimeProfile,
+            compact: compactProfile(runtimeProfile),
+          });
           await send("speed_benchmark", "Workspace speed benchmark recorded", {
             timings,
             runtimeStats,
+            runtimeProfile,
             target: "BookNest prompt should stream first event immediately and avoid silent batching.",
           });
           await send("summary", summary, { changedFiles, preview, verification, qualityScore, offlineMode, creditsUsed: finalCredit.credits });

@@ -1781,21 +1781,25 @@ export async function askWorkspaceAgent(prompt: string, context: Awaited<ReturnT
     styleRules: taskIsolation.standaloneGeneration ? [] : context.memory?.designStyle || [],
     taskType: runtime?.taskType || "workspace_agent",
   });
+  const staticFastPrompt = isStaticWebsitePrompt(prompt) && runtime?.taskType === "workspace_agent_stream";
   const websiteDesignerRules = isStaticWebsitePrompt(prompt) ? `
-Website Designer Agent V2:
-- Enable DESIGN QUALITY MODE: AWARD WINNING / PIXEL PERFECT. Do not generate code immediately. Internally run intent detection, website category detection, visual designer, UX planner, layout planner, section planner, animation planner, color palette planner, typography planner, component planner, responsive planner, accessibility planner, code generation, self review, visual quality review, preview readiness, and improve if needed.
-- Before returning files, score visual design, responsiveness, animation, accessibility, code quality, and preview quality. If any score is below 9/10, improve the files again internally before returning.
-- Detect category internally from Restaurant, Hotel, Cafe, Portfolio, Agency, AI Startup, SaaS, E-commerce, Landing Page, Corporate, Healthcare, Education, Finance, Travel, Event, Photography, Construction, Real Estate, Gaming, Developer Tool, Open Source, Admin Dashboard, Blog, Documentation.
-- Give every website a distinct design system: palette, typography, spacing, radius, buttons, cards, shadows, icons, animation language.
-- Never return only a centered heading, paragraph, button, and footer. Use complete sections for the category.
-- Restaurant: hero, menu, popular items, chef, gallery, testimonials, location, contact, reservation CTA, footer.
-- SaaS: hero, features, how it works, integrations, pricing, testimonials, FAQ, CTA, footer.
-- Portfolio: hero, projects, skills, experience, testimonials, contact, footer.
-- For animated/modern/beautiful/premium/creative prompts, include tasteful IntersectionObserver reveals, hover motion, smooth scrolling, gradient/glass effects, responsive grids, and reduced-motion support.
-- Static website tasks must remain dependency-free unless explicitly asked. If the user says "only index.html, style.css, script.js", create exactly those three files and no README/internal files. Otherwise static sites may include README.md.
-- Premium pages must include strong first impression, animated gradient/background system, equal-height glass cards, CTA hierarchy, trust metrics, keyboard focus states, mobile navigation, FAQ accordion, no overflow at 390px, and reduced-motion support.
-- Internal visual score must be 95+ for hierarchy, spacing, typography, responsiveness, animation, color, component quality, completeness, accessibility, and preview quality before returning.` : "";
-  const system = `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
+Static Website Quality Contract:
+- Return complete dependency-free files only. Use index.html, style.css, and script.js for static landing pages unless the user explicitly requests more.
+- Keep output complete but concise. Do not include markdown, explanations, README, package files, raw JSON dumps, placeholders, or internal files.
+- Build a premium visual system with strong hero, polished sections, responsive cards, clear CTA hierarchy, accessible focus states, mobile navigation, FAQ/interactions when relevant, and reduced-motion support.
+- Include valid links from index.html to ./style.css and ./script.js.
+- Self-check before returning: non-empty HTML/CSS/JS, no overflow at mobile widths, no console-breaking JS, and visible copy must match the current prompt subject.` : "";
+  const system = staticFastPrompt ? `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
+Return JSON only:
+{
+  "plan": ["step"],
+  "files": [{"operation":"create|edit|delete","path":"relative/path","content":"full final content","description":"brief"}],
+  "commands": [],
+  "summary": "short final summary",
+  "warnings": []
+}
+Rules: one model only, current prompt wins, static files must be complete, concise, dependency-free, and production-quality.
+${websiteDesignerRules}` : `You are Meldex AI Workspace Agent powered by Qwen3-Coder.
 Return JSON only:
 {
   "plan": ["step"],
@@ -1835,6 +1839,18 @@ ${websiteDesignerRules}`;
     "Do not let old workspace content override this prompt. If old context conflicts, ignore the old context.",
     taskIsolation.standaloneGeneration ? "This is a fresh standalone generation. Generate files for this prompt only. Do not copy previous index.html/style.css/script.js concepts." : "",
   ].filter(Boolean).join("\n");
+  const userContent = staticFastPrompt
+    ? `${dominanceBlock}
+
+Task:
+${prompt}
+
+Output contract:
+- Create complete index.html, style.css, and script.js.
+- index.html links ./style.css and ./script.js.
+- No dependencies, no README, no package files, no old workspace content.
+- Keep output complete but concise.`
+    : `${dominanceBlock}\n\n${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files list only:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || (taskIsolation.standaloneGeneration ? "(old generated file content intentionally isolated for this new task)" : "(empty workspace)")}`;
   const completion = await generateChatCompletionWithUsage({
     temperature: 0.2,
     maxTokens: outputBudget.maxTokens,
@@ -1842,8 +1858,8 @@ ${websiteDesignerRules}`;
     userId: runtime?.userId,
     taskType: runtime?.taskType || "workspace_agent",
     messages: [
-      { role: "system", content: [system, orchestrationInstruction, "Use the Meldex CLI Runtime V4 contract below. Qwen3-Coder 32B is the only coding model."].filter(Boolean).join("\n\n") },
-      { role: "user", content: `${dominanceBlock}\n\n${runtimePrompt}\n\nTask:\n${prompt}\n\n${orchestrationInstruction ? `Runtime orchestration instruction:\n${orchestrationInstruction}\n\n` : ""}Project files list only:\n${context.projectFiles.join("\n") || "(empty)"}\n\n${context.memoryContext?.snippet || ""}\n\nRelevant context fallback:\n${fileContext || (taskIsolation.standaloneGeneration ? "(old generated file content intentionally isolated for this new task)" : "(empty workspace)")}` },
+      { role: "system", content: [system, orchestrationInstruction, staticFastPrompt ? "Qwen3-Coder 32B is the only coding model." : "Use the Meldex CLI Runtime V4 contract below. Qwen3-Coder 32B is the only coding model."].filter(Boolean).join("\n\n") },
+      { role: "user", content: userContent },
     ],
   });
   const parsed = parseAgentJson(completion.content);
@@ -1865,6 +1881,11 @@ ${websiteDesignerRules}`;
       confidence: runtimeV4.confidence,
       reflection,
       outputBudget,
+      promptCompression: {
+        enabled: staticFastPrompt,
+        inputChars: userContent.length,
+        omitted: staticFastPrompt ? ["runtime_v4_prompt", "full_memory_snippet", "relevant_file_contents", "workspace_docs"] : [],
+      },
     },
   };
 }
@@ -1876,23 +1897,23 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
   const premiumStatic = isStaticWebsitePrompt(prompt) && /\b(premium|award|beautiful|animated|modern|luxury|saas|responsive|polished|pixel[- ]perfect)\b/i.test(prompt);
   if (explicitLargeApp) {
     return {
-      maxTokens: 8192,
+      maxTokens: /\b(scaffold|full[- ]stack|multi[- ]page|large app)\b/i.test(prompt) ? 8600 : 7000,
       category: "large_app",
-      targetRange: "8000+",
+      targetRange: "7000-9000",
       reason: "Prompt asks for an app or framework-level project.",
     };
   }
   if (premiumStatic) {
     return {
-      maxTokens: 5600,
+      maxTokens: 5200,
       category: "premium_static_page",
-      targetRange: "5000-6500",
-      reason: "Premium static website needs richer sections without using the old 8192 default.",
+      targetRange: "4500-6000",
+      reason: "Premium static website uses a balanced budget for richer sections without 8192-token default.",
     };
   }
   if (landingPage) {
     return {
-      maxTokens: 4600,
+      maxTokens: 4400,
       category: "landing_page",
       targetRange: "4000-6000",
       reason: "Landing page needs complete sections while staying below large-project budgets.",
@@ -1900,10 +1921,18 @@ export function estimateWorkspaceOutputBudget(prompt: string) {
   }
   if (isStaticWebsitePrompt(prompt)) {
     return {
-      maxTokens: lower.includes("simple") ? 3200 : 4000,
+      maxTokens: lower.includes("simple") ? 3000 : 3800,
       category: "static_landing_page",
-      targetRange: "2500-4000",
+      targetRange: "3000-4000",
       reason: "Static landing page fast path keeps output compact and quick.",
+    };
+  }
+  if (/\b(change|update|fix|edit|modify|color|headline|copy|button)\b/i.test(prompt)) {
+    return {
+      maxTokens: 2200,
+      category: "small_edit",
+      targetRange: "1200-2500",
+      reason: "Small edit should avoid large output budgets.",
     };
   }
   return {
