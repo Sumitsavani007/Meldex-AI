@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { calculateCredits, canUseFeature, checkParallelTaskLimit, createUserNotification, featureBlockedResponse, getActiveGenerationModel, precheckUserAiRequest, recordAiCreditUsage, usageFromCompletion } from "@/lib/plans-credits";
 import { createNotification } from "@/lib/notifications";
 import { checkDynamicRateLimit, detectAbuse } from "@/lib/ai-infrastructure";
+import { testOpenRouterHealth } from "@/lib/provider-health";
 import { createWorkspaceEventBus } from "@/lib/workspace-event-bus";
 import {
   askWorkspaceAgent,
@@ -200,6 +201,19 @@ export async function POST(
             packageFiles: context.projectFiles.filter((file) => /(^|\/)package\.json$|(^|\/)requirements\.txt$|(^|\/)composer\.json$|(^|\/)pyproject\.toml$/i.test(file)).length,
             contextTokens,
           });
+          const providerSmokeStartedAt = nowMs();
+          const providerSmoke = await testOpenRouterHealth();
+          timings.providerSmokeMs = elapsedMs(providerSmokeStartedAt);
+          await send(providerSmoke.ok ? "provider_smoke_test" : "provider_failed", providerSmoke.ok ? "Provider smoke test passed" : providerSmoke.userMessage, {
+            ok: providerSmoke.ok,
+            provider: providerSmoke.provider,
+            model: providerSmoke.model,
+            statusCode: providerSmoke.statusCode,
+            code: providerSmoke.code,
+            latencyMs: providerSmoke.latencyMs,
+            elapsedMs: timings.providerSmokeMs,
+          });
+          if (!providerSmoke.ok) throw new Error(providerSmoke.userMessage);
           const fastStaticPath = isStaticWebsitePrompt(body.data.prompt) && !/\b(next|react|vite|api|backend|database|prisma|auth|dashboard|component|typescript|tsx)\b/i.test(body.data.prompt);
           const orchestration = fastStaticPath
             ? {
@@ -241,6 +255,12 @@ export async function POST(
           let autofixes = 0;
           try {
             await send("qwen_generation_started", "Qwen generation started", {
+              classification: orchestration.classification,
+              confidence: orchestration.confidence.score,
+              elapsedMs: elapsedMs(taskStartedAt),
+            });
+            await send("model_request_started", "Model request started", {
+              provider: "openrouter",
               classification: orchestration.classification,
               confidence: orchestration.confidence.score,
               elapsedMs: elapsedMs(taskStartedAt),
@@ -528,6 +548,7 @@ TASK ISOLATION FIX:
           }
           await send("previewStatus", "Running preview", { status: "starting" });
           await send("server_starting", "Starting preview");
+          await send("preview_started", "Starting preview", { status: "starting" });
           if (!previewGate.ok) throw new Error(`${previewGate.code}: ${previewGate.message}`);
           const previewStartedAt = nowMs();
           const verification = await verifyStaticPreview(session.user.id, project.id);
