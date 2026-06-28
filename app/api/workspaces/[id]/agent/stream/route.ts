@@ -302,11 +302,26 @@ export async function POST(
             }
           }
           if (!files.length && isStaticWebsitePrompt(body.data.prompt)) {
-            await send("invalid_model_output", "Model returned no valid file actions; no files were saved", {
-              promptType: "static_website",
-              guard: "provider_error_save_guard",
+            if (!response.rawContent?.trim()) {
+              await send("invalid_model_output", "Model returned no valid file actions; no files were saved", {
+                promptType: "static_website",
+                guard: "provider_error_save_guard",
+              });
+              throw new Error("Model returned no valid file actions; no files were saved.");
+            }
+            autofixes += 1;
+            const fallbackFiles = staticFallbackFiles(body.data.prompt, "provider returned no extractable file actions after successful response");
+            files = normalizeWorkspaceFileActions(fallbackFiles, body.data.prompt);
+            response = {
+              ...response,
+              files,
+              summary: response.summary || "Provider returned a valid response; Meldex repaired it into complete static files.",
+              warnings: [...(response.warnings || []), "Provider response had no extractable file actions; static file repair generated required files."],
+            };
+            await send("debugger_fix_applied", "Debugger generated required static files after successful but non-file model response", {
+              fixed: files.length > 0,
+              files: files.map((file) => ({ path: file.path, operation: file.operation })),
             });
-            throw new Error("Model returned no valid file actions; no files were saved.");
           }
           let leakCheck = detectWorkspaceContextLeak(files, body.data.prompt);
           if (!leakCheck.ok) {

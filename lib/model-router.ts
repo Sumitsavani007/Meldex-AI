@@ -302,8 +302,8 @@ function affordableMaxTokens(reason: string, requested?: number) {
   const match = reason.match(/can only afford\s+(\d+)/i);
   if (!match) return null;
   const affordable = Number(match[1]);
-  if (!Number.isFinite(affordable) || affordable < 256) return null;
-  const next = Math.max(256, affordable - 64);
+  if (!Number.isFinite(affordable) || affordable < 64) return null;
+  const next = Math.max(64, affordable - 16);
   if (requested && next >= requested) return null;
   return next;
 }
@@ -427,7 +427,21 @@ async function callConfiguredProvider(config: Awaited<ReturnType<typeof resolveP
     "HTTP-Referer": process.env.NEXTAUTH_URL ?? "https://meldex.newsyfly.com",
     "X-Title": "Meldex AI",
   } : undefined;
-  const result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs }, extraHeaders);
+  let result: CompletionResult;
+  try {
+    result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs }, extraHeaders);
+  } catch (err) {
+    if (err instanceof ModelRouterError && err.code === "insufficient_credits") {
+      const reducedMaxTokens = affordableMaxTokens(err.message, options.maxTokens);
+      if (reducedMaxTokens) {
+        result = await callOpenAICompatible(config.baseUrl, apiKey, model, { ...options, timeoutMs, maxTokens: reducedMaxTokens }, extraHeaders);
+      } else {
+        throw err;
+      }
+    } else {
+      throw err;
+    }
+  }
   return { ...result, provider, model };
 }
 
@@ -457,6 +471,14 @@ export class ModelRouterError extends Error {
   }
 }
 
+function safeProviderErrorSummary(err: ModelRouterError) {
+  const detail = err.message
+    .replace(/sk-or-v1-[A-Za-z0-9_-]+/g, "sk-or-v1-****")
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer ****")
+    .slice(0, 500);
+  return `${err.code}${err.httpStatus ? ` ${err.httpStatus}` : ""}${err.model ? ` ${err.model}` : ""}: ${detail}`;
+}
+
 /**
  * Generate a chat completion using the active provider.
  * Throws `ModelRouterError` for all provider-level failures.
@@ -482,7 +504,7 @@ export async function generateChatCompletionWithUsage(options: CompletionOptions
       return result;
     } catch (err) {
       const routerError = err instanceof ModelRouterError ? err : new ModelRouterError(err instanceof Error ? err.message : String(err), "provider_error");
-      errors.push(`${providerConfig.name}: ${routerError.code}`);
+      errors.push(`${providerConfig.name}: ${safeProviderErrorSummary(routerError)}`);
       await recordProviderHealth({
         providerConfigId: providerConfig.id,
         provider: providerConfig.provider,
@@ -504,7 +526,12 @@ export async function generateChatCompletionWithUsage(options: CompletionOptions
       if (provider === "custom_openai_compatible") return await callCustom(options);
       return await callOllama(options);
     }
-    throw new ModelRouterError(`All configured providers failed: ${errors.join(" → ") || "no provider available"}`, "provider_error", 502);
+    const allInsufficientCredits = errors.length > 0 && errors.every((item) => item.includes("insufficient_credits"));
+    throw new ModelRouterError(
+      `All configured providers failed: ${errors.join(" → ") || "no provider available"}`,
+      allInsufficientCredits ? "insufficient_credits" : "provider_error",
+      allInsufficientCredits ? 402 : 502
+    );
   } catch (err) {
     if (queue) await finishQueuedRequest(queue.id, QueueStatus.FAILED, { errors }).catch(() => undefined);
     if (err instanceof ModelRouterError) throw err;
