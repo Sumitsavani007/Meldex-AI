@@ -14,10 +14,19 @@ const MODEL_MAP: Record<string, { id: string; label: string; steps?: number }> =
   "Stable Diffusion XL": { id: "stabilityai/stable-diffusion-xl-base-1.0", label: "Stable Diffusion XL", steps: 30 },
 };
 
+const SCALE_MAP: Record<string, { width: number; height: number; size: string }> = {
+  "1:1": { width: 1024, height: 1024, size: "1024 x 1024" },
+  "9:16": { width: 768, height: 1344, size: "768 x 1344" },
+  "16:9": { width: 1344, height: 768, size: "1344 x 768" },
+};
+
 const schema = z.object({
   projectId: z.string().min(1),
   prompt: z.string().min(3).max(6000),
   model: z.string().default("FLUX.1 Schnell"),
+  imageScale: z.enum(["1:1", "9:16", "16:9"]).default("1:1"),
+  width: z.number().int().min(256).max(1536).optional(),
+  height: z.number().int().min(256).max(1536).optional(),
 });
 
 function getHuggingFaceToken() {
@@ -42,7 +51,7 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callHuggingFaceImage(modelId: string, prompt: string, steps: number) {
+async function callHuggingFaceImage(modelId: string, prompt: string, steps: number, dimensions: { width: number; height: number }) {
   const token = getHuggingFaceToken();
   if (!token) {
     return {
@@ -66,7 +75,11 @@ async function callHuggingFaceImage(modelId: string, prompt: string, steps: numb
         },
         body: JSON.stringify({
           inputs: prompt,
-          parameters: { num_inference_steps: steps },
+          parameters: {
+            num_inference_steps: steps,
+            width: dimensions.width,
+            height: dimensions.height,
+          },
           options: { wait_for_model: true, use_cache: false },
         }),
         signal: controller.signal,
@@ -111,6 +124,11 @@ export async function POST(request: Request) {
   if (!model) {
     return NextResponse.json({ error: "Selected image model is not available yet." }, { status: 400 });
   }
+  const scale = SCALE_MAP[parsed.data.imageScale] || SCALE_MAP["1:1"];
+  const dimensions = {
+    width: parsed.data.width || scale.width,
+    height: parsed.data.height || scale.height,
+  };
 
   const project = await prisma.studioProject.findFirst({
     where: { id: parsed.data.projectId, userId: session.user.id },
@@ -118,7 +136,7 @@ export async function POST(request: Request) {
   if (!project) return NextResponse.json({ error: "Studio project not found" }, { status: 404 });
 
   const startedAt = new Date();
-  const result = await callHuggingFaceImage(model.id, parsed.data.prompt.trim(), model.steps || 20);
+  const result = await callHuggingFaceImage(model.id, parsed.data.prompt.trim(), model.steps || 20, dimensions);
   const completedAt = new Date();
   const generated = result.ok;
   const output = generated ? {
@@ -127,6 +145,10 @@ export async function POST(request: Request) {
     mimeType: result.mimeType,
     provider: "huggingface",
     model: model.label,
+    aspectRatio: parsed.data.imageScale,
+    size: `${dimensions.width} x ${dimensions.height}`,
+    width: dimensions.width,
+    height: dimensions.height,
     createdAt: completedAt.toISOString(),
   } : null;
 
@@ -143,10 +165,19 @@ export async function POST(request: Request) {
         provider: "huggingface",
         model: model.label,
         modelId: model.id,
+        imageScale: parsed.data.imageScale,
+        width: dimensions.width,
+        height: dimensions.height,
         outputs: output ? [output] : [],
         error: generated ? null : result.message,
       } as Prisma.InputJsonValue,
-      settingsJson: { model: model.label, provider: "huggingface" } as Prisma.InputJsonValue,
+      settingsJson: {
+        model: model.label,
+        provider: "huggingface",
+        imageScale: parsed.data.imageScale,
+        width: dimensions.width,
+        height: dimensions.height,
+      } as Prisma.InputJsonValue,
       model: model.label,
       provider: "huggingface",
       outputUrl: output?.url,
@@ -169,6 +200,9 @@ export async function POST(request: Request) {
         provider: "huggingface",
         model: model.label,
         modelId: model.id,
+        imageScale: parsed.data.imageScale,
+        width: dimensions.width,
+        height: dimensions.height,
         durationMs: completedAt.getTime() - startedAt.getTime(),
       } as Prisma.InputJsonValue,
     },
@@ -181,6 +215,8 @@ export async function POST(request: Request) {
       settingsJson: {
         imagePrompt: parsed.data.prompt.trim(),
         imageModel: model.label,
+        aspectRatio: parsed.data.imageScale,
+        size: `${dimensions.width} x ${dimensions.height}`,
         imageResults: output ? [{
           id: generation.id,
           url: output.url,
@@ -188,6 +224,8 @@ export async function POST(request: Request) {
           providerMessage: "Image generated with Hugging Face.",
           provider: "huggingface",
           model: model.label,
+          aspectRatio: parsed.data.imageScale,
+          size: `${dimensions.width} x ${dimensions.height}`,
           createdAt: completedAt.toISOString(),
         }] : [],
       } as Prisma.InputJsonValue,

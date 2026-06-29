@@ -181,6 +181,11 @@ const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam",
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
 const imageModels = ["FLUX.1 Schnell", "FLUX Dev", "SDXL", "Stable Diffusion XL", "Future Models"];
+const imageScalePresets = [
+  { label: "Square", value: "1:1", size: "1024 x 1024", width: 1024, height: 1024 },
+  { label: "Portrait", value: "9:16", size: "768 x 1344", width: 768, height: 1344 },
+  { label: "Landscape", value: "16:9", size: "1344 x 768", width: 1344, height: 768 },
+] as const;
 const resolutions = [
   { label: "1080P", sub: "1920 x 1080", value: "1080p" },
   { label: "720P", sub: "1280 x 720", value: "720p" },
@@ -321,6 +326,7 @@ export default function StudioPage() {
   const timeline = latestGeneration?.storyboardJson?.timeline || scenes.map((scene, index) => ({ scene: index + 1, start: index * 4, end: (index + 1) * 4, label: scene.title }));
   const filteredProjects = projects.filter((project) => project.name.toLowerCase().includes(projectSearch.toLowerCase()));
   const referenceAsset = uploads.find((item) => item.type === "frame" || item.type === "clip");
+  const selectedImageScale = imageScalePresets.find((item) => item.value === imageSettings.aspectRatio) || imageScalePresets[0];
   const localProvider = providerStatuses.find((provider) => provider.status === "missing" && provider.key !== "openrouter");
   const progress = useMemo(() => {
     if (!loading && latestGeneration?.status === "COMPLETED") return 100;
@@ -638,6 +644,9 @@ export default function StudioPage() {
           projectId: project.id,
           prompt: imagePrompt,
           model: imageSettings.imageModel,
+          imageScale: selectedImageScale.value,
+          width: selectedImageScale.width,
+          height: selectedImageScale.height,
         }),
       });
       const data = await response.json();
@@ -651,8 +660,8 @@ export default function StudioPage() {
         provider: data.selectedProvider || data.provider,
         model: data.model || imageSettings.imageModel,
         seed: output.seed,
-        size: imageSettings.size,
-        aspectRatio: imageSettings.aspectRatio,
+        size: output.size || selectedImageScale.size,
+        aspectRatio: output.aspectRatio || selectedImageScale.value,
         createdAt: data.generation.createdAt,
       })) : [{
         id: data.generation.id,
@@ -660,8 +669,8 @@ export default function StudioPage() {
         providerMessage: data.providerMessage,
         provider: data.selectedProvider || data.provider,
         model: data.model || imageSettings.imageModel,
-        size: imageSettings.size,
-        aspectRatio: imageSettings.aspectRatio,
+        size: selectedImageScale.size,
+        aspectRatio: selectedImageScale.value,
         createdAt: data.generation.createdAt,
       }];
       const nextResults = [...mappedOutputs, ...imageResults].slice(0, 12);
@@ -1015,165 +1024,216 @@ export default function StudioPage() {
   );
 
   const imageCenterPanel = (
-    <section className="mx-auto w-full max-w-5xl space-y-5">
-      <div className="px-1 pt-2">
-        <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
-          <Sparkles className="size-3.5" /> Hugging Face image generation
-        </p>
-        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Generate Image</h1>
-        <p className={cn("mt-3 max-w-2xl text-sm leading-6 md:text-base", studioTokens.muted)}>
-          Select a model, describe the image, optionally enhance the prompt, then generate a real image.
-        </p>
+    <section className="mx-auto w-full max-w-[1500px] space-y-5">
+      <div className="flex flex-col gap-4 px-1 pt-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
+            <Sparkles className="size-3.5" /> Hugging Face image generation
+          </p>
+          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Generate Image</h1>
+          <p className={cn("mt-3 max-w-2xl text-sm leading-6 md:text-base", studioTokens.muted)}>
+            Prompt and scale stay on the right. Your generated image stays large on the left.
+          </p>
+        </div>
+        <div className={cn("inline-flex w-fit items-center gap-2 rounded-2xl border px-3 py-2 text-xs", studioTokens.soft)}>
+          <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_18px_rgba(16,185,129,.8)]" />
+          Real provider output only
+        </div>
       </div>
 
-      <section className={cn("overflow-hidden rounded-[28px] p-5 md:p-6", studioTokens.panel)}>
-        <div className="grid gap-5">
-          <label className="block">
-            <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
-            <select
-              value={imageSettings.imageModel}
-              onChange={(event) => {
-                setImageError("");
-                setImageSetting("imageModel", event.target.value);
-              }}
-              disabled={imageLoading || imageEnhancing}
-              className={cn("mt-2 h-14 w-full rounded-2xl px-4 text-base font-medium", studioTokens.input)}
-              aria-label="Image generation model"
-            >
-              {imageModels.map((model) => <option key={model}>{model}</option>)}
-            </select>
-            <span className={cn("mt-2 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
-          </label>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px]">
+        <section className={cn("order-2 rounded-[30px] p-4 md:p-5 xl:order-1", studioTokens.panel)}>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
+            <div>
+              <h2 className="text-lg font-semibold">Image Output</h2>
+              <p className={cn("mt-1 text-xs", studioTokens.muted)}>
+                {imageResults[0]?.url ? `${imageResults[0].model || imageSettings.imageModel} · ${imageResults[0].aspectRatio || selectedImageScale.value}` : "Generated image preview appears here."}
+              </p>
+            </div>
+            <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", studioTokens.soft)}>{selectedImageScale.size}</span>
+          </div>
 
-          <label className="block">
-            <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Prompt</span>
-            <div className="relative mt-2">
-              <textarea
-                ref={imagePromptRef}
-                value={imagePrompt}
+          {imageLoading ? (
+            <div className="relative min-h-[560px] overflow-hidden rounded-[26px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(139,92,246,0.34),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(217,70,239,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.08),transparent_36%)]" />
+              <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+              <div className="relative grid min-h-[510px] place-items-center text-center">
+                <div>
+                  <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-white/10 shadow-2xl shadow-violet-500/30 backdrop-blur">
+                    <Sparkles className="size-7 animate-pulse text-violet-200" />
+                  </div>
+                  <p className="mt-6 text-2xl font-semibold">Generating Image...</p>
+                  <p className="mt-2 text-sm text-white/62">Creating masterpiece with {imageSettings.imageModel}</p>
+                  <div className="mx-auto mt-7 h-2 w-64 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" />
+                  </div>
+                  <p className="mt-4 text-xs text-white/42">Estimated time depends on Hugging Face model warmup.</p>
+                </div>
+              </div>
+            </div>
+          ) : imageResults[0]?.url ? (
+            <article className="overflow-hidden rounded-[26px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
+              <div className="relative grid min-h-[560px] place-items-center bg-black">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageResults[0].url} alt="Generated image" className="max-h-[720px] w-full object-contain" />
+                <button
+                  onClick={() => setFullscreenImage(imageResults[0])}
+                  className="absolute right-4 top-4 grid size-11 place-items-center rounded-2xl border border-white/15 bg-black/45 text-white shadow-xl backdrop-blur transition hover:bg-black/65"
+                  aria-label="Open image fullscreen"
+                >
+                  <Maximize2 className="size-4" />
+                </button>
+              </div>
+              <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{imageResults[0].model || imageSettings.imageModel}</p>
+                  <p className={cn("mt-1 line-clamp-2 text-xs leading-5", studioTokens.muted)}>{imageResults[0].enhancedPrompt}</p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <a href={imageResults[0].url} download={`meldex-${Date.now()}.png`} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Download className="size-3.5" /> Download</a>
+                  <button onClick={() => navigator.clipboard?.writeText(imageResults[0].enhancedPrompt)} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Copy className="size-3.5" /> Copy Prompt</button>
+                  <button onClick={() => void runImageGeneration()} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><RefreshCw className="size-3.5" /> Regenerate</button>
+                  <button onClick={() => void reuseImageAsReference(imageResults[0])} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><ImageIcon className="size-3.5" /> Use as Reference</button>
+                </div>
+              </div>
+            </article>
+          ) : (
+            <div className={cn("relative grid min-h-[620px] place-items-center overflow-hidden rounded-[26px] border border-dashed text-center", studioTokens.soft)}>
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,.16),transparent_28%),radial-gradient(circle_at_78%_72%,rgba(14,165,233,.12),transparent_25%)]" />
+              <div className="relative max-w-sm px-6">
+                <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-500/10 text-violet-500">
+                  <ImageIcon className="size-8" />
+                </div>
+                <p className="mt-5 text-lg font-semibold">No image generated yet</p>
+                <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Write your prompt on the right and Meldex will render a real Hugging Face image here.</p>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <aside className={cn("order-1 h-fit rounded-[30px] p-5 md:p-6 xl:sticky xl:top-24 xl:order-2", studioTokens.panel)}>
+          <div className="mb-6">
+            <h2 className="flex items-center gap-3 text-lg font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
+            <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Keep it simple: model, image scale, prompt, generate.</p>
+          </div>
+
+          <div className="space-y-5">
+            <label className="block">
+              <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
+              <select
+                value={imageSettings.imageModel}
                 onChange={(event) => {
-                  setImagePrompt(event.target.value);
-                  if (imageError) setImageError("");
-                }}
-                onBlur={() => saveImageState({ prompt: imagePrompt }).catch(() => undefined)}
-                onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                    event.preventDefault();
-                    void runImageGeneration();
-                  }
+                  setImageError("");
+                  setImageSetting("imageModel", event.target.value);
                 }}
                 disabled={imageLoading || imageEnhancing}
-                className={cn("min-h-[190px] w-full resize-none rounded-[24px] p-5 pr-16 text-base leading-7", studioTokens.input)}
-                placeholder="Describe the image you want to generate..."
-                aria-label="Image prompt"
-              />
-              {imagePrompt && !imageLoading && !imageEnhancing && (
-                <button
-                  onClick={() => {
-                    setImagePrompt("");
-                    setImageError("");
-                  }}
-                  className={cn("absolute right-4 top-4 grid size-9 place-items-center rounded-full", studioTokens.soft)}
-                  aria-label="Clear prompt"
-                >
-                  <X className="size-4" />
-                </button>
-              )}
-            </div>
-            <span className={cn("mt-2 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Press Cmd/Ctrl + Enter to generate</span>
-          </label>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              onClick={enhanceCurrentImagePrompt}
-              disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-              className={cn("flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
-            >
-              {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-              Enhance Prompt
-            </button>
-            <button
-              onClick={runImageGeneration}
-              disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-              className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              Generate Image
-            </button>
-          </div>
-
-          {imageSettings.imageModel === "Future Models" && (
-            <div className="rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
-              Future Models are not enabled yet. Pick FLUX.1 Schnell, FLUX Dev, SDXL, or Stable Diffusion XL.
-            </div>
-          )}
-          {imageError && (
-            <div className="rounded-2xl border border-red-300/70 bg-red-50 px-4 py-4 text-sm text-red-700 shadow-sm dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200">
-              <p className="font-semibold">Image generation needs attention</p>
-              <p className="mt-1 leading-6">{imageError}</p>
-              <button onClick={() => void runImageGeneration()} disabled={imageLoading || !imagePrompt.trim()} className="mt-3 h-9 rounded-xl bg-red-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Retry</button>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className={cn("rounded-[28px] p-4 md:p-5", studioTokens.panel)}>
-        {imageLoading ? (
-          <div className="relative min-h-[430px] overflow-hidden rounded-[24px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,0.28),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(217,70,239,0.18),transparent_30%)]" />
-            <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-            <div className="relative grid min-h-[380px] place-items-center text-center">
-              <div>
-                <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-white/10 shadow-2xl shadow-violet-500/30 backdrop-blur">
-                  <Sparkles className="size-7 animate-pulse text-violet-200" />
-                </div>
-                <p className="mt-6 text-2xl font-semibold">Generating Image...</p>
-                <p className="mt-2 text-sm text-white/62">Creating masterpiece with {imageSettings.imageModel}</p>
-                <div className="mx-auto mt-7 h-2 w-56 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" />
-                </div>
-                <p className="mt-4 text-xs text-white/42">Estimated time depends on Hugging Face model warmup.</p>
-              </div>
-            </div>
-          </div>
-        ) : imageResults[0]?.url ? (
-          <article className="overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
-            <div className="relative bg-black">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={imageResults[0].url} alt="Generated image" className="max-h-[680px] w-full object-contain" />
-              <button
-                onClick={() => setFullscreenImage(imageResults[0])}
-                className="absolute right-4 top-4 grid size-11 place-items-center rounded-2xl border border-white/15 bg-black/45 text-white shadow-xl backdrop-blur transition hover:bg-black/65"
-                aria-label="Open image fullscreen"
+                className={cn("mt-2 h-14 w-full rounded-2xl px-4 text-base font-medium", studioTokens.input)}
+                aria-label="Image generation model"
               >
-                <Maximize2 className="size-4" />
+                {imageModels.map((model) => <option key={model}>{model}</option>)}
+              </select>
+              <span className={cn("mt-2 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
+            </label>
+
+            <div>
+              <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Image scale</span>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {imageScalePresets.map((scale) => {
+                  const active = selectedImageScale.value === scale.value;
+                  return (
+                    <button
+                      key={scale.value}
+                      onClick={() => {
+                        setImageError("");
+                        setImageSetting("aspectRatio", scale.value);
+                      }}
+                      disabled={imageLoading || imageEnhancing}
+                      className={cn(
+                        "rounded-2xl border px-3 py-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
+                        active ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : studioTokens.soft
+                      )}
+                    >
+                      <span className="block text-sm font-semibold">{scale.value}</span>
+                      <span className={cn("mt-1 block text-[11px]", active ? "text-white/72" : studioTokens.muted)}>{scale.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className={cn("mt-2 text-xs", studioTokens.muted)}>{selectedImageScale.size} output target. Unsupported provider sizes return a clean warning.</p>
+            </div>
+
+            <label className="block">
+              <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Prompt</span>
+              <div className="relative mt-2">
+                <textarea
+                  ref={imagePromptRef}
+                  value={imagePrompt}
+                  onChange={(event) => {
+                    setImagePrompt(event.target.value);
+                    if (imageError) setImageError("");
+                  }}
+                  onBlur={() => saveImageState({ prompt: imagePrompt }).catch(() => undefined)}
+                  onKeyDown={(event) => {
+                    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      void runImageGeneration();
+                    }
+                  }}
+                  disabled={imageLoading || imageEnhancing}
+                  className={cn("min-h-[240px] w-full resize-none rounded-[24px] p-5 pr-16 text-base leading-7", studioTokens.input)}
+                  placeholder="Describe the image you want to generate..."
+                  aria-label="Image prompt"
+                />
+                {imagePrompt && !imageLoading && !imageEnhancing && (
+                  <button
+                    onClick={() => {
+                      setImagePrompt("");
+                      setImageError("");
+                    }}
+                    className={cn("absolute right-4 top-4 grid size-9 place-items-center rounded-full", studioTokens.soft)}
+                    aria-label="Clear prompt"
+                  >
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+              <span className={cn("mt-2 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
+            </label>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <button
+                onClick={enhanceCurrentImagePrompt}
+                disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
+                className={cn("flex h-[52px] items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
+              >
+                {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+                Enhance
+              </button>
+              <button
+                onClick={runImageGeneration}
+                disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
+                className="flex h-[52px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                Generate
               </button>
             </div>
-            <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
-              <div>
-                <p className="text-sm font-semibold">{imageResults[0].model || imageSettings.imageModel}</p>
-                <p className={cn("mt-1 line-clamp-2 text-xs leading-5", studioTokens.muted)}>{imageResults[0].enhancedPrompt}</p>
+
+            {imageSettings.imageModel === "Future Models" && (
+              <div className="rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+                Future Models are not enabled yet. Pick FLUX.1 Schnell, FLUX Dev, SDXL, or Stable Diffusion XL.
               </div>
-              <div className="flex flex-wrap gap-2">
-                <a href={imageResults[0].url} download={`meldex-${Date.now()}.png`} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Download className="size-3.5" /> Download</a>
-                <button onClick={() => navigator.clipboard?.writeText(imageResults[0].enhancedPrompt)} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Copy className="size-3.5" /> Copy Prompt</button>
-                <button onClick={() => void runImageGeneration()} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><RefreshCw className="size-3.5" /> Regenerate</button>
-                <button onClick={() => void reuseImageAsReference(imageResults[0])} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><ImageIcon className="size-3.5" /> Use as Reference</button>
+            )}
+            {imageError && (
+              <div className="rounded-2xl border border-red-300/70 bg-red-50 px-4 py-4 text-sm text-red-700 shadow-sm dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200">
+                <p className="font-semibold">Image generation needs attention</p>
+                <p className="mt-1 leading-6">{imageError}</p>
+                <button onClick={() => void runImageGeneration()} disabled={imageLoading || !imagePrompt.trim()} className="mt-3 h-9 rounded-xl bg-red-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Retry</button>
               </div>
-            </div>
-          </article>
-        ) : (
-          <div className={cn("grid min-h-[390px] place-items-center rounded-[24px] border border-dashed text-center", studioTokens.soft)}>
-            <div className="max-w-sm px-6">
-              <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-500/10 text-violet-500">
-                <ImageIcon className="size-8" />
-              </div>
-              <p className="mt-5 text-lg font-semibold">Your image will appear here</p>
-              <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>No mock previews. Meldex will show a real Hugging Face result or a clean provider error.</p>
-            </div>
+            )}
           </div>
-        )}
-      </section>
+        </aside>
+      </div>
     </section>
   );
 
