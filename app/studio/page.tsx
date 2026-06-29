@@ -1024,14 +1024,14 @@ export default function StudioPage() {
   );
 
   const imageCenterPanel = (
-    <section className="mx-auto w-full max-w-[1500px] space-y-5">
-      <div className="flex flex-col gap-4 px-1 pt-2 lg:flex-row lg:items-end lg:justify-between">
+    <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-3 overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-3 px-1 pt-1 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
+          <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
             <Sparkles className="size-3.5" /> Hugging Face image generation
           </p>
-          <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Generate Image</h1>
-          <p className={cn("mt-3 max-w-2xl text-sm leading-6 md:text-base", studioTokens.muted)}>
+          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Generate Image</h1>
+          <p className={cn("mt-2 max-w-2xl text-sm leading-6", studioTokens.muted)}>
             Prompt and scale stay on the right. Your generated image stays large on the left.
           </p>
         </div>
@@ -1041,11 +1041,11 @@ export default function StudioPage() {
         </div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_430px]">
-        <section className={cn("order-2 rounded-[30px] p-4 md:p-5 xl:order-1", studioTokens.panel)}>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
+      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section className={cn("order-2 flex min-h-0 flex-col rounded-[26px] p-3 xl:order-1", studioTokens.panel)}>
+          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-1">
             <div>
-              <h2 className="text-lg font-semibold">Image Output</h2>
+              <h2 className="text-base font-semibold">Image Output</h2>
               <p className={cn("mt-1 text-xs", studioTokens.muted)}>
                 {imageResults[0]?.url ? `${imageResults[0].model || imageSettings.imageModel} · ${imageResults[0].aspectRatio || selectedImageScale.value}` : "Generated image preview appears here."}
               </p>
@@ -1054,10 +1054,10 @@ export default function StudioPage() {
           </div>
 
           {imageLoading ? (
-            <div className="relative min-h-[560px] overflow-hidden rounded-[26px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[24px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(139,92,246,0.34),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(217,70,239,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.08),transparent_36%)]" />
               <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
-              <div className="relative grid min-h-[510px] place-items-center text-center">
+              <div className="relative grid h-full place-items-center text-center">
                 <div>
                   <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-white/10 shadow-2xl shadow-violet-500/30 backdrop-blur">
                     <Sparkles className="size-7 animate-pulse text-violet-200" />
@@ -1072,10 +1072,10 @@ export default function StudioPage() {
               </div>
             </div>
           ) : imageResults[0]?.url ? (
-            <article className="overflow-hidden rounded-[26px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
-              <div className="relative grid min-h-[560px] place-items-center bg-black">
+            <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
+              <div className="relative grid min-h-0 flex-1 place-items-center bg-black">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageResults[0].url} alt="Generated image" className="max-h-[720px] w-full object-contain" />
+                <img src={imageResults[0].url} alt="Generated image" className="h-full max-h-full w-full object-contain" />
                 <button
                   onClick={() => setFullscreenImage(imageResults[0])}
                   className="absolute right-4 top-4 grid size-11 place-items-center rounded-2xl border border-white/15 bg-black/45 text-white shadow-xl backdrop-blur transition hover:bg-black/65"
@@ -1084,7 +1084,7 @@ export default function StudioPage() {
                   <Maximize2 className="size-4" />
                 </button>
               </div>
-              <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <div className="flex shrink-0 flex-col gap-3 p-3 md:flex-row md:items-center md:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{imageResults[0].model || imageSettings.imageModel}</p>
                   <p className={cn("mt-1 line-clamp-2 text-xs leading-5", studioTokens.muted)}>{imageResults[0].enhancedPrompt}</p>
@@ -1098,7 +1098,7 @@ export default function StudioPage() {
               </div>
             </article>
           ) : (
-            <div className={cn("relative grid min-h-[620px] place-items-center overflow-hidden rounded-[26px] border border-dashed text-center", studioTokens.soft)}>
+            <div className={cn("relative grid min-h-0 flex-1 place-items-center overflow-hidden rounded-[24px] border border-dashed text-center", studioTokens.soft)}>
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,.16),transparent_28%),radial-gradient(circle_at_78%_72%,rgba(14,165,233,.12),transparent_25%)]" />
               <div className="relative max-w-sm px-6">
                 <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-500/10 text-violet-500">
@@ -1111,13 +1111,13 @@ export default function StudioPage() {
           )}
         </section>
 
-        <aside className={cn("order-1 h-fit rounded-[30px] p-5 md:p-6 xl:sticky xl:top-24 xl:order-2", studioTokens.panel)}>
-          <div className="mb-6">
-            <h2 className="flex items-center gap-3 text-lg font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
-            <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Keep it simple: model, image scale, prompt, generate.</p>
+        <aside className={cn("order-1 flex min-h-0 flex-col rounded-[26px] p-4 xl:order-2", studioTokens.panel)}>
+          <div className="mb-4 shrink-0">
+            <h2 className="flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
+            <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Model, scale, prompt, generate.</p>
           </div>
 
-          <div className="space-y-5">
+          <div className="min-h-0 space-y-3">
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
               <select
@@ -1127,7 +1127,7 @@ export default function StudioPage() {
                   setImageSetting("imageModel", event.target.value);
                 }}
                 disabled={imageLoading || imageEnhancing}
-                className={cn("mt-2 h-14 w-full rounded-2xl px-4 text-base font-medium", studioTokens.input)}
+                className={cn("mt-2 h-12 w-full rounded-2xl px-4 text-base font-medium text-slate-950 dark:!text-white", studioTokens.input)}
                 aria-label="Image generation model"
               >
                 {imageModels.map((model) => <option key={model}>{model}</option>)}
@@ -1149,7 +1149,7 @@ export default function StudioPage() {
                       }}
                       disabled={imageLoading || imageEnhancing}
                       className={cn(
-                        "rounded-2xl border px-3 py-3 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
+                        "rounded-2xl border px-3 py-2.5 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
                         active ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : studioTokens.soft
                       )}
                     >
@@ -1159,7 +1159,7 @@ export default function StudioPage() {
                   );
                 })}
               </div>
-              <p className={cn("mt-2 text-xs", studioTokens.muted)}>{selectedImageScale.size} output target. Unsupported provider sizes return a clean warning.</p>
+              <p className={cn("mt-1.5 text-xs", studioTokens.muted)}>{selectedImageScale.size}. Unsupported provider sizes return a clean warning.</p>
             </div>
 
             <label className="block">
@@ -1180,7 +1180,7 @@ export default function StudioPage() {
                     }
                   }}
                   disabled={imageLoading || imageEnhancing}
-                  className={cn("min-h-[240px] w-full resize-none rounded-[24px] p-5 pr-16 text-base leading-7", studioTokens.input)}
+                  className={cn("h-[170px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-7 text-slate-950 dark:!text-white", studioTokens.input)}
                   placeholder="Describe the image you want to generate..."
                   aria-label="Image prompt"
                 />
@@ -1197,14 +1197,14 @@ export default function StudioPage() {
                   </button>
                 )}
               </div>
-              <span className={cn("mt-2 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
+              <span className={cn("mt-1.5 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <button
                 onClick={enhanceCurrentImagePrompt}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className={cn("flex h-[52px] items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
+                className={cn("flex h-12 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
               >
                 {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Enhance
@@ -1212,7 +1212,7 @@ export default function StudioPage() {
               <button
                 onClick={runImageGeneration}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className="flex h-[52px] items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+                className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Generate
@@ -1281,12 +1281,12 @@ export default function StudioPage() {
               <button className={cn("ml-auto grid size-9 place-items-center rounded-xl", studioTokens.soft)}><PanelLeftClose className="size-4" /></button>
             </div>
           </aside>
-          <main className="min-w-0 p-4 xl:p-6">
+          <main className={cn("min-w-0", activeNav === "image" ? "h-[calc(100vh-80px)] overflow-hidden p-3 xl:p-4" : "p-4 xl:p-6")}>
             {activeNav !== "image" && <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
             </div>}
             {activeNav === "image" ? (
-              <div className="min-w-0">
+              <div className="h-full min-w-0 overflow-hidden">
                 {imageCenterPanel}
               </div>
             ) : (
