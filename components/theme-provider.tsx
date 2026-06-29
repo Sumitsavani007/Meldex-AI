@@ -6,6 +6,7 @@ type ThemePreference = "light" | "dark" | "system";
 
 type ThemeContextValue = {
   theme: ThemePreference;
+  resolvedTheme: "light" | "dark";
   setTheme: (theme: ThemePreference) => void;
 };
 
@@ -15,33 +16,49 @@ function applyTheme(theme: ThemePreference) {
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const shouldUseDark = theme === "dark" || (theme === "system" && prefersDark);
   document.documentElement.classList.toggle("dark", shouldUseDark);
+  document.documentElement.dataset.theme = shouldUseDark ? "dark" : "light";
+  document.documentElement.style.colorScheme = shouldUseDark ? "dark" : "light";
+  return shouldUseDark ? "dark" : "light";
 }
 
 function useThemeState() {
   const [theme, setThemeState] = useState<ThemePreference>("system");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
     const stored = localStorage.getItem("meldex:theme") as ThemePreference | null;
     const initial = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
     setThemeState(initial);
-    applyTheme(initial);
+    setResolvedTheme(applyTheme(initial));
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
       const current = (localStorage.getItem("meldex:theme") as ThemePreference | null) ?? "system";
-      if (current === "system") applyTheme("system");
+      if (current === "system") setResolvedTheme(applyTheme("system"));
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== "meldex:theme") return;
+      const next = event.newValue === "light" || event.newValue === "dark" || event.newValue === "system"
+        ? event.newValue
+        : "system";
+      setThemeState(next);
+      setResolvedTheme(applyTheme(next));
     };
     media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      media.removeEventListener("change", onChange);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   function setTheme(nextTheme: ThemePreference) {
     localStorage.setItem("meldex:theme", nextTheme);
     setThemeState(nextTheme);
-    applyTheme(nextTheme);
+    setResolvedTheme(applyTheme(nextTheme));
   }
 
-  return { theme, setTheme };
+  return { theme, resolvedTheme, setTheme };
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

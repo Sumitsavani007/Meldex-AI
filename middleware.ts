@@ -20,6 +20,14 @@ export default auth((req) => {
       "/chat",
       "/workspace",
       "/settings",
+      "/studio",
+      "/agents",
+      "/templates",
+      "/files",
+      "/tasks",
+      "/models",
+      "/integrations",
+      "/billing",
       "/admin",
     ];
     const isProtected = protectedPaths.some((p) => pathname.startsWith(p));

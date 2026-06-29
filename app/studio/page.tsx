@@ -36,6 +36,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useThemePreference } from "@/components/theme-provider";
 
 type StudioAsset = {
   id: string;
@@ -258,7 +259,8 @@ function normalizeLocalImageSettings<T extends { imageModel: string; size: numbe
 
 export default function StudioPage() {
   const { data: session, status } = useSession({ required: true });
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const { resolvedTheme, setTheme } = useThemePreference();
+  const theme = resolvedTheme;
   const [activeNav, setActiveNav] = useState("studio");
   const [mobileTab, setMobileTab] = useState("create");
   const [projects, setProjects] = useState<StudioProject[]>([]);

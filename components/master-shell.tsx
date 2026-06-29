@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
@@ -26,6 +26,7 @@ import {
   WalletCards,
   Zap,
 } from "lucide-react";
+import { logoutFromMeldex } from "@/lib/client-session";
 
 type NavItem = {
   label: string;
@@ -224,7 +225,7 @@ export function MasterShell({ children }: { children: React.ReactNode }) {
               Quick actions
             </a>
             <button
-              onClick={() => signOut({ callbackUrl: "/master/login" })}
+              onClick={() => void logoutFromMeldex("/master/login")}
               className="grid size-9 place-items-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-white/[0.08] dark:text-slate-300 dark:hover:bg-white/[0.04]"
               title="Logout"
             >

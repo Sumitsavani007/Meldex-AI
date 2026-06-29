@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import {
   Bot,
@@ -26,6 +26,7 @@ import {
 import { useThemePreference } from "@/components/theme-provider";
 import { NotificationBell } from "@/components/notification-bell";
 import { cn } from "@/lib/utils";
+import { logoutFromMeldex } from "@/lib/client-session";
 
 export const userPanelNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -152,7 +153,7 @@ export function UserPanelShell({
                   </div>
                 </Link>
                 <button
-                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  onClick={() => void logoutFromMeldex("/login")}
                   className="mx-focus rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"
                   title="Logout"
                   aria-label="Logout"

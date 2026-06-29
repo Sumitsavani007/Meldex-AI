@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import {
   Bot,
   Box,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
+import { logoutFromMeldex } from "@/lib/client-session";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -169,7 +170,7 @@ export function UserPanelSidebar() {
               </div>}
             </Link>
             {expanded && <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
+              onClick={() => void logoutFromMeldex("/login")}
               className="mx-focus rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"
               title="Logout"
               aria-label="Logout"

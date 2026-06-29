@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import {
   Bot,
   MessageSquare,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
+import { logoutFromMeldex } from "@/lib/client-session";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -29,9 +30,10 @@ const navItems = [
 ];
 
 export function Header() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isAuthenticated = status === "authenticated" && Boolean(session);
 
   const logoutCallbackUrl = session?.user?.role === "OWNER" || pathname.startsWith("/admin")
     ? "/master/login"
@@ -49,7 +51,8 @@ export function Header() {
     pathname.startsWith("/files") ||
     pathname.startsWith("/tasks") ||
     pathname.startsWith("/models") ||
-    pathname.startsWith("/integrations")
+    pathname.startsWith("/integrations") ||
+    pathname.startsWith("/studio")
   ) return null;
 
   return (
@@ -66,7 +69,7 @@ export function Header() {
         </Link>
 
         {/* Desktop nav */}
-        {session && (
+        {isAuthenticated && (
           <nav className="hidden items-center gap-0.5 md:flex">
             {navItems.map((item) => {
               const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -91,7 +94,7 @@ export function Header() {
 
         {/* Right actions */}
         <div className="flex min-w-0 items-center gap-2">
-          {session ? (
+          {isAuthenticated ? (
             <>
               {/* User pill */}
               <div className="hidden items-center gap-2 sm:flex">
@@ -103,7 +106,7 @@ export function Header() {
                 </span>
               </div>
               <button
-                onClick={() => signOut({ callbackUrl: logoutCallbackUrl })}
+                onClick={() => void logoutFromMeldex(logoutCallbackUrl)}
                 className="mx-focus flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-600 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
               >
                 <LogOut className="size-3.5" />
@@ -129,7 +132,7 @@ export function Header() {
           )}
 
           {/* Mobile hamburger */}
-          {session && (
+          {isAuthenticated && (
             <button
               onClick={() => setMobileOpen(!mobileOpen)}
               className="ml-1 grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-100 dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/10 md:hidden"
@@ -142,7 +145,7 @@ export function Header() {
       </div>
 
       {/* Mobile menu */}
-      {mobileOpen && session && (
+      {mobileOpen && isAuthenticated && (
         <div className="border-t border-slate-200 bg-white/95 px-4 pb-3 dark:border-white/10 dark:bg-slate-950/95 md:hidden">
           <div className="relative mb-2 pt-3">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />

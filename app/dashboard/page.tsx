@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -14,20 +14,18 @@ import {
   FolderKanban,
   KeyRound,
   LayoutDashboard,
-  LogOut,
   MessageSquare,
   Moon,
   Plus,
   Search,
-  Settings,
   Sparkles,
   Sun,
   WalletCards,
   Workflow,
-  Plug,
 } from "lucide-react";
 import { useThemePreference } from "@/components/theme-provider";
 import { NotificationBell } from "@/components/notification-bell";
+import { UserPanelSidebar } from "@/components/user-panel-sidebar";
 import { cn } from "@/lib/utils";
 
 type Project = {
@@ -53,12 +51,6 @@ const primaryNav = [
   { href: "/models", label: "Models", icon: Bot },
 ];
 
-const toolNav = [
-  { href: "/integrations", label: "Integrations", icon: Plug },
-  { href: "/settings/tokens", label: "API Tokens", icon: KeyRound },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
-
 const quickActions = [
   { href: "/workspace", label: "Create workspace", icon: FolderKanban },
   { href: "/chat", label: "Start new chat", icon: MessageSquare },
@@ -75,99 +67,6 @@ function timeAgo(value?: string) {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
-}
-
-function UserSidebar({ email, name }: { email?: string | null; name?: string | null }) {
-  const pathname = usePathname();
-
-  return (
-    <aside className="hidden h-screen w-[232px] shrink-0 border-r border-slate-200 bg-white/90 p-3 text-slate-950 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0d]/90 dark:text-white lg:flex lg:flex-col">
-      <Link href="/dashboard" className="mx-focus mb-4 flex shrink-0 items-center gap-3 rounded-lg px-1">
-        <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-sm shadow-violet-600/20">
-          <Bot className="size-5" />
-        </span>
-        <span className="text-base font-semibold tracking-tight">Meldex AI</span>
-      </Link>
-
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-      <nav className="space-y-1">
-        {primaryNav.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
-                active
-                  ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white",
-              )}
-            >
-              <item.icon className="size-4" />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="mt-5">
-        <p className="mb-2 px-3 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500 dark:text-slate-500">Tools</p>
-        <nav className="space-y-1">
-          {toolNav.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(item.href + "/");
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "mx-focus flex h-9 items-center gap-3 rounded-lg px-3 text-[13px] font-medium transition",
-                  active
-                    ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white",
-                )}
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </div>
-      </div>
-
-      <div className="shrink-0 space-y-2 pt-3">
-        <Link
-          href="/settings"
-          className="mx-focus flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white"
-        >
-          <Settings className="size-4" />
-          Help & docs
-        </Link>
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-white/10 dark:bg-white/[0.04]">
-          <div className="flex items-center gap-2">
-            <Link href="/settings/profile" className="mx-focus flex min-w-0 flex-1 items-center gap-2 rounded-lg">
-              <span className="grid size-9 place-items-center rounded-full bg-violet-600 text-xs font-semibold text-white">
-                {(name?.[0] || email?.[0] || "U").toUpperCase()}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold">{name || "Meldex User"}</p>
-                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">{email}</p>
-              </div>
-            </Link>
-            <button
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="mx-focus grid size-8 place-items-center rounded-lg text-slate-500 hover:bg-white hover:text-slate-950 dark:hover:bg-white/8 dark:hover:text-white"
-              aria-label="Logout"
-              title="Logout"
-            >
-              <LogOut className="size-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
 }
 
 function MobileNav() {
@@ -264,7 +163,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-[#f8f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
       <div className="flex min-h-screen">
-        <UserSidebar email={session?.user?.email} name={session?.user?.name} />
+        <UserPanelSidebar />
 
         <div className="min-w-0 flex-1 pb-20 lg:pb-0">
           <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f8f7fb]/90 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90 sm:px-6 lg:px-8">

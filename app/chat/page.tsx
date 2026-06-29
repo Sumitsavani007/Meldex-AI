@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import {
   Archive,
   CheckCheck,
@@ -37,6 +37,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { UserPanelSidebar } from "@/components/user-panel-sidebar";
+import { logoutFromMeldex } from "@/lib/client-session";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -846,7 +847,7 @@ function Sidebar({
         <div className="border-t border-slate-200 p-2 dark:border-[#262626]">
           <button
             type="button"
-            onClick={() => void signOut()}
+            onClick={() => void logoutFromMeldex("/login")}
             className={[
               "mx-focus flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-slate-700 transition hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white",
               !expanded ? "justify-center" : "",
