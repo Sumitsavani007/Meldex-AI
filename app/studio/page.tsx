@@ -353,6 +353,18 @@ export default function StudioPage() {
   }, []);
 
   useEffect(() => {
+    if (activeNav !== "image") return undefined;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [activeNav]);
+
+  useEffect(() => {
     if (!promptRef.current) return;
     promptRef.current.style.height = "auto";
     promptRef.current.style.height = `${Math.max(216, promptRef.current.scrollHeight)}px`;
@@ -1024,18 +1036,18 @@ export default function StudioPage() {
   );
 
   const imageCenterPanel = (
-    <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-3 overflow-hidden">
-      <div className="flex shrink-0 flex-col gap-3 px-1 pt-1 lg:flex-row lg:items-end lg:justify-between">
+    <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-2 overflow-hidden">
+      <div className="flex shrink-0 flex-col gap-2 px-1 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
+          <p className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
             <Sparkles className="size-3.5" /> Hugging Face image generation
           </p>
-          <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">Generate Image</h1>
-          <p className={cn("mt-2 max-w-2xl text-sm leading-6", studioTokens.muted)}>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Generate Image</h1>
+          <p className={cn("mt-1 max-w-2xl text-sm leading-5", studioTokens.muted)}>
             Prompt and scale stay on the right. Your generated image stays large on the left.
           </p>
         </div>
-        <div className={cn("inline-flex w-fit items-center gap-2 rounded-2xl border px-3 py-2 text-xs", studioTokens.soft)}>
+        <div className={cn("inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-1.5 text-xs", studioTokens.soft)}>
           <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_18px_rgba(16,185,129,.8)]" />
           Real provider output only
         </div>
@@ -1111,13 +1123,13 @@ export default function StudioPage() {
           )}
         </section>
 
-        <aside className={cn("order-1 flex min-h-0 flex-col rounded-[26px] p-4 xl:order-2", studioTokens.panel)}>
-          <div className="mb-4 shrink-0">
+        <aside className={cn("order-1 flex min-h-0 flex-col rounded-[26px] p-3 xl:order-2", studioTokens.panel)}>
+          <div className="mb-3 shrink-0">
             <h2 className="flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
             <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Model, scale, prompt, generate.</p>
           </div>
 
-          <div className="min-h-0 space-y-3">
+          <div className="min-h-0 space-y-2.5">
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
               <select
@@ -1127,17 +1139,17 @@ export default function StudioPage() {
                   setImageSetting("imageModel", event.target.value);
                 }}
                 disabled={imageLoading || imageEnhancing}
-                className={cn("mt-2 h-12 w-full rounded-2xl px-4 text-base font-medium text-slate-950 dark:!text-white", studioTokens.input)}
+                className={cn("mt-1.5 h-11 w-full rounded-2xl px-4 text-base font-medium !text-slate-950 dark:!text-white", studioTokens.input)}
                 aria-label="Image generation model"
               >
                 {imageModels.map((model) => <option key={model}>{model}</option>)}
               </select>
-              <span className={cn("mt-2 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
+              <span className={cn("mt-1.5 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
             </label>
 
             <div>
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Image scale</span>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-1.5 grid grid-cols-3 gap-2">
                 {imageScalePresets.map((scale) => {
                   const active = selectedImageScale.value === scale.value;
                   return (
@@ -1149,22 +1161,22 @@ export default function StudioPage() {
                       }}
                       disabled={imageLoading || imageEnhancing}
                       className={cn(
-                        "rounded-2xl border px-3 py-2.5 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
+                        "rounded-2xl border px-3 py-2 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
                         active ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : studioTokens.soft
                       )}
                     >
                       <span className="block text-sm font-semibold">{scale.value}</span>
-                      <span className={cn("mt-1 block text-[11px]", active ? "text-white/72" : studioTokens.muted)}>{scale.label}</span>
+                      <span className={cn("mt-0.5 block text-[11px]", active ? "text-white/72" : studioTokens.muted)}>{scale.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <p className={cn("mt-1.5 text-xs", studioTokens.muted)}>{selectedImageScale.size}. Unsupported provider sizes return a clean warning.</p>
+              <p className={cn("mt-1 text-xs", studioTokens.muted)}>{selectedImageScale.size}. Unsupported sizes return a clean warning.</p>
             </div>
 
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Prompt</span>
-              <div className="relative mt-2">
+              <div className="relative mt-1.5">
                 <textarea
                   ref={imagePromptRef}
                   value={imagePrompt}
@@ -1180,7 +1192,7 @@ export default function StudioPage() {
                     }
                   }}
                   disabled={imageLoading || imageEnhancing}
-                  className={cn("h-[170px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-7 text-slate-950 dark:!text-white", studioTokens.input)}
+                  className={cn("h-[140px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-7 !text-slate-950 !placeholder:text-slate-500 dark:!text-white dark:!placeholder:text-white/45", studioTokens.input)}
                   placeholder="Describe the image you want to generate..."
                   aria-label="Image prompt"
                 />
@@ -1197,14 +1209,14 @@ export default function StudioPage() {
                   </button>
                 )}
               </div>
-              <span className={cn("mt-1.5 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
+              <span className={cn("mt-1 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <button
                 onClick={enhanceCurrentImagePrompt}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className={cn("flex h-12 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
+                className={cn("flex h-11 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
               >
                 {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Enhance
@@ -1212,7 +1224,7 @@ export default function StudioPage() {
               <button
                 onClick={runImageGeneration}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className="flex h-12 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+                className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Generate
@@ -1281,7 +1293,7 @@ export default function StudioPage() {
               <button className={cn("ml-auto grid size-9 place-items-center rounded-xl", studioTokens.soft)}><PanelLeftClose className="size-4" /></button>
             </div>
           </aside>
-          <main className={cn("min-w-0", activeNav === "image" ? "h-[calc(100vh-80px)] overflow-hidden p-3 xl:p-4" : "p-4 xl:p-6")}>
+          <main className={cn("min-w-0", activeNav === "image" ? "h-[calc(100dvh-80px)] overflow-hidden p-3 xl:p-4" : "p-4 xl:p-6")}>
             {activeNav !== "image" && <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
             </div>}
