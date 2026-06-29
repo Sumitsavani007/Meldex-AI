@@ -1037,8 +1037,8 @@ export default function StudioPage() {
 
   const imageCenterPanel = (
     <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col overflow-hidden">
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_405px]">
-        <section className={cn("order-2 flex min-h-0 flex-col rounded-[22px] p-2 xl:order-1", studioTokens.panel)}>
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[405px_minmax(0,1fr)]">
+        <section className={cn("order-2 flex min-h-0 flex-col rounded-[22px] p-2 xl:order-2", studioTokens.panel)}>
           <div className="mb-1.5 flex shrink-0 flex-wrap items-center justify-between gap-2 px-1">
             <div>
               <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-white/45">Image Output</h2>
@@ -1101,13 +1101,13 @@ export default function StudioPage() {
                   <ImageIcon className="size-8" />
                 </div>
                 <p className="mt-5 text-lg font-semibold">No image generated yet</p>
-                <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Write your prompt on the right and Meldex will render a real Hugging Face image here.</p>
+                <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Write your prompt on the left and Meldex will render a real Hugging Face image here.</p>
               </div>
             </div>
           )}
         </section>
 
-        <aside className={cn("order-1 flex h-full min-h-0 flex-col rounded-[22px] p-2.5 xl:order-2", studioTokens.panel)}>
+        <aside className={cn("order-1 flex h-full min-h-0 flex-col rounded-[22px] p-2.5 xl:order-1", studioTokens.panel)}>
           <div className="mb-2 shrink-0">
             <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-white/45"><SlidersHorizontal className="size-4 text-violet-500" /> Image Controls</h2>
           </div>
@@ -1205,7 +1205,7 @@ export default function StudioPage() {
           </div>
 
           <div className="mt-2 shrink-0 space-y-1.5">
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+            <div className="grid gap-2">
               <button
                 onClick={enhanceCurrentImagePrompt}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
@@ -1217,7 +1217,7 @@ export default function StudioPage() {
               <button
                 onClick={runImageGeneration}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-4 text-xs font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+                className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Generate Image
