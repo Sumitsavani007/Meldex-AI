@@ -1037,20 +1037,20 @@ export default function StudioPage() {
 
   const imageCenterPanel = (
     <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col overflow-hidden">
-      <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section className={cn("order-2 flex min-h-0 flex-col rounded-[26px] p-3 xl:order-1", studioTokens.panel)}>
-          <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-1">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_405px]">
+        <section className={cn("order-2 flex min-h-0 flex-col rounded-[22px] p-2 xl:order-1", studioTokens.panel)}>
+          <div className="mb-1.5 flex shrink-0 flex-wrap items-center justify-between gap-2 px-1">
             <div>
-              <h2 className="text-base font-semibold">Image Output</h2>
-              <p className={cn("mt-1 text-xs", studioTokens.muted)}>
+              <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-white/45">Image Output</h2>
+              <p className={cn("mt-0.5 text-[11px]", studioTokens.muted)}>
                 {imageResults[0]?.url ? `${imageResults[0].model || imageSettings.imageModel} · ${imageResults[0].aspectRatio || selectedImageScale.value}` : "Generated image preview appears here."}
               </p>
             </div>
-            <span className={cn("rounded-full border px-3 py-1 text-xs font-medium", studioTokens.soft)}>{selectedImageScale.size}</span>
+            <span className={cn("rounded-full border px-2.5 py-1 text-[11px] font-medium", studioTokens.soft)}>{selectedImageScale.size}</span>
           </div>
 
           {imageLoading ? (
-            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[24px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-[20px] border border-white/10 bg-[#090909] p-5 text-white shadow-2xl shadow-violet-950/30">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_18%,rgba(139,92,246,0.34),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(217,70,239,0.18),transparent_30%),linear-gradient(135deg,rgba(255,255,255,.08),transparent_36%)]" />
               <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
               <div className="relative grid h-full place-items-center text-center">
@@ -1068,7 +1068,7 @@ export default function StudioPage() {
               </div>
             </div>
           ) : imageResults[0]?.url ? (
-            <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
+            <article className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
               <div className="relative grid min-h-0 flex-1 place-items-center bg-black">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={imageResults[0].url} alt="Generated image" className="h-full max-h-full w-full object-contain" />
@@ -1094,7 +1094,7 @@ export default function StudioPage() {
               </div>
             </article>
           ) : (
-            <div className={cn("relative grid min-h-0 flex-1 place-items-center overflow-hidden rounded-[24px] border border-dashed text-center", studioTokens.soft)}>
+            <div className={cn("relative grid min-h-0 flex-1 place-items-center overflow-hidden rounded-[20px] border border-dashed text-center", studioTokens.soft)}>
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,.16),transparent_28%),radial-gradient(circle_at_78%_72%,rgba(14,165,233,.12),transparent_25%)]" />
               <div className="relative max-w-sm px-6">
                 <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-500/10 text-violet-500">
@@ -1107,13 +1107,12 @@ export default function StudioPage() {
           )}
         </section>
 
-        <aside className={cn("order-1 flex h-full min-h-0 flex-col rounded-[26px] p-3 xl:order-2", studioTokens.panel)}>
-          <div className="mb-3 shrink-0">
-            <h2 className="flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
-            <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Model, scale, prompt, generate.</p>
+        <aside className={cn("order-1 flex h-full min-h-0 flex-col rounded-[22px] p-2.5 xl:order-2", studioTokens.panel)}>
+          <div className="mb-2 shrink-0">
+            <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-white/45"><SlidersHorizontal className="size-4 text-violet-500" /> Image Controls</h2>
           </div>
 
-          <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden">
+          <div className="min-h-0 flex-1 space-y-2 overflow-hidden">
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
               <select
@@ -1127,17 +1126,17 @@ export default function StudioPage() {
                   color: theme === "dark" ? "#ffffff" : "#0f172a",
                   backgroundColor: theme === "dark" ? "#0f1720" : "#ffffff",
                 }}
-                className={cn("mt-1.5 h-11 w-full appearance-none rounded-2xl px-4 text-base font-medium", studioTokens.input)}
+                className={cn("mt-1 h-10 w-full appearance-none rounded-xl px-3 text-sm font-medium", studioTokens.input)}
                 aria-label="Image generation model"
               >
                 {imageModels.map((model) => <option key={model} className="bg-white text-slate-950 dark:bg-[#0f1720] dark:text-white">{model}</option>)}
               </select>
-              <span className={cn("mt-1.5 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
+              <span className={cn("mt-1 block text-[11px]", studioTokens.muted)}>Provider: Hugging Face</span>
             </label>
 
             <div>
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Image scale</span>
-              <div className="mt-1.5 grid grid-cols-3 gap-2">
+              <div className="mt-1 grid grid-cols-3 gap-1.5">
                 {imageScalePresets.map((scale) => {
                   const active = selectedImageScale.value === scale.value;
                   return (
@@ -1149,22 +1148,22 @@ export default function StudioPage() {
                       }}
                       disabled={imageLoading || imageEnhancing}
                       className={cn(
-                        "rounded-2xl border px-3 py-2 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
+                        "rounded-xl border px-2.5 py-1.5 text-left transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50",
                         active ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : studioTokens.soft
                       )}
                     >
-                      <span className="block text-sm font-semibold">{scale.value}</span>
+                      <span className="block text-xs font-semibold">{scale.value}</span>
                       <span className={cn("mt-0.5 block text-[11px]", active ? "text-white/72" : studioTokens.muted)}>{scale.label}</span>
                     </button>
                   );
                 })}
               </div>
-              <p className={cn("mt-1 text-xs", studioTokens.muted)}>{selectedImageScale.size}. Unsupported sizes return a clean warning.</p>
+              <p className={cn("mt-0.5 text-[11px]", studioTokens.muted)}>{selectedImageScale.size}. Unsupported sizes return warning.</p>
             </div>
 
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Prompt</span>
-              <div className="relative mt-1.5">
+              <div className="relative mt-1">
                 <textarea
                   ref={imagePromptRef}
                   value={imagePrompt}
@@ -1184,7 +1183,7 @@ export default function StudioPage() {
                     color: theme === "dark" ? "#ffffff" : "#0f172a",
                     backgroundColor: theme === "dark" ? "#0f1720" : "#ffffff",
                   }}
-                  className={cn("h-[118px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-6 !placeholder:text-slate-500 dark:!placeholder:text-white/45", studioTokens.input)}
+                  className={cn("h-[100px] min-h-0 w-full resize-none rounded-xl p-3 pr-12 text-sm leading-5 !placeholder:text-slate-500 dark:!placeholder:text-white/45", studioTokens.input)}
                   placeholder="Describe the image you want to generate..."
                   aria-label="Image prompt"
                 />
@@ -1201,16 +1200,16 @@ export default function StudioPage() {
                   </button>
                 )}
               </div>
-              <span className={cn("mt-1 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
+              <span className={cn("mt-0.5 block text-[11px]", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
             </label>
           </div>
 
-          <div className="mt-3 shrink-0 space-y-2">
+          <div className="mt-2 shrink-0 space-y-1.5">
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <button
                 onClick={enhanceCurrentImagePrompt}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className={cn("flex h-11 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft, "text-slate-950 dark:text-white")}
+                className={cn("flex h-10 items-center justify-center gap-2 rounded-xl border px-4 text-xs font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft, "text-slate-950 dark:text-white")}
               >
                 {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
                 Enhance Prompt
@@ -1218,7 +1217,7 @@ export default function StudioPage() {
               <button
                 onClick={runImageGeneration}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+                className="flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-4 text-xs font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
                 Generate Image
@@ -1247,25 +1246,25 @@ export default function StudioPage() {
     <div className={cn(theme === "dark" && "dark")}>
       <div className={cn("min-h-screen overflow-hidden transition-colors", studioTokens.app)}>
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)]" />
-        <header className={cn("relative z-20 flex h-20 items-center justify-between border-b px-6", studioTokens.line, theme === "dark" ? "bg-[#050911]/88" : "bg-white/88", "backdrop-blur-xl")}>
+        <header className={cn("relative z-20 flex items-center justify-between border-b px-6", activeNav === "image" ? "h-14" : "h-20", studioTokens.line, theme === "dark" ? "bg-[#050911]/88" : "bg-white/88", "backdrop-blur-xl")}>
           <div className="flex items-center gap-7">
             <a href="/dashboard" className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/30"><Sparkles className="size-5" /></span>
-              <span className="text-2xl font-bold tracking-tight">Meldex AI</span>
+              <span className={cn("grid place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/30", activeNav === "image" ? "size-8" : "size-9")}><Sparkles className="size-5" /></span>
+              <span className={cn("font-bold tracking-tight", activeNav === "image" ? "text-xl" : "text-2xl")}>Meldex AI</span>
             </a>
             <div className="hidden items-center gap-3 md:flex">
               <span className="grid size-8 place-items-center rounded-xl bg-violet-600/15 text-violet-500">{activeNav === "image" ? <Frame className="size-4" /> : <Clapperboard className="size-4" />}</span>
-              <span className="text-lg font-semibold">{activeNav === "image" ? "AI Studio / Generate Image" : "AI Studio"}</span>
+              <span className={cn("font-semibold", activeNav === "image" ? "text-base" : "text-lg")}>{activeNav === "image" ? "AI Studio / Generate Image" : "AI Studio"}</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={cn("grid size-11 place-items-center rounded-full border", studioTokens.soft)} title="Switch theme">{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
-            <button className={cn("relative grid size-11 place-items-center rounded-full border", studioTokens.soft)} title="Notifications"><Bell className="size-5" /><span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">3</span></button>
-            <Image src={avatarUrls[selectedAvatar] || avatarUrls[0]} alt="Profile" width={44} height={44} unoptimized className="size-11 rounded-full object-cover ring-2 ring-violet-500/40" />
+            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={cn("grid place-items-center rounded-full border", activeNav === "image" ? "size-9" : "size-11", studioTokens.soft)} title="Switch theme">{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
+            <button className={cn("relative grid place-items-center rounded-full border", activeNav === "image" ? "size-9" : "size-11", studioTokens.soft)} title="Notifications"><Bell className="size-5" /><span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">3</span></button>
+            <Image src={avatarUrls[selectedAvatar] || avatarUrls[0]} alt="Profile" width={44} height={44} unoptimized className={cn("rounded-full object-cover ring-2 ring-violet-500/40", activeNav === "image" ? "size-9" : "size-11")} />
             <button onClick={renameProject} className="hidden items-center gap-2 text-sm font-semibold md:flex">{session?.user?.name || "Dhaval"} <ChevronDown className="size-4" /></button>
           </div>
         </header>
-        <div className="relative z-10 grid min-h-[calc(100vh-80px)] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <div className={cn("relative z-10 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]", activeNav === "image" ? "min-h-[calc(100dvh-56px)]" : "min-h-[calc(100vh-80px)]")}>
           <aside className={cn("hidden border-r p-5 lg:flex lg:flex-col", studioTokens.line, theme === "dark" ? "bg-[#070c14]/80" : "bg-white/78", "backdrop-blur-xl")}>
             <nav className="space-y-3">
               {navItems.map((item) => (
@@ -1287,7 +1286,7 @@ export default function StudioPage() {
               <button className={cn("ml-auto grid size-9 place-items-center rounded-xl", studioTokens.soft)}><PanelLeftClose className="size-4" /></button>
             </div>
           </aside>
-          <main className={cn("min-w-0", activeNav === "image" ? "h-[calc(100dvh-80px)] overflow-hidden p-3 xl:p-4" : "p-4 xl:p-6")}>
+          <main className={cn("min-w-0", activeNav === "image" ? "h-[calc(100dvh-56px)] overflow-hidden p-2.5 xl:p-3" : "p-4 xl:p-6")}>
             {activeNav !== "image" && <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
             </div>}
