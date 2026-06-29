@@ -1036,23 +1036,7 @@ export default function StudioPage() {
   );
 
   const imageCenterPanel = (
-    <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col gap-2 overflow-hidden">
-      <div className="flex shrink-0 flex-col gap-2 px-1 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
-            <Sparkles className="size-3.5" /> Hugging Face image generation
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Generate Image</h1>
-          <p className={cn("mt-1 max-w-2xl text-sm leading-5", studioTokens.muted)}>
-            Prompt and scale stay on the right. Your generated image stays large on the left.
-          </p>
-        </div>
-        <div className={cn("inline-flex w-fit items-center gap-2 rounded-xl border px-3 py-1.5 text-xs", studioTokens.soft)}>
-          <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_18px_rgba(16,185,129,.8)]" />
-          Real provider output only
-        </div>
-      </div>
-
+    <section className="mx-auto flex h-full w-full max-w-[1500px] flex-col overflow-hidden">
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
         <section className={cn("order-2 flex min-h-0 flex-col rounded-[26px] p-3 xl:order-1", studioTokens.panel)}>
           <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-3 px-1">
@@ -1270,8 +1254,8 @@ export default function StudioPage() {
               <span className="text-2xl font-bold tracking-tight">Meldex AI</span>
             </a>
             <div className="hidden items-center gap-3 md:flex">
-              <span className="grid size-8 place-items-center rounded-xl bg-violet-600/15 text-violet-500"><Clapperboard className="size-4" /></span>
-              <span className="text-lg font-semibold">AI Studio</span>
+              <span className="grid size-8 place-items-center rounded-xl bg-violet-600/15 text-violet-500">{activeNav === "image" ? <Frame className="size-4" /> : <Clapperboard className="size-4" />}</span>
+              <span className="text-lg font-semibold">{activeNav === "image" ? "AI Studio / Generate Image" : "AI Studio"}</span>
             </div>
           </div>
           <div className="flex items-center gap-4">
