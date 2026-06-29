@@ -716,6 +716,8 @@ function Sidebar({
   userEmail?: string | null;
 }) {
   const [query, setQuery] = useState("");
+  const [hovered, setHovered] = useState(false);
+  const expanded = !collapsed || hovered;
   const visibleConversations = conversations
     .filter((conv) => !conv.archived)
     .filter((conv) => conv.title.toLowerCase().includes(query.toLowerCase()))
@@ -735,9 +737,12 @@ function Sidebar({
         />
       )}
       <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         className={[
-          "fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-white transition-all duration-200 dark:border-[#262626] dark:bg-[#111111] lg:relative lg:translate-x-0",
-          collapsed ? "lg:w-[68px]" : "w-[260px]",
+          "fixed inset-y-0 left-0 z-40 flex border-r border-slate-200 bg-white/95 backdrop-blur-xl transition-all duration-300 ease-out dark:border-[#262626] dark:bg-[#111111]/95 lg:relative lg:translate-x-0",
+          "w-[260px]",
+          expanded ? "lg:w-[260px]" : "lg:w-[68px]",
           open ? "translate-x-0" : "-translate-x-full",
         ].join(" ")}
       >
@@ -746,12 +751,12 @@ function Sidebar({
           <button
             type="button"
             onClick={onToggleCollapsed}
-            className="mx-focus hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white lg:grid"
+            className={["mx-focus hidden rounded-lg p-2 text-slate-500 transition hover:bg-slate-200 hover:text-slate-950 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white lg:grid", !expanded ? "lg:hidden" : ""].join(" ")}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </button>
-          {!collapsed && <span className="text-sm font-semibold text-slate-950 dark:text-white">New Chat</span>}
+          {expanded && <span className="text-sm font-semibold text-slate-950 dark:text-white">New Chat</span>}
           <div className="flex gap-1">
             <button
               onClick={onNew}
@@ -768,7 +773,7 @@ function Sidebar({
             </button>
           </div>
         </div>
-        {!collapsed && <div className="px-3 pb-3">
+        {expanded && <div className="px-3 pb-3">
           <button
             type="button"
             onClick={onNew}
@@ -788,7 +793,7 @@ function Sidebar({
           </label>
         </div>}
         <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-3">
-          {collapsed ? (
+          {!expanded ? (
             <div className="grid gap-1 pt-1">
               <button
                 type="button"
@@ -844,13 +849,13 @@ function Sidebar({
             onClick={() => void signOut()}
             className={[
               "mx-focus flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-slate-700 transition hover:bg-slate-200 dark:text-[#a1a1aa] dark:hover:bg-[#202020] dark:hover:text-white",
-              collapsed ? "justify-center" : "",
+              !expanded ? "justify-center" : "",
             ].join(" ")}
           >
             <span className="grid size-8 shrink-0 place-items-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-[#2f2f2f]">
               {(userEmail?.[0] ?? "U").toUpperCase()}
             </span>
-            {!collapsed && (
+            {expanded && (
               <>
                 <span className="min-w-0 flex-1 truncate">{userEmail ?? "Account"}</span>
                 <LogOut className="size-4 text-slate-400" />
@@ -977,7 +982,7 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [showAgentSuggestion, setShowAgentSuggestion] = useState(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -989,7 +994,8 @@ export default function ChatPage() {
   useEffect(() => {
     const storedMode = localStorage.getItem("meldex:chatMode") as ChatMode | null;
     if (storedMode === "chat" || storedMode === "agent") setMode(storedMode);
-    setSidebarCollapsed(localStorage.getItem("meldex:sidebarCollapsed") === "true");
+    const storedCollapsed = localStorage.getItem("meldex:sidebarCollapsed");
+    setSidebarCollapsed(storedCollapsed === null ? true : storedCollapsed === "true");
     const storedConversations = localStorage.getItem("meldex:conversations");
     if (storedConversations) {
       try {
@@ -1324,7 +1330,7 @@ export default function ChatPage() {
       {/* Main chat column */}
       <div className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#0d0d0d]">
         {/* Header */}
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white/92 px-3 py-3 backdrop-blur-xl sm:px-4 dark:border-white/10 dark:bg-[#0d0d0d]/92">
+        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white/90 px-3 py-2.5 backdrop-blur-xl sm:px-4 dark:border-white/10 dark:bg-[#0d0d0d]/90">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -1333,7 +1339,7 @@ export default function ChatPage() {
             >
               <Menu className="size-5" />
             </button>
-            <div className="rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-800 dark:text-white">
+            <div className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-800 dark:text-white">
               New Chat
             </div>
             {isAdmin && <ModeBadge mode={mode} />}

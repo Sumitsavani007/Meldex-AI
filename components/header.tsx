@@ -53,8 +53,8 @@ export function Header() {
   ) return null;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-xl dark:border-white/10 dark:bg-black/85">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/82 shadow-sm shadow-slate-950/[0.03] backdrop-blur-xl dark:border-white/10 dark:bg-black/72 dark:shadow-none">
+      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
         {/* Logo */}
         <Link href="/" className="mx-focus flex items-center gap-2.5 rounded-lg">
           <span className="relative grid size-8 place-items-center rounded-lg border border-slate-200 bg-slate-950 text-white shadow-sm dark:border-white/10 dark:bg-white dark:text-slate-950">
