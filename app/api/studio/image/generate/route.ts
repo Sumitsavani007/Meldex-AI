@@ -3,137 +3,160 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { enhanceImagePrompt, type ImageStudioSettings } from "@/lib/ai-studio-image";
-import { generateImageWithProvider, getImageProviderStatuses, selectImageProvider } from "@/lib/ai-studio-image-provider";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const referenceSchema = z.object({
-  id: z.string(),
-  type: z.enum(["Face", "Character", "Couple", "Style"]),
-  name: z.string(),
-  dataUrl: z.string().max(12_000_000).optional(),
-  mimeType: z.string().optional(),
-  sizeBytes: z.number().int().nonnegative().max(8 * 1024 * 1024).optional(),
-});
+const MODEL_MAP: Record<string, { id: string; label: string; steps?: number }> = {
+  "FLUX.1 Schnell": { id: "black-forest-labs/FLUX.1-schnell", label: "FLUX.1 Schnell", steps: 4 },
+  "FLUX Dev": { id: "black-forest-labs/FLUX.1-dev", label: "FLUX Dev", steps: 20 },
+  SDXL: { id: "stabilityai/stable-diffusion-xl-base-1.0", label: "SDXL", steps: 30 },
+  "Stable Diffusion XL": { id: "stabilityai/stable-diffusion-xl-base-1.0", label: "Stable Diffusion XL", steps: 30 },
+};
 
 const schema = z.object({
   projectId: z.string().min(1),
-  prompt: z.string().min(1).max(8000),
-  settings: z.object({
-    model: z.string().optional(),
-    imageModel: z.string().default("SDXL Turbo"),
-    mode: z.enum(["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"]).default("Text only"),
-    aspectRatio: z.string().default("16:9"),
-    size: z.number().int().min(256).max(2048).default(1024),
-    quality: z.string().default("Balanced"),
-    seedMode: z.enum(["Random", "Custom"]).default("Random"),
-    seed: z.string().optional(),
-    steps: z.number().int().min(1).max(60).default(8),
-    negativePrompt: z.string().optional(),
-    style: z.string().default("Realistic"),
-    identityLock: z.boolean().default(false),
-    faceSimilarity: z.number().min(50).max(100).default(90),
-    referenceStrength: z.number().min(0).max(100).default(80),
-    preserveFaceStructure: z.boolean().default(true),
-    preserveSkinTone: z.boolean().default(true),
-    preserveHair: z.boolean().default(true),
-    preserveAge: z.boolean().default(true),
-    referenceType: z.enum(["Face", "Character", "Couple", "Style"]).default("Face"),
-  }),
-  references: z.array(referenceSchema).max(8).default([]),
+  prompt: z.string().min(3).max(6000),
+  model: z.string().default("FLUX.1 Schnell"),
 });
+
+function getHuggingFaceToken() {
+  return (
+    process.env.HF_TOKEN ||
+    process.env.HUGGINGFACE_API_KEY ||
+    process.env.HUGGING_FACE_API_KEY ||
+    process.env.HUGGINGFACE_TOKEN ||
+    ""
+  ).trim();
+}
+
+function cleanProviderMessage(status: number, detail: string) {
+  if (status === 401 || status === 403) return "Hugging Face access is not authorized for this model. Check the API token and model access.";
+  if (status === 404) return "Selected Hugging Face model was not found.";
+  if (status === 429) return "Hugging Face is rate limiting requests. Please retry in a moment.";
+  if (status === 503) return "The selected model is warming up or temporarily unavailable. Please retry shortly.";
+  return detail.slice(0, 220) || "Image provider returned an error.";
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function callHuggingFaceImage(modelId: string, prompt: string, steps: number) {
+  const token = getHuggingFaceToken();
+  if (!token) {
+    return {
+      ok: false as const,
+      status: 503,
+      message: "Hugging Face API key is not configured. Add HF_TOKEN or HUGGINGFACE_API_KEY to the server environment.",
+    };
+  }
+
+  let lastMessage = "Image generation failed.";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120_000);
+    try {
+      const response = await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "image/png",
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+          parameters: { num_inference_steps: steps },
+          options: { wait_for_model: true, use_cache: false },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const contentType = response.headers.get("content-type") || "";
+      if (response.ok && contentType.startsWith("image/")) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        return {
+          ok: true as const,
+          mimeType: contentType.split(";")[0] || "image/png",
+          dataUrl: `data:${contentType.split(";")[0] || "image/png"};base64,${buffer.toString("base64")}`,
+        };
+      }
+
+      const detail = await response.text().catch(() => "");
+      lastMessage = cleanProviderMessage(response.status, detail);
+      if (![429, 500, 502, 503, 504].includes(response.status)) break;
+    } catch (error) {
+      clearTimeout(timeout);
+      lastMessage = error instanceof DOMException && error.name === "AbortError"
+        ? "Image generation timed out. Please retry with a shorter prompt or another model."
+        : "Unable to reach Hugging Face image provider.";
+    }
+    await sleep(900 * (attempt + 1));
+  }
+
+  return { ok: false as const, status: 502, message: lastMessage };
+}
 
 export async function POST(request: Request) {
   const { session, error } = await requireAuth();
   if (error) return error;
-  const body = schema.safeParse(await request.json().catch(() => ({})));
-  if (!body.success) return NextResponse.json({ error: body.error.issues[0]?.message || "Invalid image generation request" }, { status: 400 });
 
-  const project = await prisma.studioProject.findFirst({ where: { id: body.data.projectId, userId: session.user.id } });
+  const parsed = schema.safeParse(await request.json().catch(() => ({})));
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues[0]?.message || "Invalid image generation request" }, { status: 400 });
+  }
+
+  const model = MODEL_MAP[parsed.data.model];
+  if (!model) {
+    return NextResponse.json({ error: "Selected image model is not available yet." }, { status: 400 });
+  }
+
+  const project = await prisma.studioProject.findFirst({
+    where: { id: parsed.data.projectId, userId: session.user.id },
+  });
   if (!project) return NextResponse.json({ error: "Studio project not found" }, { status: 404 });
-  const invalidReference = body.data.references.find((reference) => {
-    if (reference.mimeType && !reference.mimeType.startsWith("image/")) return true;
-    if (reference.dataUrl && !reference.dataUrl.startsWith("data:image/") && !/^https:\/\//.test(reference.dataUrl)) return true;
-    return false;
-  });
-  if (invalidReference) return NextResponse.json({ error: "Only image references are allowed" }, { status: 400 });
 
-  const settings = body.data.settings as ImageStudioSettings;
-  const references = body.data.references.map((reference) => ({
-    type: reference.type,
-    name: reference.name,
-    mimeType: reference.mimeType,
-    sizeBytes: reference.sizeBytes,
-    dataUrl: reference.dataUrl,
-  }));
-
-  const result = await enhanceImagePrompt(body.data.prompt, settings, references, { userId: session.user.id });
-  const selectedProvider = selectImageProvider({ references, settings });
-  const providerStatuses = await getImageProviderStatuses();
-  const generationResult = await generateImageWithProvider({
-    prompt: result.plan.enhancedPrompt,
-    negativePrompt: result.plan.negativePrompt,
-    settings,
-    references,
-    plan: result.plan,
-  });
-  const generated = generationResult.ok;
-  const status = generated ? "COMPLETED" : "FAILED";
-  const message = generated ? "Image generated successfully." : generationResult.message;
-  const outputs = generated ? generationResult.outputs : [];
+  const startedAt = new Date();
+  const result = await callHuggingFaceImage(model.id, parsed.data.prompt.trim(), model.steps || 20);
+  const completedAt = new Date();
+  const generated = result.ok;
+  const output = generated ? {
+    id: `hf-${completedAt.getTime()}`,
+    url: result.dataUrl,
+    mimeType: result.mimeType,
+    provider: "huggingface",
+    model: model.label,
+    createdAt: completedAt.toISOString(),
+  } : null;
 
   const generation = await prisma.studioGeneration.create({
     data: {
       userId: session.user.id,
       projectId: project.id,
       type: "TEXT_TO_IMAGE",
-      status,
-      sourcePrompt: body.data.prompt,
-      detectedLanguage: result.plan.detectedLanguage,
-      enhancedPrompt: result.plan.enhancedPrompt,
-      negativePrompt: result.plan.negativePrompt,
+      status: generated ? "COMPLETED" : "FAILED",
+      sourcePrompt: parsed.data.prompt.trim(),
+      enhancedPrompt: parsed.data.prompt.trim(),
       storyboardJson: {
-        kind: "image_generation",
-        referenceSummary: result.plan.referenceSummary,
-        providerPayload: result.plan.providerPayload,
-        providerStatus: { configured: generated, message, selectedProvider, providers: providerStatuses },
-        outputs,
-        notes: result.plan.notes,
-        providerError: generationResult.ok ? null : { code: generationResult.code, message: generationResult.message },
+        kind: "minimal_image_generation",
+        provider: "huggingface",
+        model: model.label,
+        modelId: model.id,
+        outputs: output ? [output] : [],
+        error: generated ? null : result.message,
       } as Prisma.InputJsonValue,
-      settingsJson: { ...settings, references } as Prisma.InputJsonValue,
-      model: result.model,
-      provider: result.provider,
-      outputUrl: outputs[0]?.url,
-      thumbnailUrl: outputs[0]?.url,
-      error: generated ? null : generationResult.message,
+      settingsJson: { model: model.label, provider: "huggingface" } as Prisma.InputJsonValue,
+      model: model.label,
+      provider: "huggingface",
+      outputUrl: output?.url,
+      thumbnailUrl: output?.url,
+      error: generated ? null : result.message,
       progress: 100,
-      startedAt: new Date(),
-      completedAt: new Date(),
+      startedAt,
+      completedAt,
     },
   });
-
-  if (body.data.references.length) {
-    await prisma.studioAsset.createMany({
-      data: body.data.references.map((reference) => ({
-        userId: session.user.id,
-        projectId: project.id,
-        type: `IMAGE_REFERENCE_${reference.type.toUpperCase()}`,
-        name: reference.name,
-        url: reference.dataUrl,
-        mimeType: reference.mimeType,
-        sizeBytes: reference.sizeBytes || 0,
-        metadataJson: {
-          source: "generate_image",
-          identityLock: settings.identityLock,
-          faceSimilarity: settings.faceSimilarity,
-          referenceType: reference.type,
-        } as Prisma.InputJsonValue,
-      })),
-    });
-  }
 
   await prisma.studioHistory.create({
     data: {
@@ -141,15 +164,12 @@ export async function POST(request: Request) {
       projectId: project.id,
       generationId: generation.id,
       action: generated ? "image_generation_completed" : "image_generation_failed",
-      summary: generated ? "Image generated successfully." : message,
+      summary: generated ? "Image generated with Hugging Face." : result.message,
       metadataJson: {
-        model: result.model,
-        provider: result.provider,
-        usage: result.usage,
-        imageProvider: selectedProvider,
-        providerStatus: { generated, providers: providerStatuses },
-        outputs,
-        referenceCount: body.data.references.length,
+        provider: "huggingface",
+        model: model.label,
+        modelId: model.id,
+        durationMs: completedAt.getTime() - startedAt.getTime(),
       } as Prisma.InputJsonValue,
     },
   });
@@ -158,39 +178,38 @@ export async function POST(request: Request) {
     where: { id: project.id },
     data: {
       mode: "TEXT_TO_IMAGE",
-      aspectRatio: settings.aspectRatio,
-      resolution: `${settings.size}`,
-      seed: settings.seedMode === "Custom" ? settings.seed : null,
-      styleLock: settings.style,
       settingsJson: {
-        imagePrompt: body.data.prompt,
-        imageSettings: settings,
-        imageReferences: body.data.references,
-        imageResults: outputs.map((output) => ({
+        imagePrompt: parsed.data.prompt.trim(),
+        imageModel: model.label,
+        imageResults: output ? [{
           id: generation.id,
           url: output.url,
-          enhancedPrompt: result.plan.enhancedPrompt,
-          negativePrompt: result.plan.negativePrompt,
-          providerMessage: message,
-          provider: selectedProvider,
-          seed: output.seed ?? result.plan.providerPayload.seed,
-          size: settings.size,
-          aspectRatio: settings.aspectRatio,
-          model: settings.imageModel,
-          createdAt: generation.createdAt.toISOString(),
-        })),
+          enhancedPrompt: parsed.data.prompt.trim(),
+          providerMessage: "Image generated with Hugging Face.",
+          provider: "huggingface",
+          model: model.label,
+          createdAt: completedAt.toISOString(),
+        }] : [],
       } as Prisma.InputJsonValue,
     },
   });
 
+  if (!generated) {
+    return NextResponse.json({
+      error: result.message,
+      generation,
+      provider: "huggingface",
+      model: model.label,
+    }, { status: result.status || 502, headers: { "Cache-Control": "no-store" } });
+  }
+
   return NextResponse.json({
     ok: true,
     generation,
-    plan: result.plan,
-    providerConfigured: generated,
-    providerMessage: message,
-    providerStatus: providerStatuses,
-    selectedProvider,
-    outputs,
+    outputs: [output],
+    provider: "huggingface",
+    providerMessage: "Image generated with Hugging Face.",
+    selectedProvider: "huggingface",
+    model: model.label,
   }, { headers: { "Cache-Control": "no-store" } });
 }

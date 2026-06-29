@@ -11,11 +11,13 @@ import {
   ChevronDown,
   Clapperboard,
   Copy,
+  Download,
   Folder,
   Frame,
   Grid2X2,
   HelpCircle,
   ImageIcon,
+  Maximize2,
   Mic2,
   Moon,
   Music2,
@@ -178,11 +180,11 @@ const styles = ["Cinematic", "Realistic", "Anime", "3D Render", "Fantasy", "Vint
 const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam", "Zoom", "Tilt"];
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
-const imageModels = ["SDXL Turbo"];
+const imageModels = ["FLUX.1 Schnell", "FLUX Dev", "SDXL", "Stable Diffusion XL", "Future Models"];
 const imageModes = ["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"] as const;
-const imageSizes = [512, 768, 1024];
+const imageSizes = [320, 512, 768, 1024];
 const imageQualities = ["Fast", "Balanced", "High"];
-const imageSteps = [4, 8, 16, 28];
+const imageSteps = [1, 2, 4, 8];
 const imageStyles = ["Realistic", "Cinematic", "Anime", "3D", "Fashion", "Travel", "Product", "Wedding"];
 const imageReferenceTypes = ["Face", "Character", "Couple", "Style"] as const;
 const resolutions = [
@@ -249,6 +251,28 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function sdxlSupportWarning(settings: { imageModel: string; size: number; steps: number; mode: string; identityLock: boolean }, referenceCount: number) {
+  if (settings.imageModel === "SDXL Turbo" && (settings.mode !== "Text only" || settings.identityLock || referenceCount > 0)) {
+    return "Local SDXL Turbo currently supports text-only generation. Reference/identity modes are prepared in UI but need a reference-capable provider.";
+  }
+  if (settings.imageModel === "SDXL Turbo" && settings.size > 512) {
+    return "This local Mac provider supports 320px and experimental 512px only. Choose 320 for reliable low-memory generation.";
+  }
+  if (settings.imageModel === "SDXL Turbo" && settings.steps > 2) {
+    return "This Mac is in SDXL low-memory mode. Use 1-2 steps; higher steps can stall or exhaust memory.";
+  }
+  if (settings.imageModel === "SDXL Turbo" && settings.size === 512) {
+    return "512px is experimental on this 8GB Mac. If it stalls, switch back to 320px.";
+  }
+  return "";
+}
+
+function normalizeLocalImageSettings<T extends { imageModel: string; size: number; steps: number; mode: string; identityLock: boolean }>(settings: T): T {
+  if (settings.imageModel === "SDXL Turbo") return { ...settings, imageModel: "SDXL" };
+  if (!imageModels.includes(settings.imageModel)) return { ...settings, imageModel: "FLUX.1 Schnell" };
+  return settings;
+}
+
 export default function StudioPage() {
   const { data: session, status } = useSession({ required: true });
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -280,20 +304,23 @@ export default function StudioPage() {
     styleLock: "Cinematic",
     consistency: 74,
   });
-  const [imagePrompt, setImagePrompt] = useState("હું અને મારી પત્ની કાશ્મીરમાં હગ કરતા હોઈએ એવો રિયલિસ્ટિક ફોટો બનાવ.");
+  const [imagePrompt, setImagePrompt] = useState("");
   const [imageLoading, setImageLoading] = useState(false);
+  const [imageEnhancing, setImageEnhancing] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const [fullscreenImage, setFullscreenImage] = useState<ImageResult | null>(null);
   const [imageReferences, setImageReferences] = useState<ImageReference[]>([]);
   const [imageResults, setImageResults] = useState<ImageResult[]>([]);
   const [imageSettings, setImageSettings] = useState({
     model: "OpenRouter active model",
-    imageModel: "SDXL Turbo",
+    imageModel: "FLUX.1 Schnell",
     mode: "Text only" as typeof imageModes[number],
     aspectRatio: "16:9",
-    size: 1024,
-    quality: "Balanced",
+    size: 320,
+    quality: "Fast",
     seedMode: "Random" as "Random" | "Custom",
     seed: "",
-    steps: 8,
+    steps: 1,
     negativePrompt: "low quality, blurry, distorted face, bad anatomy, watermark",
     style: "Realistic",
     identityLock: false,
@@ -318,6 +345,7 @@ export default function StudioPage() {
   const filteredProjects = projects.filter((project) => project.name.toLowerCase().includes(projectSearch.toLowerCase()));
   const referenceAsset = uploads.find((item) => item.type === "frame" || item.type === "clip");
   const localProvider = providerStatuses.find((provider) => provider.status === "missing" && provider.key !== "openrouter");
+  const imageWarning = sdxlSupportWarning(imageSettings, imageReferences.length);
   const progress = useMemo(() => {
     if (!loading && latestGeneration?.status === "COMPLETED") return 100;
     if (!events.length) return 0;
@@ -365,7 +393,11 @@ export default function StudioPage() {
     const response = await fetch("/api/studio/projects", { cache: "no-store" });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Unable to load AI Studio");
-    const loaded = data.projects || [];
+    let loaded = data.projects || [];
+    if (!loaded.length) {
+      const created = await createDefaultProject();
+      loaded = [created];
+    }
     setProjects(loaded);
     const nextId = projectId || loaded[0]?.id || "";
     if (nextId) {
@@ -395,7 +427,7 @@ export default function StudioPage() {
     const savedUploads = Array.isArray(savedSettings.uploads) ? savedSettings.uploads as UploadedItem[] : [];
     if (savedUploads.length) setUploads(savedUploads);
     if (savedSettings.imageSettings && typeof savedSettings.imageSettings === "object") {
-      setImageSettings((current) => ({ ...current, ...(savedSettings.imageSettings as Partial<typeof current>) }));
+      setImageSettings((current) => normalizeLocalImageSettings({ ...current, ...(savedSettings.imageSettings as Partial<typeof current>) }));
     }
     if (typeof savedSettings.imagePrompt === "string") setImagePrompt(savedSettings.imagePrompt);
     setImageReferences(Array.isArray(savedSettings.imageReferences) ? savedSettings.imageReferences as ImageReference[] : []);
@@ -439,6 +471,25 @@ export default function StudioPage() {
     if (!response.ok) throw new Error(data.error || "Unable to create project");
     await loadProjects(data.project.id);
     setActiveNav("studio");
+  }
+
+  async function createDefaultProject() {
+    const response = await fetch("/api/studio/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "AI Studio Test Project", description: "Local SDXL image generation project", mode: "TEXT_TO_IMAGE" }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to create default AI Studio project");
+    return data.project as StudioProject;
+  }
+
+  async function ensureSelectedProject() {
+    if (selectedProject) return selectedProject;
+    const created = await createDefaultProject();
+    setProjects((current) => [created, ...current.filter((project) => project.id !== created.id)]);
+    await loadProject(created.id);
+    return created;
   }
 
   async function updateProject(body: Record<string, unknown>, reload = true) {
@@ -583,20 +634,50 @@ export default function StudioPage() {
     saveImageState({ imageSettings: next }).catch(() => undefined);
   }
 
-  async function runImageGeneration() {
-    if (!selectedProject || !imagePrompt.trim() || imageLoading) return;
-    setImageLoading(true);
-    setMessage("Enhancing image prompt");
-    await saveImageState().catch(() => undefined);
+  async function enhanceCurrentImagePrompt() {
+    if (!imagePrompt.trim() || imageEnhancing || imageLoading) return;
+    setImageEnhancing(true);
+    setImageError("");
+    setMessage("Enhancing prompt with Qwen3-Coder");
     try {
+      const response = await fetch("/api/studio/image/enhance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: imagePrompt }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Prompt enhancement failed");
+      setImagePrompt(data.enhancedPrompt);
+      setMessage("Prompt enhanced. Review it, then generate when ready.");
+      await saveImageState({ prompt: data.enhancedPrompt }).catch(() => undefined);
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : "Prompt enhancement failed";
+      setImageError(nextError);
+      setMessage(nextError);
+    } finally {
+      setImageEnhancing(false);
+    }
+  }
+
+  async function runImageGeneration() {
+    if (!imagePrompt.trim() || imageLoading) return;
+    if (imageSettings.imageModel === "Future Models") {
+      setImageError("Future Models are visible for roadmap planning, but are not enabled yet.");
+      return;
+    }
+    setImageLoading(true);
+    setImageError("");
+    setMessage("Generating image with Hugging Face");
+    try {
+      const project = await ensureSelectedProject();
+      await saveImageState({ prompt: imagePrompt, imageSettings }).catch(() => undefined);
       const response = await fetch("/api/studio/image/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          projectId: selectedProject.id,
+          projectId: project.id,
           prompt: imagePrompt,
-          settings: imageSettings,
-          references: imageReferences,
+          model: imageSettings.imageModel,
         }),
       });
       const data = await response.json();
@@ -605,33 +686,33 @@ export default function StudioPage() {
       const mappedOutputs: ImageResult[] = outputs.length ? outputs.map((output: Partial<ImageResult>, index: number) => ({
         id: `${data.generation.id}-${index}`,
         url: output.url,
-        enhancedPrompt: data.plan.enhancedPrompt,
-        negativePrompt: data.plan.negativePrompt,
+        enhancedPrompt: imagePrompt,
         providerMessage: data.providerMessage,
-        provider: data.selectedProvider,
-        model: imageSettings.imageModel,
+        provider: data.selectedProvider || data.provider,
+        model: data.model || imageSettings.imageModel,
         seed: output.seed,
         size: imageSettings.size,
         aspectRatio: imageSettings.aspectRatio,
         createdAt: data.generation.createdAt,
       })) : [{
         id: data.generation.id,
-        enhancedPrompt: data.plan.enhancedPrompt,
-        negativePrompt: data.plan.negativePrompt,
+        enhancedPrompt: imagePrompt,
         providerMessage: data.providerMessage,
-        provider: data.selectedProvider,
-        model: imageSettings.imageModel,
+        provider: data.selectedProvider || data.provider,
+        model: data.model || imageSettings.imageModel,
         size: imageSettings.size,
         aspectRatio: imageSettings.aspectRatio,
         createdAt: data.generation.createdAt,
       }];
       const nextResults = [...mappedOutputs, ...imageResults].slice(0, 12);
       setImageResults(nextResults);
-      setMessage(data.providerConfigured ? "Image job prepared" : "Local image provider not configured. Prompts are ready.");
+      setMessage("Image generated");
       await saveImageState({ results: nextResults });
-      await loadProject(selectedProject.id);
+      await loadProject(project.id);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Image generation failed");
+      const nextError = error instanceof Error ? error.message : "Image generation failed";
+      setImageError(nextError);
+      setMessage(nextError);
     } finally {
       setImageLoading(false);
     }
@@ -1039,74 +1120,161 @@ export default function StudioPage() {
   );
 
   const imageCenterPanel = (
-    <section className="min-w-0 space-y-4">
-      <div className="px-3 pt-2">
-        <h1 className="text-3xl font-bold tracking-tight">Generate Image</h1>
-        <p className={cn("mt-3 text-sm", studioTokens.muted)}>Create cinematic image prompts with Gujarati, Hindi, English, or mixed language.</p>
-        <p className={cn("mt-2 text-xs", studioTokens.faint)}>{message}</p>
+    <section className="mx-auto w-full max-w-5xl space-y-5">
+      <div className="px-1 pt-2">
+        <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-600 dark:text-violet-200">
+          <Sparkles className="size-3.5" /> Hugging Face image generation
+        </p>
+        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">Generate Image</h1>
+        <p className={cn("mt-3 max-w-2xl text-sm leading-6 md:text-base", studioTokens.muted)}>
+          Select a model, describe the image, optionally enhance the prompt, then generate a real image.
+        </p>
       </div>
-      <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Native Prompt</h2>
-          <button onClick={() => setImagePrompt("")} disabled={!imagePrompt} className={cn("h-9 rounded-xl border px-3 text-xs disabled:opacity-40", studioTokens.soft)}>Clear</button>
-        </div>
-        <textarea
-          ref={imagePromptRef}
-          value={imagePrompt}
-          onChange={(event) => setImagePrompt(event.target.value)}
-          onBlur={() => saveImageState({ prompt: imagePrompt }).catch(() => undefined)}
-          className={cn("min-h-[156px] w-full resize-none rounded-2xl p-4 text-sm leading-6", studioTokens.input)}
-          placeholder="Hu ane mari wife Kashmir ma hug karta hoy evo realistic photo banav..."
-        />
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <span className={cn("text-xs", studioTokens.muted)}>{imagePrompt.length} characters</span>
-          <button onClick={runImageGeneration} disabled={!selectedProject || imageLoading || !imagePrompt.trim()} className="flex h-12 min-w-[170px] items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-xl shadow-violet-700/30 disabled:opacity-45">
-            {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-            Generate
-          </button>
+
+      <section className={cn("overflow-hidden rounded-[28px] p-5 md:p-6", studioTokens.panel)}>
+        <div className="grid gap-5">
+          <label className="block">
+            <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
+            <select
+              value={imageSettings.imageModel}
+              onChange={(event) => {
+                setImageError("");
+                setImageSetting("imageModel", event.target.value);
+              }}
+              disabled={imageLoading || imageEnhancing}
+              className={cn("mt-2 h-14 w-full rounded-2xl px-4 text-base font-medium", studioTokens.input)}
+              aria-label="Image generation model"
+            >
+              {imageModels.map((model) => <option key={model}>{model}</option>)}
+            </select>
+            <span className={cn("mt-2 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
+          </label>
+
+          <label className="block">
+            <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Prompt</span>
+            <div className="relative mt-2">
+              <textarea
+                ref={imagePromptRef}
+                value={imagePrompt}
+                onChange={(event) => {
+                  setImagePrompt(event.target.value);
+                  if (imageError) setImageError("");
+                }}
+                onBlur={() => saveImageState({ prompt: imagePrompt }).catch(() => undefined)}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    void runImageGeneration();
+                  }
+                }}
+                disabled={imageLoading || imageEnhancing}
+                className={cn("min-h-[190px] w-full resize-none rounded-[24px] p-5 pr-16 text-base leading-7", studioTokens.input)}
+                placeholder="Describe the image you want to generate..."
+                aria-label="Image prompt"
+              />
+              {imagePrompt && !imageLoading && !imageEnhancing && (
+                <button
+                  onClick={() => {
+                    setImagePrompt("");
+                    setImageError("");
+                  }}
+                  className={cn("absolute right-4 top-4 grid size-9 place-items-center rounded-full", studioTokens.soft)}
+                  aria-label="Clear prompt"
+                >
+                  <X className="size-4" />
+                </button>
+              )}
+            </div>
+            <span className={cn("mt-2 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Press Cmd/Ctrl + Enter to generate</span>
+          </label>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              onClick={enhanceCurrentImagePrompt}
+              disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
+              className={cn("flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
+            >
+              {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+              Enhance Prompt
+            </button>
+            <button
+              onClick={runImageGeneration}
+              disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
+              className="flex h-[52px] flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+              Generate Image
+            </button>
+          </div>
+
+          {imageSettings.imageModel === "Future Models" && (
+            <div className="rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
+              Future Models are not enabled yet. Pick FLUX.1 Schnell, FLUX Dev, SDXL, or Stable Diffusion XL.
+            </div>
+          )}
+          {imageError && (
+            <div className="rounded-2xl border border-red-300/70 bg-red-50 px-4 py-4 text-sm text-red-700 shadow-sm dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200">
+              <p className="font-semibold">Image generation needs attention</p>
+              <p className="mt-1 leading-6">{imageError}</p>
+              <button onClick={() => void runImageGeneration()} disabled={imageLoading || !imagePrompt.trim()} className="mt-3 h-9 rounded-xl bg-red-600 px-4 text-xs font-semibold text-white disabled:opacity-50">Retry</button>
+            </div>
+          )}
         </div>
       </section>
-      <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold">Results</h2>
-          <span className={cn("rounded-full border px-3 py-1 text-[11px]", studioTokens.soft)}>{imageResults.length} generated</span>
-        </div>
-        {imageResults.length ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {imageResults.map((result) => (
-              <article key={result.id} className={cn("rounded-2xl border p-4", studioTokens.soft)}>
-                {result.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={result.url} alt="Generated image" className="h-52 w-full rounded-2xl object-cover" />
-                ) : (
-                  <div className="grid h-44 place-items-center rounded-2xl border border-dashed border-violet-400/35 bg-violet-500/8 text-center">
-                    <div>
-                      <ImageIcon className="mx-auto size-8 text-violet-500" />
-                      <p className="mt-3 text-sm font-semibold">Provider setup required</p>
-                      <p className={cn("mt-1 px-6 text-xs leading-5", studioTokens.muted)}>{result.providerMessage}</p>
-                    </div>
-                  </div>
-                )}
-                <p className="mt-4 line-clamp-4 text-sm leading-6">{result.enhancedPrompt}</p>
-                <p className={cn("mt-3 line-clamp-2 text-xs", studioTokens.muted)}>Negative: {result.negativePrompt}</p>
-                <p className={cn("mt-3 text-[11px]", studioTokens.faint)}>{result.provider || "provider"} · {result.model || imageSettings.imageModel} · {result.aspectRatio || imageSettings.aspectRatio} · {result.size || imageSettings.size}px</p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {result.url && <a href={result.url} download className={cn("h-9 rounded-xl border px-3 pt-2 text-xs font-medium", studioTokens.soft)}>Download</a>}
-                  <button onClick={() => navigator.clipboard?.writeText(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}><Copy className="mr-1 inline size-3.5" /> Copy prompt</button>
-                  <button onClick={() => setImagePrompt(result.enhancedPrompt)} className={cn("h-9 rounded-xl border px-3 text-xs font-medium", studioTokens.soft)}>Reuse</button>
-                  <button onClick={() => void reuseImageAsReference(result)} disabled={!result.url} className={cn("h-9 rounded-xl border px-3 text-xs font-medium disabled:opacity-40", studioTokens.soft)}>As ref</button>
-                  <button disabled className={cn("h-9 rounded-xl border px-3 text-xs font-medium opacity-45", studioTokens.soft)}>Upscale</button>
-                  <button onClick={() => void deleteImageResult(result)} className="grid size-9 place-items-center rounded-xl border border-red-400/30 text-red-400"><Trash2 className="size-4" /></button>
+
+      <section className={cn("rounded-[28px] p-4 md:p-5", studioTokens.panel)}>
+        {imageLoading ? (
+          <div className="relative min-h-[430px] overflow-hidden rounded-[24px] border border-white/10 bg-[#090909] p-6 text-white shadow-2xl shadow-violet-950/30">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,0.28),transparent_32%),radial-gradient(circle_at_78%_18%,rgba(217,70,239,0.18),transparent_30%)]" />
+            <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+            <div className="relative grid min-h-[380px] place-items-center text-center">
+              <div>
+                <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-white/10 shadow-2xl shadow-violet-500/30 backdrop-blur">
+                  <Sparkles className="size-7 animate-pulse text-violet-200" />
                 </div>
-              </article>
-            ))}
+                <p className="mt-6 text-2xl font-semibold">Generating Image...</p>
+                <p className="mt-2 text-sm text-white/62">Creating masterpiece with {imageSettings.imageModel}</p>
+                <div className="mx-auto mt-7 h-2 w-56 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" />
+                </div>
+                <p className="mt-4 text-xs text-white/42">Estimated time depends on Hugging Face model warmup.</p>
+              </div>
+            </div>
           </div>
+        ) : imageResults[0]?.url ? (
+          <article className="overflow-hidden rounded-[24px] border border-slate-200/70 bg-white/75 shadow-2xl shadow-slate-950/5 dark:border-white/10 dark:bg-white/[0.035] dark:shadow-black/30">
+            <div className="relative bg-black">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={imageResults[0].url} alt="Generated image" className="max-h-[680px] w-full object-contain" />
+              <button
+                onClick={() => setFullscreenImage(imageResults[0])}
+                className="absolute right-4 top-4 grid size-11 place-items-center rounded-2xl border border-white/15 bg-black/45 text-white shadow-xl backdrop-blur transition hover:bg-black/65"
+                aria-label="Open image fullscreen"
+              >
+                <Maximize2 className="size-4" />
+              </button>
+            </div>
+            <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between md:p-5">
+              <div>
+                <p className="text-sm font-semibold">{imageResults[0].model || imageSettings.imageModel}</p>
+                <p className={cn("mt-1 line-clamp-2 text-xs leading-5", studioTokens.muted)}>{imageResults[0].enhancedPrompt}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <a href={imageResults[0].url} download={`meldex-${Date.now()}.png`} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Download className="size-3.5" /> Download</a>
+                <button onClick={() => navigator.clipboard?.writeText(imageResults[0].enhancedPrompt)} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Copy className="size-3.5" /> Copy Prompt</button>
+                <button onClick={() => void runImageGeneration()} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><RefreshCw className="size-3.5" /> Regenerate</button>
+                <button onClick={() => void reuseImageAsReference(imageResults[0])} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><ImageIcon className="size-3.5" /> Use as Reference</button>
+              </div>
+            </div>
+          </article>
         ) : (
-          <div className={cn("grid min-h-[230px] place-items-center rounded-2xl border border-dashed text-center", studioTokens.soft)}>
-            <div>
-              <ImageIcon className="mx-auto size-10 text-violet-500" />
-              <p className="mt-3 font-semibold">No images yet</p>
-              <p className={cn("mt-2 max-w-md text-sm leading-6", studioTokens.muted)}>Generate will prepare enhanced prompt, negative prompt, reference summary, and provider setup status. It will not fake image output.</p>
+          <div className={cn("grid min-h-[390px] place-items-center rounded-[24px] border border-dashed text-center", studioTokens.soft)}>
+            <div className="max-w-sm px-6">
+              <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-violet-500/10 text-violet-500">
+                <ImageIcon className="size-8" />
+              </div>
+              <p className="mt-5 text-lg font-semibold">Your image will appear here</p>
+              <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>No mock previews. Meldex will show a real Hugging Face result or a clean provider error.</p>
             </div>
           </div>
         )}
@@ -1131,7 +1299,7 @@ export default function StudioPage() {
           </label>
           <label className={cn("block text-xs", studioTokens.muted)}>Size
             <select value={imageSettings.size} onChange={(event) => setImageSetting("size", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {imageSizes.map((size) => <option key={size}>{size}</option>)}
+              {imageSizes.map((size) => <option key={size} value={size}>{size}{size > 512 ? " (unsupported local)" : size === 512 ? " (experimental)" : ""}</option>)}
             </select>
           </label>
         </div>
@@ -1151,7 +1319,7 @@ export default function StudioPage() {
           </label>
           <label className={cn("block text-xs", studioTokens.muted)}>Steps
             <select value={imageSettings.steps} onChange={(event) => setImageSetting("steps", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {imageSteps.map((step) => <option key={step}>{step}</option>)}
+              {imageSteps.map((step) => <option key={step} value={step}>{step}{step > 2 ? " (too heavy local)" : ""}</option>)}
             </select>
           </label>
         </div>
@@ -1192,10 +1360,15 @@ export default function StudioPage() {
         <div className={cn("rounded-2xl border p-4 text-sm", studioTokens.soft)}>
           <p className="font-semibold">Provider status</p>
           <p className={cn("mt-2 text-xs leading-5", studioTokens.muted)}>ComfyUI + SDXL Turbo low-memory mode is active. FLUX is installed but disabled on this 8GB Mac.</p>
+          {imageWarning && <p className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-200">{imageWarning}</p>}
         </div>
       </div>
     </aside>
   );
+
+  void imageReferencePanel;
+  void imageSettingsPanel;
+  void deleteImageResult;
 
   return (
     <div className={cn(theme === "dark" && "dark")}>
@@ -1242,14 +1415,12 @@ export default function StudioPage() {
             </div>
           </aside>
           <main className="min-w-0 p-4 xl:p-6">
-            <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
+            {activeNav !== "image" && <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
-            </div>
+            </div>}
             {activeNav === "image" ? (
-              <div className="grid gap-4 xl:grid-cols-[278px_minmax(0,1fr)_344px]">
-                <div className={cn(mobileTab !== "assets" && "hidden xl:block")}>{imageReferencePanel}</div>
-                <div className={cn(mobileTab !== "create" && "hidden lg:block")}>{imageCenterPanel}</div>
-                <div className={cn(mobileTab !== "settings" && "hidden xl:block")}>{imageSettingsPanel}</div>
+              <div className="min-w-0">
+                {imageCenterPanel}
               </div>
             ) : (
               <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_344px_278px]">
@@ -1278,6 +1449,15 @@ export default function StudioPage() {
             )}
           </main>
         </div>
+        {fullscreenImage?.url && (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-black/82 p-4 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Generated image fullscreen">
+            <button onClick={() => setFullscreenImage(null)} className="absolute right-5 top-5 grid size-11 place-items-center rounded-full border border-white/15 bg-white/10 text-white" aria-label="Close fullscreen image">
+              <X className="size-5" />
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fullscreenImage.url} alt="Generated image fullscreen" className="max-h-[88vh] max-w-[94vw] rounded-[24px] object-contain shadow-2xl shadow-black" />
+          </div>
+        )}
       </div>
     </div>
   );
