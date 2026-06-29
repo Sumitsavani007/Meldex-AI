@@ -181,12 +181,6 @@ const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam",
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
 const imageModels = ["FLUX.1 Schnell", "FLUX Dev", "SDXL", "Stable Diffusion XL", "Future Models"];
-const imageModes = ["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"] as const;
-const imageSizes = [320, 512, 768, 1024];
-const imageQualities = ["Fast", "Balanced", "High"];
-const imageSteps = [1, 2, 4, 8];
-const imageStyles = ["Realistic", "Cinematic", "Anime", "3D", "Fashion", "Travel", "Product", "Wedding"];
-const imageReferenceTypes = ["Face", "Character", "Couple", "Style"] as const;
 const resolutions = [
   { label: "1080P", sub: "1920 x 1080", value: "1080p" },
   { label: "720P", sub: "1280 x 720", value: "720p" },
@@ -251,22 +245,6 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-function sdxlSupportWarning(settings: { imageModel: string; size: number; steps: number; mode: string; identityLock: boolean }, referenceCount: number) {
-  if (settings.imageModel === "SDXL Turbo" && (settings.mode !== "Text only" || settings.identityLock || referenceCount > 0)) {
-    return "Local SDXL Turbo currently supports text-only generation. Reference/identity modes are prepared in UI but need a reference-capable provider.";
-  }
-  if (settings.imageModel === "SDXL Turbo" && settings.size > 512) {
-    return "This local Mac provider supports 320px and experimental 512px only. Choose 320 for reliable low-memory generation.";
-  }
-  if (settings.imageModel === "SDXL Turbo" && settings.steps > 2) {
-    return "This Mac is in SDXL low-memory mode. Use 1-2 steps; higher steps can stall or exhaust memory.";
-  }
-  if (settings.imageModel === "SDXL Turbo" && settings.size === 512) {
-    return "512px is experimental on this 8GB Mac. If it stalls, switch back to 320px.";
-  }
-  return "";
-}
-
 function normalizeLocalImageSettings<T extends { imageModel: string; size: number; steps: number; mode: string; identityLock: boolean }>(settings: T): T {
   if (settings.imageModel === "SDXL Turbo") return { ...settings, imageModel: "SDXL" };
   if (!imageModels.includes(settings.imageModel)) return { ...settings, imageModel: "FLUX.1 Schnell" };
@@ -314,7 +292,7 @@ export default function StudioPage() {
   const [imageSettings, setImageSettings] = useState({
     model: "OpenRouter active model",
     imageModel: "FLUX.1 Schnell",
-    mode: "Text only" as typeof imageModes[number],
+    mode: "Text only",
     aspectRatio: "16:9",
     size: 320,
     quality: "Fast",
@@ -335,7 +313,6 @@ export default function StudioPage() {
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
   const imagePromptRef = useRef<HTMLTextAreaElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
-  const imageReferenceInputRef = useRef<HTMLInputElement | null>(null);
   const quickInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const avatarUrls = useMemo(() => [...avatarSeed.map(avatarDataUrl), ...uploads.filter((item) => item.type === "avatar").map((item) => item.dataUrl)], [uploads]);
@@ -345,7 +322,6 @@ export default function StudioPage() {
   const filteredProjects = projects.filter((project) => project.name.toLowerCase().includes(projectSearch.toLowerCase()));
   const referenceAsset = uploads.find((item) => item.type === "frame" || item.type === "clip");
   const localProvider = providerStatuses.find((provider) => provider.status === "missing" && provider.key !== "openrouter");
-  const imageWarning = sdxlSupportWarning(imageSettings, imageReferences.length);
   const progress = useMemo(() => {
     if (!loading && latestGeneration?.status === "COMPLETED") return 100;
     if (!events.length) return 0;
@@ -612,22 +588,6 @@ export default function StudioPage() {
     }, false);
   }
 
-  async function handleImageReferenceUpload(files?: FileList | null) {
-    const selectedFiles = Array.from(files || []).slice(0, 6 - imageReferences.length);
-    if (!selectedFiles.length) return;
-    const nextItems = await Promise.all(selectedFiles.map(async (file) => ({
-      id: `image-ref-${Date.now()}-${file.name}`,
-      type: imageSettings.referenceType,
-      name: file.name,
-      dataUrl: await readFileAsDataUrl(file),
-      mimeType: file.type,
-      sizeBytes: file.size,
-    } satisfies ImageReference)));
-    const next = [...nextItems, ...imageReferences].slice(0, 6);
-    setImageReferences(next);
-    await saveImageState({ references: next }).catch(() => setMessage("Reference saved locally; project save failed"));
-  }
-
   function setImageSetting<K extends keyof typeof imageSettings>(key: K, value: (typeof imageSettings)[K]) {
     const next = { ...imageSettings, [key]: value };
     setImageSettings(next);
@@ -716,13 +676,6 @@ export default function StudioPage() {
     } finally {
       setImageLoading(false);
     }
-  }
-
-  async function deleteImageResult(result: ImageResult) {
-    await fetch(`/api/studio/image/${encodeURIComponent(result.id.split("-")[0])}`, { method: "DELETE" }).catch(() => undefined);
-    const next = imageResults.filter((item) => item.id !== result.id);
-    setImageResults(next);
-    await saveImageState({ results: next }).catch(() => undefined);
   }
 
   async function reuseImageAsReference(result: ImageResult) {
@@ -1061,64 +1014,6 @@ export default function StudioPage() {
     </aside>
   );
 
-  const imageReferencePanel = (
-    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
-      <h2 className="mb-4 flex items-center gap-3 text-base font-semibold"><ImageIcon className="size-5 text-violet-500" /> Reference Images</h2>
-      <div className={cn("rounded-2xl border border-dashed p-4 text-center", studioTokens.soft)}>
-        <button onClick={() => imageReferenceInputRef.current?.click()} className="mx-auto grid size-14 place-items-center rounded-full bg-violet-600/15 text-violet-500">
-          <Plus className="size-6" />
-        </button>
-        <p className="mt-3 text-sm font-semibold">Upload references</p>
-        <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Face, character, couple, or style images for identity guidance.</p>
-        <input ref={imageReferenceInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => void handleImageReferenceUpload(event.target.files)} />
-        <button onClick={() => imageReferenceInputRef.current?.click()} className="mt-4 h-10 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white">Add Images</button>
-      </div>
-      <div className="mt-4 space-y-3">
-        <label className="flex items-center justify-between gap-3 text-sm font-medium">
-          <span>Identity lock</span>
-          <button onClick={() => setImageSetting("identityLock", !imageSettings.identityLock)} className={cn("h-7 w-12 rounded-full p-1 transition", imageSettings.identityLock ? "bg-violet-600" : "bg-slate-300 dark:bg-white/12")}>
-            <span className={cn("block size-5 rounded-full bg-white transition", imageSettings.identityLock && "translate-x-5")} />
-          </button>
-        </label>
-        <label className={cn("block text-xs", studioTokens.muted)}>Mode
-          <select value={imageSettings.mode} onChange={(event) => setImageSetting("mode", event.target.value as typeof imageSettings.mode)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-            {imageModes.map((mode) => <option key={mode}>{mode}</option>)}
-          </select>
-        </label>
-        <label className={cn("block text-xs", studioTokens.muted)}>Reference type
-          <select value={imageSettings.referenceType} onChange={(event) => setImageSetting("referenceType", event.target.value as typeof imageSettings.referenceType)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-            {imageReferenceTypes.map((type) => <option key={type}>{type}</option>)}
-          </select>
-        </label>
-        <label className={cn("block text-xs", studioTokens.muted)}>Face similarity <span className="float-right font-medium">{imageSettings.faceSimilarity}</span>
-          <input type="range" min={50} max={100} step={5} value={imageSettings.faceSimilarity} onChange={(event) => setImageSetting("faceSimilarity", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
-          <div className={cn("mt-2 flex justify-between text-[11px]", studioTokens.faint)}><span>50</span><span>75</span><span>90</span><span>100</span></div>
-        </label>
-        <label className={cn("block text-xs", studioTokens.muted)}>Reference strength <span className="float-right font-medium">{imageSettings.referenceStrength}</span>
-          <input type="range" min={0} max={100} step={5} value={imageSettings.referenceStrength} onChange={(event) => setImageSetting("referenceStrength", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
-        </label>
-      </div>
-      <div className="mt-5 space-y-3">
-        {imageReferences.length ? imageReferences.map((reference) => (
-          <div key={reference.id} className={cn("overflow-hidden rounded-2xl border", studioTokens.soft)}>
-            <Image src={reference.dataUrl} alt={reference.name} width={220} height={132} unoptimized className="h-32 w-full object-cover" />
-            <div className="flex items-center justify-between gap-3 p-3">
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold">{reference.name}</p>
-                <p className={cn("text-[11px]", studioTokens.muted)}>{reference.type} · {formatBytes(reference.sizeBytes)}</p>
-              </div>
-              <button onClick={() => { const next = imageReferences.filter((item) => item.id !== reference.id); setImageReferences(next); void saveImageState({ references: next }); }} className="grid size-8 place-items-center rounded-lg text-red-400 hover:bg-red-500/10">
-                <Trash2 className="size-4" />
-              </button>
-            </div>
-          </div>
-        )) : (
-          <p className={cn("rounded-2xl border border-dashed p-4 text-sm leading-6", studioTokens.soft)}>No reference images yet. Text-to-image will work as a normal prompt enhancer.</p>
-        )}
-      </div>
-    </aside>
-  );
-
   const imageCenterPanel = (
     <section className="mx-auto w-full max-w-5xl space-y-5">
       <div className="px-1 pt-2">
@@ -1281,94 +1176,6 @@ export default function StudioPage() {
       </section>
     </section>
   );
-
-  const imageSettingsPanel = (
-    <aside className={cn("rounded-[18px] p-5", studioTokens.panel)}>
-      <h2 className="mb-5 flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Settings</h2>
-      <div className="space-y-5">
-        <label className={cn("block text-xs", studioTokens.muted)}>Model
-          <select value={imageSettings.imageModel} onChange={(event) => setImageSetting("imageModel", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-            {imageModels.map((model) => <option key={model}>{model}</option>)}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className={cn("block text-xs", studioTokens.muted)}>Aspect ratio
-            <select value={imageSettings.aspectRatio} onChange={(event) => setImageSetting("aspectRatio", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {ratios.map((ratio) => <option key={ratio}>{ratio}</option>)}
-            </select>
-          </label>
-          <label className={cn("block text-xs", studioTokens.muted)}>Size
-            <select value={imageSettings.size} onChange={(event) => setImageSetting("size", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {imageSizes.map((size) => <option key={size} value={size}>{size}{size > 512 ? " (unsupported local)" : size === 512 ? " (experimental)" : ""}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="grid grid-cols-3 gap-2">
-          {ratios.map((ratio) => (
-            <button key={ratio} onClick={() => setImageSetting("aspectRatio", ratio)} className={cn("flex h-[62px] flex-col items-center justify-center gap-2 rounded-xl border text-xs transition", imageSettings.aspectRatio === ratio ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : `${studioTokens.soft} hover:border-violet-400/60`)}>
-              <span className={cn("block rounded border-2", ratio === "9:16" || ratio === "3:4" ? "h-5 w-3" : ratio === "1:1" ? "size-4" : "h-3 w-5")} />
-              {ratio}
-            </button>
-          ))}
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className={cn("block text-xs", studioTokens.muted)}>Quality
-            <select value={imageSettings.quality} onChange={(event) => setImageSetting("quality", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {imageQualities.map((quality) => <option key={quality}>{quality}</option>)}
-            </select>
-          </label>
-          <label className={cn("block text-xs", studioTokens.muted)}>Steps
-            <select value={imageSettings.steps} onChange={(event) => setImageSetting("steps", Number(event.target.value))} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              {imageSteps.map((step) => <option key={step} value={step}>{step}{step > 2 ? " (too heavy local)" : ""}</option>)}
-            </select>
-          </label>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <label className={cn("block text-xs", studioTokens.muted)}>Seed
-            <select value={imageSettings.seedMode} onChange={(event) => setImageSetting("seedMode", event.target.value as typeof imageSettings.seedMode)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-              <option>Random</option><option>Custom</option>
-            </select>
-          </label>
-          <label className={cn("block text-xs", studioTokens.muted)}>Custom seed
-            <input value={imageSettings.seed} disabled={imageSettings.seedMode === "Random"} onChange={(event) => setImageSetting("seed", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm disabled:opacity-45", studioTokens.input)} placeholder="Optional" />
-          </label>
-        </div>
-        <label className={cn("block text-xs", studioTokens.muted)}>Style
-          <select value={imageSettings.style} onChange={(event) => setImageSetting("style", event.target.value)} className={cn("mt-2 h-11 w-full rounded-xl px-3 text-sm", studioTokens.input)}>
-            {imageStyles.map((style) => <option key={style}>{style}</option>)}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-2">
-          {[
-            ["preserveFaceStructure", "Face structure"],
-            ["preserveSkinTone", "Skin tone"],
-            ["preserveHair", "Hair"],
-            ["preserveAge", "Age"],
-          ].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setImageSetting(key as keyof typeof imageSettings, !imageSettings[key as keyof typeof imageSettings] as never)}
-              className={cn("flex h-10 items-center justify-center rounded-xl border text-xs font-medium", imageSettings[key as keyof typeof imageSettings] ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : studioTokens.soft)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className={cn("block text-xs", studioTokens.muted)}>Negative prompt
-          <textarea value={imageSettings.negativePrompt} onChange={(event) => setImageSetting("negativePrompt", event.target.value)} className={cn("mt-2 h-24 w-full resize-none rounded-xl p-3 text-sm", studioTokens.input)} />
-        </label>
-        <div className={cn("rounded-2xl border p-4 text-sm", studioTokens.soft)}>
-          <p className="font-semibold">Provider status</p>
-          <p className={cn("mt-2 text-xs leading-5", studioTokens.muted)}>ComfyUI + SDXL Turbo low-memory mode is active. FLUX is installed but disabled on this 8GB Mac.</p>
-          {imageWarning && <p className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs leading-5 text-amber-700 dark:text-amber-200">{imageWarning}</p>}
-        </div>
-      </div>
-    </aside>
-  );
-
-  void imageReferencePanel;
-  void imageSettingsPanel;
-  void deleteImageResult;
 
   return (
     <div className={cn(theme === "dark" && "dark")}>
