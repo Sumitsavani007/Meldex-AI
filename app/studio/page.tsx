@@ -1123,13 +1123,13 @@ export default function StudioPage() {
           )}
         </section>
 
-        <aside className={cn("order-1 flex min-h-0 flex-col rounded-[26px] p-3 xl:order-2", studioTokens.panel)}>
+        <aside className={cn("order-1 flex h-full min-h-0 flex-col rounded-[26px] p-3 xl:order-2", studioTokens.panel)}>
           <div className="mb-3 shrink-0">
             <h2 className="flex items-center gap-3 text-base font-semibold"><SlidersHorizontal className="size-5 text-violet-500" /> Image Controls</h2>
             <p className={cn("mt-1 text-xs leading-5", studioTokens.muted)}>Model, scale, prompt, generate.</p>
           </div>
 
-          <div className="min-h-0 space-y-2.5">
+          <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden">
             <label className="block">
               <span className={cn("text-xs font-medium uppercase tracking-[0.18em]", studioTokens.faint)}>Model</span>
               <select
@@ -1139,10 +1139,14 @@ export default function StudioPage() {
                   setImageSetting("imageModel", event.target.value);
                 }}
                 disabled={imageLoading || imageEnhancing}
-                className={cn("mt-1.5 h-11 w-full rounded-2xl px-4 text-base font-medium !text-slate-950 dark:!text-white", studioTokens.input)}
+                style={{
+                  color: theme === "dark" ? "#ffffff" : "#0f172a",
+                  backgroundColor: theme === "dark" ? "#0f1720" : "#ffffff",
+                }}
+                className={cn("mt-1.5 h-11 w-full appearance-none rounded-2xl px-4 text-base font-medium", studioTokens.input)}
                 aria-label="Image generation model"
               >
-                {imageModels.map((model) => <option key={model}>{model}</option>)}
+                {imageModels.map((model) => <option key={model} className="bg-white text-slate-950 dark:bg-[#0f1720] dark:text-white">{model}</option>)}
               </select>
               <span className={cn("mt-1.5 block text-xs", studioTokens.muted)}>Provider: Hugging Face</span>
             </label>
@@ -1192,7 +1196,11 @@ export default function StudioPage() {
                     }
                   }}
                   disabled={imageLoading || imageEnhancing}
-                  className={cn("h-[140px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-7 !text-slate-950 !placeholder:text-slate-500 dark:!text-white dark:!placeholder:text-white/45", studioTokens.input)}
+                  style={{
+                    color: theme === "dark" ? "#ffffff" : "#0f172a",
+                    backgroundColor: theme === "dark" ? "#0f1720" : "#ffffff",
+                  }}
+                  className={cn("h-[118px] min-h-0 w-full resize-none rounded-[22px] p-4 pr-14 text-base leading-6 !placeholder:text-slate-500 dark:!placeholder:text-white/45", studioTokens.input)}
                   placeholder="Describe the image you want to generate..."
                   aria-label="Image prompt"
                 />
@@ -1211,15 +1219,17 @@ export default function StudioPage() {
               </div>
               <span className={cn("mt-1 block text-xs", studioTokens.muted)}>{imagePrompt.length} characters · Cmd/Ctrl + Enter</span>
             </label>
+          </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+          <div className="mt-3 shrink-0 space-y-2">
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <button
                 onClick={enhanceCurrentImagePrompt}
                 disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
-                className={cn("flex h-11 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft)}
+                className={cn("flex h-11 items-center justify-center gap-2 rounded-2xl border px-5 text-sm font-semibold transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45", studioTokens.soft, "text-slate-950 dark:text-white")}
               >
                 {imageEnhancing ? <RefreshCw className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
-                Enhance
+                Enhance Prompt
               </button>
               <button
                 onClick={runImageGeneration}
@@ -1227,7 +1237,7 @@ export default function StudioPage() {
                 className="flex h-11 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-5 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-                Generate
+                Generate Image
               </button>
             </div>
 
