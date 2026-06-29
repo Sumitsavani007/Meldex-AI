@@ -63,15 +63,15 @@ export const STUDIO_PROVIDER_REGISTRY: Record<StudioProviderKey, Omit<StudioProv
   },
   flux_schnell: {
     key: "flux_schnell",
-    name: "FLUX.1 Schnell",
+    name: "FLUX.1 Schnell (Disabled)",
     category: "image",
     localFirst: true,
     envKeys: ["COMFYUI_BASE_URL", "STUDIO_FLUX_SCHNELL_WORKFLOW"],
-    requiredEnv: ["COMFYUI_BASE_URL", "STUDIO_FLUX_SCHNELL_WORKFLOW"],
+    requiredEnv: ["__FLUX_DISABLED_ON_8GB_MAC__"],
   },
   sdxl: {
     key: "sdxl",
-    name: "SDXL",
+    name: "SDXL Turbo Low Memory",
     category: "image",
     localFirst: true,
     envKeys: ["COMFYUI_BASE_URL", "STUDIO_SDXL_WORKFLOW"],
@@ -152,7 +152,7 @@ export const STUDIO_PROVIDER_REGISTRY: Record<StudioProviderKey, Omit<StudioProv
 };
 
 export const STUDIO_RENDER_REQUIREMENTS: Record<StudioRenderMode, StudioProviderKey[]> = {
-  storyboard_images: ["comfyui", "flux_schnell"],
+  storyboard_images: ["comfyui", "sdxl"],
   draft_preview: ["comfyui", "wan21_13b"],
   final_render: ["comfyui", "wan21_14b"],
   voice: ["xtts_v2"],

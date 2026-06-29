@@ -178,7 +178,7 @@ const styles = ["Cinematic", "Realistic", "Anime", "3D Render", "Fantasy", "Vint
 const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam", "Zoom", "Tilt"];
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
-const imageModels = ["FLUX.1 Schnell", "SDXL"];
+const imageModels = ["SDXL Turbo"];
 const imageModes = ["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"] as const;
 const imageSizes = [512, 768, 1024];
 const imageQualities = ["Fast", "Balanced", "High"];
@@ -286,7 +286,7 @@ export default function StudioPage() {
   const [imageResults, setImageResults] = useState<ImageResult[]>([]);
   const [imageSettings, setImageSettings] = useState({
     model: "OpenRouter active model",
-    imageModel: "FLUX.1 Schnell",
+    imageModel: "SDXL Turbo",
     mode: "Text only" as typeof imageModes[number],
     aspectRatio: "16:9",
     size: 1024,
@@ -1191,7 +1191,7 @@ export default function StudioPage() {
         </label>
         <div className={cn("rounded-2xl border p-4 text-sm", studioTokens.soft)}>
           <p className="font-semibold">Provider status</p>
-          <p className={cn("mt-2 text-xs leading-5", studioTokens.muted)}>ComfyUI + FLUX.1 Schnell will render images when configured. Until then Meldex shows enhanced prompts only.</p>
+          <p className={cn("mt-2 text-xs leading-5", studioTokens.muted)}>ComfyUI + SDXL Turbo low-memory mode is active. FLUX is installed but disabled on this 8GB Mac.</p>
         </div>
       </div>
     </aside>

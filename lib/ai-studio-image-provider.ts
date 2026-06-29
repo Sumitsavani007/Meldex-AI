@@ -4,8 +4,8 @@ import type { ImagePromptPlan, ImageReferenceSummary, ImageStudioSettings } from
 export type ImageProviderKey =
   | "fal_flux_schnell"
   | "fal_flux_subject"
-  | "comfyui_flux_schnell_future"
-  | "comfyui_sdxl_future"
+  | "local_comfyui_flux_schnell"
+  | "local_comfyui_sdxl"
   | "comfyui_pulid_future"
   | "comfyui_ipadapter_future";
 
@@ -25,6 +25,12 @@ export type ImageGenerationOutput = {
   seed?: string | number | null;
 };
 
+type ProviderFailureCode =
+  | "PROVIDER_NOT_CONFIGURED"
+  | "PROVIDER_ERROR"
+  | "PROVIDER_TIMEOUT"
+  | "PROVIDER_EMPTY_OUTPUT";
+
 export type ImageGenerationRequest = {
   prompt: string;
   negativePrompt: string;
@@ -42,6 +48,47 @@ async function falKey() {
   return await getConfig("FAL_KEY") || await getConfig("FAL_API_KEY") || process.env.FAL_KEY || process.env.FAL_API_KEY || "";
 }
 
+async function comfyBaseUrl() {
+  return (await getConfig("COMFYUI_BASE_URL") || process.env.COMFYUI_BASE_URL || "").replace(/\/$/, "");
+}
+
+async function comfySdxlWorkflowPath() {
+  return await getConfig("STUDIO_SDXL_WORKFLOW") || process.env.STUDIO_SDXL_WORKFLOW || "";
+}
+
+async function readLocalTextFile(filePath: string) {
+  const fs = await import("node:fs/promises");
+  const path = await import("node:path");
+  const normalized = path.resolve(filePath);
+  return fs.readFile(normalized, "utf8");
+}
+
+async function getComfyStatus() {
+  const baseUrl = await comfyBaseUrl();
+  const workflowPath = await comfySdxlWorkflowPath();
+  if (!baseUrl) {
+    return { configured: false, running: false, workflowConfigured: Boolean(workflowPath), message: "Set COMFYUI_BASE_URL to enable local ComfyUI image generation." };
+  }
+  try {
+    const response = await fetch(`${baseUrl}/system_stats`, { cache: "no-store", signal: AbortSignal.timeout(1500) });
+    return {
+      configured: true,
+      running: response.ok,
+      workflowConfigured: Boolean(workflowPath),
+      message: response.ok
+        ? (workflowPath ? "Local ComfyUI is running with SDXL Turbo low-memory mode." : "Local ComfyUI is running; set STUDIO_SDXL_WORKFLOW to enable SDXL Turbo submission.")
+        : `Local ComfyUI health check returned ${response.status}.`,
+    };
+  } catch {
+    return {
+      configured: true,
+      running: false,
+      workflowConfigured: Boolean(workflowPath),
+      message: "Local ComfyUI is configured but not reachable.",
+    };
+  }
+}
+
 function imageSize(settings: ImageStudioSettings) {
   const base = settings.size || 1024;
   const ratio = settings.aspectRatio;
@@ -57,35 +104,35 @@ function hasReferences(input: ImageGenerationRequest) {
 }
 
 export async function getImageProviderStatuses(): Promise<ImageProviderStatus[]> {
-  const configured = Boolean(await falKey());
+  const comfy = await getComfyStatus();
   return [
     {
       key: "fal_flux_schnell",
       name: "fal.ai FLUX Schnell",
-      configured,
-      status: configured ? "ready" : "missing",
-      message: configured ? "Ready for online text-to-image." : "Set FAL_KEY or FAL_API_KEY to enable online text-to-image.",
+      configured: false,
+      status: "missing",
+      message: "Disabled for now. Meldex is using SDXL Turbo low-memory mode.",
     },
     {
       key: "fal_flux_subject",
       name: "fal.ai FLUX Subject",
-      configured,
-      status: configured ? "ready" : "missing",
-      message: configured ? "Ready for reference/subject image mode." : "Set FAL_KEY or FAL_API_KEY to enable reference-image generation.",
+      configured: false,
+      status: "missing",
+      message: "Disabled for now. Reference image generation will be re-enabled after a non-FLUX provider is configured.",
     },
     {
-      key: "comfyui_flux_schnell_future",
+      key: "local_comfyui_flux_schnell",
       name: "ComfyUI FLUX Schnell",
-      configured: false,
-      status: "future",
-      message: "Local provider planned for future configuration.",
+      configured: comfy.configured,
+      status: "missing",
+      message: "Disabled on this 8GB Mac. FLUX is installed but must not run because it exhausts unified memory.",
     },
     {
-      key: "comfyui_sdxl_future",
-      name: "ComfyUI SDXL",
-      configured: false,
-      status: "future",
-      message: "Local provider planned for future configuration.",
+      key: "local_comfyui_sdxl",
+      name: "ComfyUI SDXL Turbo",
+      configured: comfy.configured,
+      status: comfy.running && comfy.workflowConfigured ? "ready" : "missing",
+      message: comfy.message,
     },
     {
       key: "comfyui_pulid_future",
@@ -105,8 +152,8 @@ export async function getImageProviderStatuses(): Promise<ImageProviderStatus[]>
 }
 
 export function selectImageProvider(input: Pick<ImageGenerationRequest, "references" | "settings">): ImageProviderKey {
-  if (input.references.length || input.settings.mode !== "Text only" || input.settings.identityLock) return "fal_flux_subject";
-  return "fal_flux_schnell";
+  if (input.references.length || input.settings.mode !== "Text only" || input.settings.identityLock) return "local_comfyui_sdxl";
+  return "local_comfyui_sdxl";
 }
 
 function falInput(input: ImageGenerationRequest) {
@@ -224,8 +271,107 @@ async function submitFal(endpoint: string, input: ImageGenerationRequest) {
   };
 }
 
+async function submitComfyWorkflow(input: ImageGenerationRequest, workflowPath: string, provider: "local_comfyui_flux_schnell" | "local_comfyui_sdxl") {
+  const baseUrl = await comfyBaseUrl();
+  if (!baseUrl) {
+    return {
+      ok: false as const,
+      code: "PROVIDER_NOT_CONFIGURED" as ProviderFailureCode,
+      message: "Local ComfyUI is not configured. Set COMFYUI_BASE_URL.",
+    };
+  }
+  if (!workflowPath) {
+    return {
+      ok: false as const,
+      code: "PROVIDER_NOT_CONFIGURED" as ProviderFailureCode,
+      message: provider === "local_comfyui_sdxl"
+        ? "SDXL workflow is not configured. Set STUDIO_SDXL_WORKFLOW."
+        : "FLUX workflow is not configured. Set STUDIO_FLUX_SCHNELL_WORKFLOW.",
+    };
+  }
+
+  let workflow: Record<string, unknown>;
+  try {
+    const template = await readLocalTextFile(workflowPath);
+    workflow = JSON.parse(
+      template
+        .replaceAll("{{PROMPT}}", input.prompt.replaceAll("\\", "\\\\").replaceAll('"', '\\"'))
+        .replaceAll("{{NEGATIVE_PROMPT}}", input.negativePrompt.replaceAll("\\", "\\\\").replaceAll('"', '\\"')),
+    ) as Record<string, unknown>;
+  } catch (error) {
+    return {
+      ok: false as const,
+      code: "PROVIDER_ERROR" as ProviderFailureCode,
+      message: error instanceof Error ? `Unable to load ComfyUI workflow: ${error.message}` : "Unable to load ComfyUI workflow.",
+    };
+  }
+
+  const clientId = `meldex-${Date.now()}`;
+  const submit = await fetch(`${baseUrl}/prompt`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: workflow, client_id: clientId }),
+    signal: AbortSignal.timeout(30000),
+  }).catch((error) => ({ ok: false, status: 0, json: async () => ({ error: error instanceof Error ? error.message : "ComfyUI request failed" }) } as Response));
+  const submitData = await submit.json().catch(() => ({}));
+  if (!submit.ok) {
+    return {
+      ok: false as const,
+      code: "PROVIDER_ERROR" as ProviderFailureCode,
+      message: submitData?.error || `ComfyUI prompt submit failed with ${submit.status}`,
+      metadata: submitData,
+    };
+  }
+
+  const promptId = typeof submitData.prompt_id === "string" ? submitData.prompt_id : "";
+  if (!promptId) {
+    return {
+      ok: false as const,
+      code: "PROVIDER_ERROR" as ProviderFailureCode,
+      message: "ComfyUI did not return a prompt id.",
+      metadata: submitData,
+    };
+  }
+
+  for (let attempt = 0; attempt < 180; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    const history = await fetch(`${baseUrl}/history/${encodeURIComponent(promptId)}`, { cache: "no-store" }).then((response) => response.json()).catch(() => ({}));
+    const promptHistory = history?.[promptId];
+    const outputs = promptHistory?.outputs && typeof promptHistory.outputs === "object" ? Object.values(promptHistory.outputs as Record<string, { images?: Array<{ filename?: string; subfolder?: string; type?: string }> }>) : [];
+    const image = outputs.flatMap((output) => output.images || []).find((item) => item.filename);
+    if (image?.filename) {
+      const params = new URLSearchParams({
+        filename: image.filename,
+        subfolder: image.subfolder || "",
+        type: image.type || "output",
+      });
+      return {
+        ok: true as const,
+        provider,
+        outputs: [{ url: `${baseUrl}/view?${params.toString()}`, contentType: "image/png", seed: null }],
+        metadata: { promptId, history: promptHistory },
+      };
+    }
+  }
+
+  return {
+    ok: false as const,
+    code: "PROVIDER_TIMEOUT" as ProviderFailureCode,
+    message: "ComfyUI did not finish image generation in time.",
+    metadata: { promptId },
+  };
+}
+
 export async function generateImageWithProvider(input: ImageGenerationRequest) {
   const provider = selectImageProvider(input);
+  if (provider === "local_comfyui_flux_schnell") {
+    return {
+      ok: false as const,
+      code: "PROVIDER_NOT_CONFIGURED" as ProviderFailureCode,
+      message: "FLUX is installed but disabled on this Mac because it exhausts 8GB unified memory. Use SDXL Turbo low-memory mode.",
+    };
+  }
+  if (provider === "local_comfyui_sdxl") return await submitComfyWorkflow(input, await comfySdxlWorkflowPath(), "local_comfyui_sdxl");
   const endpoint = provider === "fal_flux_subject" ? FAL_ENDPOINTS.reference : FAL_ENDPOINTS.text;
   return await submitFal(endpoint, input);
 }

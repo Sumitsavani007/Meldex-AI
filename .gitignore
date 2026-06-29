@@ -7,6 +7,7 @@ dist
 .env.test
 *.log
 *.bundle
+ai-runtime
 
 # VS Code Extension build artifacts
 meldex-vscode-extension/out/

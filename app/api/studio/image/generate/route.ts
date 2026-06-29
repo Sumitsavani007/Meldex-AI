@@ -23,7 +23,7 @@ const schema = z.object({
   prompt: z.string().min(1).max(8000),
   settings: z.object({
     model: z.string().optional(),
-    imageModel: z.string().default("FLUX.1 Schnell"),
+    imageModel: z.string().default("SDXL Turbo"),
     mode: z.enum(["Text only", "My face", "Couple photo", "Two face references", "Character reference", "Style reference"]).default("Text only"),
     aspectRatio: z.string().default("16:9"),
     size: z.number().int().min(256).max(2048).default(1024),

@@ -48,9 +48,9 @@ const nextConfig: NextConfig = {
               // Fonts
               "font-src 'self' https://fonts.gstatic.com",
               // Images: self + data URIs + generated/provider image URLs
-              `img-src 'self' data: blob: https: ${process.env.R2_PUBLIC_URL ?? ""}`,
+              `img-src 'self' data: blob: https: http://127.0.0.1:8188 http://localhost:8188 ${process.env.R2_PUBLIC_URL ?? ""}`,
               // Connect: self + OpenRouter + Ollama + auth providers + Google OAuth
-              "connect-src 'self' https://openrouter.ai https://api.openai.com https://api.anthropic.com https://accounts.google.com https://oauth2.googleapis.com",
+              "connect-src 'self' https://openrouter.ai https://api.openai.com https://api.anthropic.com https://accounts.google.com https://oauth2.googleapis.com http://127.0.0.1:8188 http://localhost:8188",
               // Worker: blob (Monaco editor web workers)
               "worker-src blob:",
               // Frame: deny
