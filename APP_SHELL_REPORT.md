@@ -9,6 +9,7 @@ Date: 2026-06-30
 - `UserPanelShell` now delegates to `AppShell`, keeping existing settings-style pages compatible while removing duplicated shell logic.
 - Dashboard and Workspace overview now use the shared shell.
 - AI Studio no longer renders its own Meldex-level header/sidebar; it runs inside the shared shell with module-level tabs only.
+- Chat now uses the shared protected shell while keeping its conversation sidebar as a module-level panel.
 - Chat was split into a dynamic server wrapper plus client component to avoid static prerender manifest failures.
 
 ## Files Changed

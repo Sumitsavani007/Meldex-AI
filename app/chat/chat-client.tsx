@@ -36,7 +36,7 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { UserPanelSidebar } from "@/components/user-panel-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { logoutFromMeldex } from "@/lib/client-session";
 
 // ---------------------------------------------------------------------------
@@ -1303,8 +1303,8 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#f7f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
-      <UserPanelSidebar />
+    <AppShell title="Chat" description="Talk with Meldex AI in Gujarati, Hindi, or English." fullBleed>
+    <div className="flex h-[calc(100vh-65px)] overflow-hidden bg-[#f7f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
       {/* Sidebar */}
       <Sidebar
         conversations={conversations}
@@ -1488,5 +1488,6 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
+    </AppShell>
   );
 }

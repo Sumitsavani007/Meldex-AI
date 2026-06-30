@@ -25,6 +25,7 @@ Date: 2026-06-30
 - Logged-out public header remains public-only.
 - Protected pages use middleware redirects.
 - Dashboard uses shared shell.
+- Chat uses shared shell.
 - Workspace overview uses shared shell.
 - AI Studio uses shared shell and no longer creates a duplicate Meldex-level header/sidebar.
 - Settings pages continue through `UserPanelShell`, now backed by `AppShell`.
