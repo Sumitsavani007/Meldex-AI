@@ -1,31 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Bot,
   Box,
-  Clapperboard,
   CheckCircle2,
   Files,
   FolderKanban,
   KeyRound,
-  LayoutDashboard,
   MessageSquare,
-  Moon,
   Plus,
   Search,
   Sparkles,
-  Sun,
   WalletCards,
-  Workflow,
 } from "lucide-react";
-import { useThemePreference } from "@/components/theme-provider";
-import { NotificationBell } from "@/components/notification-bell";
-import { UserPanelSidebar } from "@/components/user-panel-sidebar";
+import { AppShell } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
 
 type Project = {
@@ -59,18 +52,6 @@ type UsagePayload = {
   }>;
 };
 
-const primaryNav = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/workspace", label: "Workspaces", icon: FolderKanban },
-  { href: "/studio", label: "AI Studio", icon: Clapperboard },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
-  { href: "/agents", label: "Agents", icon: Workflow },
-  { href: "/templates", label: "Templates", icon: Box },
-  { href: "/files", label: "Files", icon: Files },
-  { href: "/tasks", label: "Tasks", icon: Sparkles },
-  { href: "/models", label: "Models", icon: Bot },
-];
-
 const quickActions = [
   { href: "/workspace", label: "Create workspace", icon: FolderKanban },
   { href: "/chat", label: "Start new chat", icon: MessageSquare },
@@ -89,34 +70,9 @@ function timeAgo(value?: string) {
   return `${days}d ago`;
 }
 
-function MobileNav() {
-  const pathname = usePathname();
-  return (
-    <nav className="grid grid-cols-4 gap-1 border-t border-slate-200 bg-white/95 p-2 backdrop-blur dark:border-white/10 dark:bg-[#0d0d0d]/95 lg:hidden">
-      {primaryNav.slice(0, 4).map((item) => {
-        const active = pathname === item.href || pathname.startsWith(item.href + "/");
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "mx-focus flex flex-col items-center gap-1 rounded-lg px-2 py-2 text-[11px]",
-              active ? "bg-violet-50 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200" : "text-slate-500 dark:text-slate-400",
-            )}
-          >
-            <item.icon className="size-4" />
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
-
 export default function DashboardPage() {
   const { data: session, status } = useSession({ required: true });
   const router = useRouter();
-  const { theme, setTheme } = useThemePreference();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -193,41 +149,13 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f7fb] text-slate-950 dark:bg-[#0d0d0f] dark:text-white">
-      <div className="flex min-h-screen">
-        <UserPanelSidebar />
-
-        <div className="min-w-0 flex-1 pb-20 lg:pb-0">
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f8f7fb]/90 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/90 sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-7xl items-center gap-4">
-              <div className="lg:hidden">
-                <Link href="/dashboard" className="flex items-center gap-2 font-semibold">
-                  <span className="grid size-8 place-items-center rounded-lg bg-violet-600 text-white"><Bot className="size-4" /></span>
-                  Meldex
-                </Link>
-              </div>
-              <h1 className="hidden text-2xl font-semibold tracking-tight lg:block">Dashboard</h1>
-              <label className="ml-auto hidden h-10 w-full max-w-sm items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
-                <Search className="size-4" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
-                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500 dark:bg-white/10">⌘ K</span>
-              </label>
-              <button
-                onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                className="mx-focus grid size-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.08]"
-                aria-label="Toggle theme"
-                title="Toggle theme"
-              >
-                {theme === "dark" ? <Sun className="size-4" /> : <Moon className="size-4" />}
-              </button>
-              <NotificationBell />
-              <Link href="/settings/profile" className="mx-focus hidden size-10 place-items-center rounded-full bg-violet-600 text-sm font-semibold text-white shadow-sm shadow-violet-600/20 sm:grid">
-                {(session?.user?.name?.[0] || session?.user?.email?.[0] || "U").toUpperCase()}
-              </Link>
-            </div>
-          </header>
-
-          <main className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+    <AppShell title="Dashboard" description={`Good morning, ${firstName}. What do you want to build today?`}>
+      <div className="mb-4">
+        <label className="flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:hidden">
+          <Search className="size-4" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
+        </label>
+      </div>
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
               <section className="rounded-2xl border border-violet-100 bg-gradient-to-br from-white via-violet-50 to-white p-4 shadow-sm dark:border-violet-400/10 dark:from-white/[0.06] dark:via-violet-500/10 dark:to-white/[0.03]">
                 <div className="max-w-3xl">
@@ -403,12 +331,6 @@ export default function DashboardPage() {
                 </div>
               </aside>
             </div>
-          </main>
-        </div>
-      </div>
-      <div className="fixed inset-x-0 bottom-0 z-30 lg:hidden">
-        <MobileNav />
-      </div>
-    </div>
+    </AppShell>
   );
 }

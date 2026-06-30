@@ -4,24 +4,17 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import {
-  Aperture,
-  Bell,
   Box,
   Check,
-  ChevronDown,
-  Clapperboard,
   Copy,
   Download,
   Folder,
   Frame,
   Grid2X2,
-  HelpCircle,
   ImageIcon,
   Maximize2,
   Mic2,
-  Moon,
   Music2,
-  PanelLeftClose,
   Play,
   Plus,
   RefreshCw,
@@ -29,7 +22,6 @@ import {
   Settings2,
   SlidersHorizontal,
   Sparkles,
-  Sun,
   Trash2,
   Upload,
   Wand2,
@@ -37,6 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useThemePreference } from "@/components/theme-provider";
+import { AppShell } from "@/components/app-shell";
 
 type StudioAsset = {
   id: string;
@@ -285,7 +278,7 @@ function normalizeLocalImageSettings<T extends { imageModel: string; size: numbe
 
 export default function StudioPage() {
   const { data: session, status } = useSession({ required: true });
-  const { resolvedTheme, setTheme } = useThemePreference();
+  const { resolvedTheme } = useThemePreference();
   const theme = resolvedTheme;
   const [activeNav, setActiveNav] = useState("studio");
   const [mobileTab, setMobileTab] = useState("create");
@@ -593,14 +586,6 @@ export default function StudioPage() {
     const response = await fetch("/api/studio/provider/status", { method: "POST", cache: "no-store" });
     const data = await response.json();
     if (response.ok) setProviderStatuses(data.providers || []);
-  }
-
-  async function renameProject() {
-    if (!selectedProject) return;
-    const name = window.prompt("Rename project", selectedProject.name)?.trim();
-    if (!name) return;
-    await updateProject({ action: "rename", name });
-    await loadProjects(selectedProject.id);
   }
 
   function applyTemplate(name: string) {
@@ -1395,50 +1380,18 @@ export default function StudioPage() {
   );
 
   return (
-    <div className={cn(theme === "dark" && "dark")}>
-      <div className={cn("min-h-screen overflow-hidden transition-colors", studioTokens.app)}>
+    <AppShell title="AI Studio" description="Generate image, video, avatar, and creative history from one clean Meldex shell." breadcrumb={activeNav === "image" ? "Generate Image" : undefined} fullBleed>
+      <div className={cn(theme === "dark" && "dark")}>
+      <div className={cn("min-h-[calc(100vh-65px)] overflow-hidden transition-colors", studioTokens.app)}>
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)] dark:bg-[radial-gradient(circle_at_50%_0%,rgba(124,92,255,.16),transparent_26%),radial-gradient(circle_at_90%_20%,rgba(0,208,255,.08),transparent_20%)]" />
-        <header className={cn("relative z-20 flex items-center justify-between border-b px-6", activeNav === "image" ? "h-14" : "h-20", studioTokens.line, theme === "dark" ? "bg-[#050911]/88" : "bg-white/88", "backdrop-blur-xl")}>
-          <div className="flex items-center gap-7">
-            <a href="/dashboard" className="flex items-center gap-3">
-              <span className={cn("grid place-items-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/30", activeNav === "image" ? "size-8" : "size-9")}><Sparkles className="size-5" /></span>
-              <span className={cn("font-bold tracking-tight", activeNav === "image" ? "text-xl" : "text-2xl")}>Meldex AI</span>
-            </a>
-            <div className="hidden items-center gap-3 md:flex">
-              <span className="grid size-8 place-items-center rounded-xl bg-violet-600/15 text-violet-500">{activeNav === "image" ? <Frame className="size-4" /> : <Clapperboard className="size-4" />}</span>
-              <span className={cn("font-semibold", activeNav === "image" ? "text-base" : "text-lg")}>{activeNav === "image" ? "AI Studio / Generate Image" : "AI Studio"}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className={cn("grid place-items-center rounded-full border", activeNav === "image" ? "size-9" : "size-11", studioTokens.soft)} title="Switch theme">{theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}</button>
-            <button className={cn("relative grid place-items-center rounded-full border", activeNav === "image" ? "size-9" : "size-11", studioTokens.soft)} title="Notifications"><Bell className="size-5" /><span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-violet-600 text-[10px] font-bold text-white">3</span></button>
-            <Image src={avatarUrls[selectedAvatar] || avatarUrls[0]} alt="Profile" width={44} height={44} unoptimized className={cn("rounded-full object-cover ring-2 ring-violet-500/40", activeNav === "image" ? "size-9" : "size-11")} />
-            <button onClick={renameProject} className="hidden items-center gap-2 text-sm font-semibold md:flex">{session?.user?.name || "Dhaval"} <ChevronDown className="size-4" /></button>
-          </div>
-        </header>
-        <div className={cn("relative z-10 grid grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)]", activeNav === "image" ? "min-h-[calc(100vh-56px)]" : "min-h-[calc(100vh-80px)]")}>
-          <aside className={cn("hidden border-r p-5 lg:flex lg:flex-col", studioTokens.line, theme === "dark" ? "bg-[#070c14]/80" : "bg-white/78", "backdrop-blur-xl")}>
-            <nav className="space-y-3">
+        <main className={cn("relative z-10 min-w-0", activeNav === "image" ? "p-2.5 xl:p-3" : "p-4 xl:p-6")}>
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
               {navItems.map((item) => (
-                <button key={item.key} onClick={() => { setActiveNav(item.key); if (item.key === "projects") void loadProjects(); if (item.key === "templates") setMobileTab("create"); }} className={cn("flex h-14 w-full items-center gap-4 rounded-xl px-4 text-left text-sm font-medium transition", activeNav === item.key ? "bg-violet-600/14 text-violet-500 dark:text-violet-300" : `${studioTokens.muted} hover:bg-violet-600/10 hover:text-violet-500`)}>
-                  <item.icon className="size-5" /> {item.label}
+                <button key={item.key} onClick={() => { setActiveNav(item.key); if (item.key === "projects") void loadProjects(); if (item.key === "templates") setMobileTab("create"); }} className={cn("flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-left text-xs font-semibold transition", activeNav === item.key ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : `${studioTokens.soft} ${studioTokens.muted} hover:border-violet-400/60 hover:text-violet-500`)}>
+                  <item.icon className="size-4" /> {item.label}
                 </button>
               ))}
-            </nav>
-            <div className="mt-auto space-y-4">
-              <button className={cn("flex h-10 items-center gap-3 text-sm", studioTokens.muted)}><HelpCircle className="size-5" /> Help & Docs</button>
-              <button onClick={() => setActiveNav("settings")} className={cn("flex h-10 items-center gap-3 text-sm", studioTokens.muted)}><Settings2 className="size-5" /> Settings</button>
-              <div className={cn("rounded-xl p-4", studioTokens.panel)}>
-                <div className="flex items-center gap-3">
-                  <span className="grid size-10 place-items-center rounded-xl bg-violet-600/15 text-violet-500"><Aperture className="size-5" /></span>
-                  <div><p className="text-sm font-semibold">Meldex Pro</p><p className={cn("text-xs", studioTokens.muted)}>Unlimited generations</p></div>
-                </div>
-                <a href="/billing" className="mt-4 flex h-10 items-center justify-center rounded-lg bg-violet-600 text-sm font-semibold text-white">Upgrade Plan</a>
-              </div>
-              <button className={cn("ml-auto grid size-9 place-items-center rounded-xl", studioTokens.soft)}><PanelLeftClose className="size-4" /></button>
             </div>
-          </aside>
-          <main className={cn("min-w-0", activeNav === "image" ? "p-2.5 xl:p-3" : "p-4 xl:p-6")}>
             {activeNav !== "image" && <div className="mb-5 flex flex-wrap items-center gap-2 lg:hidden">
               {["create", "settings", "storyboard", "assets"].map((tab) => <button key={tab} onClick={() => setMobileTab(tab)} className={cn("rounded-full border px-3 py-1.5 text-xs capitalize", mobileTab === tab ? "border-violet-500 bg-violet-600 text-white" : studioTokens.soft)}>{tab}</button>)}
             </div>}
@@ -1472,7 +1425,6 @@ export default function StudioPage() {
               </div>
             )}
           </main>
-        </div>
         {fullscreenImage?.url && (
           <div className="fixed inset-0 z-50 grid place-items-center bg-black/82 p-4 backdrop-blur-xl" role="dialog" aria-modal="true" aria-label="Generated image fullscreen">
             <button onClick={() => setFullscreenImage(null)} className="absolute right-5 top-5 grid size-11 place-items-center rounded-full border border-white/15 bg-white/10 text-white" aria-label="Close fullscreen image">
@@ -1484,5 +1436,6 @@ export default function StudioPage() {
         )}
       </div>
     </div>
+    </AppShell>
   );
 }

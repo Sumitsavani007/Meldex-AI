@@ -15,7 +15,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { UserPanelSidebar } from "@/components/user-panel-sidebar";
+import { AppShell } from "@/components/app-shell";
 
 type ProjectCardData = {
   id: string;
@@ -205,29 +205,15 @@ export function WorkspaceIndexClient() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f7fb] text-zinc-950 dark:bg-[#0d0d0f] dark:text-white">
-      <div className="flex min-h-screen">
-        <UserPanelSidebar />
-        <div className="min-w-0 flex-1">
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-[#f7f7fb]/92 px-4 py-3 backdrop-blur-xl dark:border-white/10 dark:bg-[#0d0d0f]/92 sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-[1440px] items-center gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="grid size-6 place-items-center rounded-md bg-violet-600 text-[11px] font-semibold text-white">02</span>
-                  <p className="truncate text-sm font-semibold">Workspace Overview</p>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500 dark:bg-white/8 dark:text-slate-300">{statusText}</span>
-                </div>
-              </div>
-              <label className="hidden h-10 w-full max-w-[360px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:flex">
-                <Search className="size-4" />
-                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
-              </label>
-            </div>
-          </header>
+    <AppShell title="Workspace" description="Create, continue, preview, and track your AI-built projects." breadcrumb={statusText}>
           {projects.length === 0 ? (
             <WorkspaceEmptyState onCreate={createWorkspace} loading={loading} />
           ) : (
-            <main className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 lg:px-8">
+            <div>
+              <label className="mb-4 flex h-10 w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.04] md:hidden">
+                <Search className="size-4" />
+                <input className="min-w-0 flex-1 appearance-none border-0 bg-transparent p-0 outline-none ring-0 placeholder:text-slate-400 focus:border-0 focus:outline-none focus:ring-0 focus-visible:outline-none" placeholder="Search workspaces..." />
+              </label>
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h1 className="text-2xl font-semibold tracking-tight">Workspace</h1>
@@ -248,10 +234,8 @@ export function WorkspaceIndexClient() {
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {projects.map((project) => <WorkspaceProjectCard key={project.id} project={project} onArchive={archiveWorkspace} onDelete={deleteWorkspace} />)}
               </div>
-            </main>
+            </div>
           )}
-        </div>
-      </div>
-    </div>
+    </AppShell>
   );
 }
