@@ -7,6 +7,9 @@ Date: 2026-06-30
 - `npx tsc --noEmit`: passed.
 - `npm run lint`: passed with existing workspace hook warnings only.
 - `npm run build`: passed.
+- AWS deploy completed at commit `2948326`.
+- AWS PM2 `meldex-ai` restarted and online.
+- AWS `nginx -t` passed and nginx was reloaded.
 
 ## Manual/Code QA Covered
 
@@ -15,6 +18,10 @@ Date: 2026-06-30
 - `/login` returned HTTP `200`.
 - `/dashboard` returned HTTP `302` to login while logged out.
 - `/studio` returned HTTP `302` to login while logged out.
+- Live `https://meldex.newsyfly.com/` returned HTTP `200`.
+- Live `https://meldex.newsyfly.com/login` returned HTTP `200`.
+- Live `https://meldex.newsyfly.com/dashboard` returned HTTP `302` to `/login?callbackUrl=%2Fdashboard`.
+- Live `https://meldex.newsyfly.com/studio` returned HTTP `302` to `/login?callbackUrl=%2Fstudio`.
 - Logged-out public header remains public-only.
 - Protected pages use middleware redirects.
 - Dashboard uses shared shell.
