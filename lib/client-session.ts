@@ -25,5 +25,19 @@ export function clearMeldexClientCaches() {
 
 export async function logoutFromMeldex(callbackUrl = "/login") {
   clearMeldexClientCaches();
-  await signOut({ callbackUrl, redirect: true });
+  try {
+    await signOut({ redirect: false });
+  } catch {
+    // The server-side cookie clear below is the source of truth.
+  }
+  try {
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+  } catch {
+    // Navigation still moves the user out of protected UI.
+  }
+  window.location.assign(callbackUrl);
 }

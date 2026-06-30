@@ -31,15 +31,13 @@ export const appShellNav = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/workspace", label: "Workspace", icon: FolderKanban },
   { href: "/studio", label: "AI Studio", icon: Clapperboard },
-  { href: "/workspace", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "History", icon: History },
   { href: "/models", label: "Models", icon: Bot },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-function isActivePath(pathname: string, href: string, label: string) {
-  if (label === "Projects") return false;
+function isActivePath(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === href;
   if (href === "/settings") return pathname === href || pathname.startsWith("/settings/");
   if (href === "/workspace") return pathname === href || pathname.startsWith("/workspace/");
@@ -57,7 +55,7 @@ function ShellNav({
   return (
     <nav className="space-y-1">
       {appShellNav.map((item) => {
-        const active = isActivePath(pathname, item.href, item.label);
+        const active = isActivePath(pathname, item.href);
         return (
           <Link
             key={`${item.href}-${item.label}`}
