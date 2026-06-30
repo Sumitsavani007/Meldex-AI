@@ -22,6 +22,7 @@ Date: 2026-06-30
 - Build and type validation passed.
 - Prompt enhancement remains optional and uses OpenRouter/Qwen only when the user clicks Enhance Prompt.
 - Generate Image uses the original prompt if Enhance Prompt was not clicked.
+- AWS deploy completed at commit `618a759`.
 
 ## Remaining Issue
 

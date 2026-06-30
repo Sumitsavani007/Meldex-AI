@@ -34,6 +34,8 @@ Date: 2026-06-30
 - `npm run lint` passed with existing workspace hook warnings.
 - `npx tsc --noEmit` passed.
 - `npm run build` passed.
+- Deployed to AWS at commit `618a759`.
+- AWS runtime env inspection returned no `COMFY_CLOUD*` keys.
 
 ## Remaining Issue
 

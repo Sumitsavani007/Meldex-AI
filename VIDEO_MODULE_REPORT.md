@@ -19,6 +19,7 @@ Date: 2026-06-30
 
 - `npm run build` passed.
 - The code path blocks cleanly when the Comfy Cloud video workflow is missing.
+- AWS deploy completed at commit `618a759`.
 
 ## Remaining Issue
 

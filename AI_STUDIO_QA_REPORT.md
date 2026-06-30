@@ -15,6 +15,11 @@ Date: 2026-06-30
 - TypeScript passed.
 - Production build passed.
 - Comfy Cloud code compiles and is wired into image and video APIs.
+- Deployed commit: `618a759`.
+- Live smoke:
+  - `/` returned HTTP `200`.
+  - `/studio` redirected to login with HTTP `302`.
+  - unauthenticated `/api/studio/provider/status` returned HTTP `401`.
 
 ## Not Verified
 
