@@ -435,7 +435,7 @@ export default function StudioPage() {
         enhancedPrompt: generation.enhancedPrompt || generation.sourcePrompt,
         negativePrompt: generation.negativePrompt || "",
         providerMessage: providerStatus?.message || generation.error || generation.status,
-        provider: providerStatus?.selectedProvider,
+        provider: providerStatus?.selectedProvider || generation.provider || undefined,
         model: generation.model || undefined,
         createdAt: generation.createdAt,
       } satisfies ImageResult;
@@ -635,7 +635,7 @@ export default function StudioPage() {
     }
     setImageLoading(true);
     setImageError("");
-    setMessage("Generating image with Hugging Face");
+    setMessage("Preparing Comfy Cloud workflow");
     try {
       const project = await ensureSelectedProject();
       await saveImageState({ prompt: imagePrompt, imageSettings }).catch(() => undefined);
@@ -655,7 +655,7 @@ export default function StudioPage() {
       if (!response.ok) throw new Error(data.error || "Image generation failed");
       const outputs = Array.isArray(data.outputs) ? data.outputs : [];
       const mappedOutputs: ImageResult[] = outputs.length ? outputs.map((output: Partial<ImageResult>, index: number) => ({
-        id: `${data.generation.id}-${index}`,
+        id: index === 0 ? data.generation.id : `${data.generation.id}-${index}`,
         url: output.url,
         enhancedPrompt: imagePrompt,
         providerMessage: data.providerMessage,
@@ -702,6 +702,19 @@ export default function StudioPage() {
     const next = [reference, ...imageReferences].slice(0, 6);
     setImageReferences(next);
     await saveImageState({ references: next }).catch(() => undefined);
+  }
+
+  async function deleteImageResult(result: ImageResult) {
+    const response = await fetch(`/api/studio/image/${encodeURIComponent(result.id)}`, { method: "DELETE" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setImageError(data.error || "Unable to delete image");
+      return;
+    }
+    const nextResults = imageResults.filter((item) => item.id !== result.id);
+    setImageResults(nextResults);
+    await saveImageState({ results: nextResults }).catch(() => undefined);
+    setMessage("Image deleted");
   }
 
   function exportJson() {
@@ -1053,7 +1066,7 @@ export default function StudioPage() {
                   <div className="mx-auto mt-7 h-2 w-64 overflow-hidden rounded-full bg-white/10">
                     <div className="h-full w-2/3 animate-pulse rounded-full bg-gradient-to-r from-violet-400 to-fuchsia-300" />
                   </div>
-                  <p className="mt-4 text-xs text-white/42">Estimated time depends on Hugging Face model warmup.</p>
+                  <p className="mt-4 text-xs text-white/42">Estimated time depends on Comfy Cloud queue and workflow runtime.</p>
                 </div>
               </div>
             </div>
@@ -1080,6 +1093,7 @@ export default function StudioPage() {
                   <button onClick={() => navigator.clipboard?.writeText(imageResults[0].enhancedPrompt)} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><Copy className="size-3.5" /> Copy Prompt</button>
                   <button onClick={() => void runImageGeneration()} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><RefreshCw className="size-3.5" /> Regenerate</button>
                   <button onClick={() => void reuseImageAsReference(imageResults[0])} className={cn("flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold", studioTokens.soft)}><ImageIcon className="size-3.5" /> Use as Reference</button>
+                  <button onClick={() => void deleteImageResult(imageResults[0])} className="flex h-10 items-center gap-2 rounded-xl border border-red-300/70 bg-red-50 px-3 text-xs font-semibold text-red-700 transition hover:bg-red-100 dark:border-red-400/30 dark:bg-red-400/10 dark:text-red-200"><Trash2 className="size-3.5" /> Delete</button>
                 </div>
               </div>
             </article>
@@ -1091,7 +1105,7 @@ export default function StudioPage() {
                   <ImageIcon className="size-8" />
                 </div>
                 <p className="mt-5 text-lg font-semibold">No image generated yet</p>
-                <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Write your prompt on the left and Meldex will render a real Hugging Face image here.</p>
+                <p className={cn("mt-2 text-sm leading-6", studioTokens.muted)}>Write your prompt on the right and Meldex will render a real Comfy Cloud image here.</p>
               </div>
             </div>
           )}
@@ -1121,7 +1135,7 @@ export default function StudioPage() {
               >
                 {imageModels.map((model) => <option key={model} className="bg-white text-slate-950 dark:bg-[#0f1720] dark:text-white">{model}</option>)}
               </select>
-              <span className={cn("mt-1 block text-[11px]", studioTokens.muted)}>Provider: Hugging Face</span>
+              <span className={cn("mt-1 block text-[11px]", studioTokens.muted)}>Provider: Comfy Cloud</span>
             </label>
 
             <div>

@@ -114,7 +114,7 @@ export async function enhanceImagePrompt(
 ) {
   const system = `You are Meldex AI Studio's image prompt director.
 Understand Gujarati, Hindi, English, and mixed-language prompts.
-Convert user intent into a cinematic English image prompt for FLUX/SDXL.
+Convert user intent into a cinematic English image prompt for Comfy Cloud FLUX.1 Schnell image generation.
 Preserve identity intent when references are supplied, but do not claim an image was generated.
 Return JSON only:
 {
@@ -127,7 +127,7 @@ Return JSON only:
     "aspectRatio": "16:9",
     "size": 1024,
     "quality": "Balanced",
-    "steps": 8,
+    "steps": 4,
     "seed": null,
     "style": "Realistic",
     "identityLock": true,
@@ -144,7 +144,7 @@ Return JSON only:
 
   try {
     const completion = await generateChatCompletionWithUsage({
-      model: settings.model,
+      model: settings.model && settings.model !== "OpenRouter active model" ? settings.model : undefined,
       userId: runtime?.userId,
       taskType: "ai_studio_image_prompt_enhance",
       maxTokens: 1800,

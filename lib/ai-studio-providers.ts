@@ -1,8 +1,12 @@
 import { getConfig } from "@/lib/runtime-config";
 import { testOpenRouterHealth } from "@/lib/provider-health";
+import { getComfyCloudStatus } from "@/lib/ai-studio-comfy-cloud";
 
 export type StudioProviderKey =
   | "openrouter"
+  | "comfy_cloud"
+  | "comfy_cloud_flux_schnell"
+  | "comfy_cloud_wan2"
   | "comfyui"
   | "flux_schnell"
   | "sdxl"
@@ -52,6 +56,30 @@ export const STUDIO_PROVIDER_REGISTRY: Record<StudioProviderKey, Omit<StudioProv
     localFirst: false,
     envKeys: ["OPENROUTER_API_KEY", "OPENROUTER_MODEL"],
     requiredEnv: ["OPENROUTER_API_KEY"],
+  },
+  comfy_cloud: {
+    key: "comfy_cloud",
+    name: "Comfy Cloud Media Engine",
+    category: "engine",
+    localFirst: false,
+    envKeys: ["COMFY_CLOUD_API_KEY", "COMFY_CLOUD_BASE_URL"],
+    requiredEnv: ["COMFY_CLOUD_API_KEY"],
+  },
+  comfy_cloud_flux_schnell: {
+    key: "comfy_cloud_flux_schnell",
+    name: "FLUX.1 Schnell on Comfy Cloud",
+    category: "image",
+    localFirst: false,
+    envKeys: ["COMFY_CLOUD_API_KEY", "COMFY_CLOUD_IMAGE_WORKFLOW"],
+    requiredEnv: ["COMFY_CLOUD_API_KEY", "COMFY_CLOUD_IMAGE_WORKFLOW"],
+  },
+  comfy_cloud_wan2: {
+    key: "comfy_cloud_wan2",
+    name: "Wan 2.x on Comfy Cloud",
+    category: "video",
+    localFirst: false,
+    envKeys: ["COMFY_CLOUD_API_KEY", "COMFY_CLOUD_VIDEO_WORKFLOW"],
+    requiredEnv: ["COMFY_CLOUD_API_KEY", "COMFY_CLOUD_VIDEO_WORKFLOW"],
   },
   comfyui: {
     key: "comfyui",
@@ -152,9 +180,9 @@ export const STUDIO_PROVIDER_REGISTRY: Record<StudioProviderKey, Omit<StudioProv
 };
 
 export const STUDIO_RENDER_REQUIREMENTS: Record<StudioRenderMode, StudioProviderKey[]> = {
-  storyboard_images: ["comfyui", "sdxl"],
-  draft_preview: ["comfyui", "wan21_13b"],
-  final_render: ["comfyui", "wan21_14b"],
+  storyboard_images: ["comfy_cloud", "comfy_cloud_flux_schnell"],
+  draft_preview: ["comfy_cloud", "comfy_cloud_wan2"],
+  final_render: ["comfy_cloud", "comfy_cloud_wan2"],
   voice: ["xtts_v2"],
   music: ["musicgen"],
   sound_effects: ["audiogen"],
@@ -191,6 +219,7 @@ async function getComfyRuntime(baseUrl: string | undefined) {
 export async function listStudioProviderStatuses(): Promise<StudioProviderStatus[]> {
   const comfyBaseUrl = await getConfig("COMFYUI_BASE_URL");
   const comfyRuntime = await getComfyRuntime(comfyBaseUrl || undefined);
+  const comfyCloud = await getComfyCloudStatus();
   const openRouter = await testOpenRouterHealth().catch((err) => ({
     ok: false,
     message: err instanceof Error ? err.message : "OpenRouter health check failed",
@@ -206,6 +235,24 @@ export async function listStudioProviderStatuses(): Promise<StudioProviderStatus
         version: await getConfig("OPENROUTER_MODEL") || "qwen/qwen3-coder",
         gpuMemory: null,
         queue: 0,
+        temperature: null,
+      } satisfies StudioProviderStatus;
+    }
+
+    if (provider.key === "comfy_cloud" || provider.key === "comfy_cloud_flux_schnell" || provider.key === "comfy_cloud_wan2") {
+      const ready = provider.key === "comfy_cloud"
+        ? comfyCloud.configured
+        : provider.key === "comfy_cloud_flux_schnell"
+          ? comfyCloud.configured && comfyCloud.imageReady
+          : comfyCloud.configured && comfyCloud.videoReady;
+      return {
+        ...provider,
+        envKeys: provider.envKeys,
+        status: ready && comfyCloud.status === "ready" ? "running" : "missing",
+        message: comfyCloud.message,
+        version: provider.key === "comfy_cloud_wan2" ? "Wan 2.x" : provider.key === "comfy_cloud_flux_schnell" ? "FLUX.1 Schnell" : "Comfy Cloud",
+        gpuMemory: null,
+        queue: null,
         temperature: null,
       } satisfies StudioProviderStatus;
     }

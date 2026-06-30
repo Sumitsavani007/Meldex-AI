@@ -1,7 +1,9 @@
 import { getConfig } from "@/lib/runtime-config";
 import type { ImagePromptPlan, ImageReferenceSummary, ImageStudioSettings } from "@/lib/ai-studio-image";
+import { getComfyCloudStatus, runComfyCloudGeneration } from "@/lib/ai-studio-comfy-cloud";
 
 export type ImageProviderKey =
+  | "comfy_cloud_flux_schnell"
   | "fal_flux_schnell"
   | "fal_flux_subject"
   | "local_comfyui_flux_schnell"
@@ -92,10 +94,12 @@ async function getComfyStatus() {
 function imageSize(settings: ImageStudioSettings) {
   const base = settings.size || 1024;
   const ratio = settings.aspectRatio;
-  if (ratio === "16:9") return { width: base, height: Math.round(base * 9 / 16) };
-  if (ratio === "4:3") return { width: base, height: Math.round(base * 3 / 4) };
-  if (ratio === "3:4") return { width: Math.round(base * 3 / 4), height: base };
-  if (ratio === "9:16") return { width: Math.round(base * 9 / 16), height: base };
+  const snap = (value: number) => Math.max(64, Math.round(value / 8) * 8);
+  if (ratio === "16:9") return { width: snap(base), height: snap(base * 9 / 16) };
+  if (ratio === "4:3") return { width: snap(base), height: snap(base * 3 / 4) };
+  if (ratio === "3:4") return { width: snap(base * 3 / 4), height: snap(base) };
+  if (ratio === "9:16") return { width: snap(base * 9 / 16), height: snap(base) };
+  if (ratio === "1:1") return { width: snap(base), height: snap(base) };
   return { width: base, height: base };
 }
 
@@ -104,8 +108,16 @@ function hasReferences(input: ImageGenerationRequest) {
 }
 
 export async function getImageProviderStatuses(): Promise<ImageProviderStatus[]> {
+  const cloud = await getComfyCloudStatus();
   const comfy = await getComfyStatus();
   return [
+    {
+      key: "comfy_cloud_flux_schnell",
+      name: "Comfy Cloud FLUX.1 Schnell",
+      configured: cloud.configured,
+      status: cloud.ready && cloud.imageReady ? "ready" : "missing",
+      message: cloud.message,
+    },
     {
       key: "fal_flux_schnell",
       name: "fal.ai FLUX Schnell",
@@ -151,9 +163,8 @@ export async function getImageProviderStatuses(): Promise<ImageProviderStatus[]>
   ];
 }
 
-export function selectImageProvider(input: Pick<ImageGenerationRequest, "references" | "settings">): ImageProviderKey {
-  if (input.references.length || input.settings.mode !== "Text only" || input.settings.identityLock) return "local_comfyui_sdxl";
-  return "local_comfyui_sdxl";
+export function selectImageProvider(): ImageProviderKey {
+  return "comfy_cloud_flux_schnell";
 }
 
 function falInput(input: ImageGenerationRequest) {
@@ -298,6 +309,35 @@ async function submitComfyWorkflow(input: ImageGenerationRequest, workflowPath: 
         .replaceAll("{{PROMPT}}", input.prompt.replaceAll("\\", "\\\\").replaceAll('"', '\\"'))
         .replaceAll("{{NEGATIVE_PROMPT}}", input.negativePrompt.replaceAll("\\", "\\\\").replaceAll('"', '\\"')),
     ) as Record<string, unknown>;
+    if (provider === "local_comfyui_sdxl") {
+      const size = imageSize(input.settings);
+      const maxEdge = Math.max(size.width, size.height);
+      if (maxEdge > 512) {
+        return {
+          ok: false as const,
+          code: "PROVIDER_NOT_CONFIGURED" as ProviderFailureCode,
+          message: "Local SDXL Turbo on this 8GB Mac supports 320px and experimental 512px only. Choose 320 for reliable generation.",
+        };
+      }
+      if (input.settings.steps > 2) {
+        return {
+          ok: false as const,
+          code: "PROVIDER_NOT_CONFIGURED" as ProviderFailureCode,
+          message: "Local SDXL Turbo low-memory mode supports 1-2 steps on this Mac. Higher step counts can exhaust memory.",
+        };
+      }
+      const latent = workflow["4"] as { inputs?: Record<string, unknown> } | undefined;
+      if (latent?.inputs) {
+        latent.inputs.width = size.width;
+        latent.inputs.height = size.height;
+        latent.inputs.batch_size = 1;
+      }
+      const sampler = workflow["5"] as { inputs?: Record<string, unknown> } | undefined;
+      if (sampler?.inputs) {
+        sampler.inputs.steps = Math.max(1, Math.min(2, Number(input.settings.steps) || 1));
+        sampler.inputs.seed = input.settings.seedMode === "Custom" && input.settings.seed ? Number(input.settings.seed) || input.settings.seed : Math.floor(Math.random() * 1_000_000_000);
+      }
+    }
   } catch (error) {
     return {
       ok: false as const,
@@ -363,7 +403,32 @@ async function submitComfyWorkflow(input: ImageGenerationRequest, workflowPath: 
 }
 
 export async function generateImageWithProvider(input: ImageGenerationRequest) {
-  const provider = selectImageProvider(input);
+  const provider = selectImageProvider();
+  if (provider === "comfy_cloud_flux_schnell") {
+    const size = imageSize(input.settings);
+    const result = await runComfyCloudGeneration({
+      kind: "image",
+      prompt: input.prompt,
+      negativePrompt: input.negativePrompt,
+      model: input.settings.imageModel || "FLUX.1 Schnell",
+      width: size.width,
+      height: size.height,
+      aspectRatio: input.settings.aspectRatio,
+    });
+    if (!result.ok) return result;
+    return {
+      ok: true as const,
+      provider,
+      outputs: result.outputs.map((output) => ({
+        url: output.url,
+        width: output.width,
+        height: output.height,
+        contentType: output.mimeType,
+        seed: result.metadata.seed as string | number | null | undefined,
+      })),
+      metadata: result.metadata,
+    };
+  }
   if (provider === "local_comfyui_flux_schnell") {
     return {
       ok: false as const,
