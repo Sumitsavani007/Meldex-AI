@@ -9,6 +9,9 @@ Date: 2026-06-30
 - `npx prisma generate`: passed.
 - `npx prisma migrate deploy`: passed.
 - `npm run build`: passed.
+- AWS deploy completed at commit `73399f2`.
+- AWS `pm2 restart meldex-ai --update-env` completed and process is online.
+- AWS `sudo nginx -t` passed and nginx was reloaded.
 
 ## Verified In Code
 
@@ -23,6 +26,8 @@ Date: 2026-06-30
 
 - Full real image/video generation QA requires valid Comfy Cloud API credentials and workflow IDs on the target runtime.
 - The implementation does not fake generation or fake credit success when the provider is unavailable.
+- Live `/api/studio/credits/estimate` returns `401 Authentication required` without a session, confirming the deployed credit estimate route is protected.
+- Live `/api/health` responds from AWS; current status is `degraded` only because Ollama is unreachable, not because the credit system failed.
 
 ## Result
 
