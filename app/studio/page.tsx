@@ -1157,7 +1157,7 @@ export default function StudioPage() {
           <span className="rounded-lg bg-slate-200 px-2 py-1 dark:bg-white/8">{settings.durationSec}s</span>
         </div>
         <p className={cn("mt-4 text-xs", studioTokens.muted)}>Creation Time</p>
-        <p className={cn("mt-1 text-sm", studioTokens.muted)}>{new Date(latestGeneration?.createdAt || Date.now()).toLocaleString()}</p>
+        <p className={cn("mt-1 text-sm", studioTokens.muted)}>{latestGeneration?.createdAt ? new Date(latestGeneration.createdAt).toLocaleString() : "Not generated yet"}</p>
         <div className="mt-5 grid grid-cols-[1fr_1fr_44px] gap-2">
           <button onClick={() => latestGeneration?.enhancedPrompt && setPrompt(latestGeneration.enhancedPrompt)} disabled={!latestGeneration?.enhancedPrompt} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>Use</button>
           <button onClick={runGeneration} disabled={!selectedProject || loading} className={cn("h-11 rounded-xl border text-sm font-medium disabled:opacity-40", studioTokens.soft)}>{loading ? "Running" : "Rerun"}</button>
