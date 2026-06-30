@@ -39,6 +39,26 @@ type Project = {
   previews?: Array<{ verified: boolean; url: string }>;
 };
 
+type UsagePayload = {
+  usage: {
+    plan: { name: string; monthlyCredits: number };
+    windows: { MONTHLY: { creditsUsed: number; creditsLimit: number } };
+    balance?: {
+      monthlyRemaining: number;
+      purchasedCredits: number;
+      totalRemaining: number;
+      estimatedRemainingGenerations: number;
+    };
+  };
+  transactions: Array<{
+    id: string;
+    type: string;
+    credits: number;
+    reason?: string | null;
+    createdAt: string;
+  }>;
+};
+
 const primaryNav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/workspace", label: "Workspaces", icon: FolderKanban },
@@ -103,6 +123,8 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
   const [idea, setIdea] = useState("");
   const [search, setSearch] = useState("");
+  const [usage, setUsage] = useState<UsagePayload["usage"] | null>(null);
+  const [creditTransactions, setCreditTransactions] = useState<UsagePayload["transactions"]>([]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -120,6 +142,16 @@ export default function DashboardPage() {
       .finally(() => {
         if (mounted) setLoading(false);
       });
+    fetch("/api/usage", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load usage");
+        if (mounted) {
+          setUsage(data.usage || null);
+          setCreditTransactions(Array.isArray(data.transactions) ? data.transactions.slice(0, 5) : []);
+        }
+      })
+      .catch(() => undefined);
     return () => {
       mounted = false;
     };
@@ -242,9 +274,11 @@ export default function DashboardPage() {
                 </div>
                 <div className="space-y-2">
                   {[
+                    { label: "Remaining credits", value: usage?.balance?.totalRemaining ?? Math.max(0, (usage?.windows.MONTHLY.creditsLimit || 0) - (usage?.windows.MONTHLY.creditsUsed || 0)), icon: WalletCards, tone: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-200" },
                     { label: "Workspaces", value: projects.length, icon: FolderKanban, tone: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-200" },
                     { label: "Tasks completed", value: stats.tasks, icon: CheckCircle2, tone: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-200" },
-                    { label: "Files created", value: stats.files, icon: Files, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200" },
+                    { label: "Used credits", value: usage?.windows.MONTHLY.creditsUsed || 0, icon: Files, tone: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200" },
+                    { label: "Est. generations", value: usage?.balance?.estimatedRemainingGenerations || 0, icon: Sparkles, tone: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-200" },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-3 rounded-xl border border-slate-100 p-2.5 dark:border-white/8">
                       <span className={cn("grid size-9 place-items-center rounded-xl", item.tone)}>
@@ -252,10 +286,31 @@ export default function DashboardPage() {
                       </span>
                       <div>
                         <p className="text-xs text-slate-500 dark:text-slate-400">{item.label}</p>
-                        <p className="text-base font-semibold">{item.value}</p>
+                        <p className="text-base font-semibold">{Number(item.value).toLocaleString()}</p>
                       </div>
                     </div>
                   ))}
+                  <div className="rounded-xl border border-slate-100 p-2.5 text-xs text-slate-500 dark:border-white/8 dark:text-slate-400">
+                    <div className="flex justify-between"><span>Monthly</span><span>{(usage?.plan.monthlyCredits || 0).toLocaleString()}</span></div>
+                    <div className="mt-1 flex justify-between"><span>Purchased</span><span>{(usage?.balance?.purchasedCredits || 0).toLocaleString()}</span></div>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 p-2.5 dark:border-white/8">
+                    <p className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">Recent usage</p>
+                    {creditTransactions.length ? (
+                      <div className="space-y-1.5">
+                        {creditTransactions.slice(0, 3).map((transaction) => (
+                          <div key={transaction.id} className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                            <span className="truncate">{transaction.reason || transaction.type}</span>
+                            <span className={transaction.type === "USAGE" ? "text-amber-600 dark:text-amber-300" : "text-emerald-600 dark:text-emerald-300"}>
+                              {transaction.type === "USAGE" ? "-" : "+"}{transaction.credits}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">No credit usage yet.</p>
+                    )}
+                  </div>
                 </div>
               </aside>
             </div>

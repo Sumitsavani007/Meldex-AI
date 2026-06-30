@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/role-guard";
-import { getUserPlanLimits } from "@/lib/plans-credits";
+import { getUserCreditBalance } from "@/lib/plans-credits";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   if (error) return error;
   try {
     const { searchParams } = new URL(request.url);
-    const usage = await getUserPlanLimits(session.user.id);
+    const usage = await getUserCreditBalance(session.user.id);
     const transactions = await prisma.creditTransaction.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: "desc" },

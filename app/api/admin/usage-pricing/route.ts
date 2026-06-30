@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
-import { listModelUsageConfigs, seedDefaultModelUsageConfigs } from "@/lib/plans-credits";
+import { listModelUsageConfigs, seedDefaultModelUsageConfigs, seedDefaultStudioUsageConfigs } from "@/lib/plans-credits";
 import { logAuditEvent } from "@/lib/audit";
 
 export const runtime = "nodejs";
@@ -43,8 +43,9 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     if (body?.resetDefaults) {
       const config = await seedDefaultModelUsageConfigs({ overwrite: true });
+      const studioConfigs = await seedDefaultStudioUsageConfigs({ overwrite: true });
       await logAuditEvent({ userId: session.user.id, action: "USAGE_PRICING_RESET", resource: "ModelUsageConfig", success: true });
-      return NextResponse.json({ configs: [config] }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ configs: [config, ...studioConfigs] }, { headers: { "Cache-Control": "no-store" } });
     }
     const parsed = schema.parse(body);
     const data = { ...parsed, id: undefined };

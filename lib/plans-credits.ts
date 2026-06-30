@@ -117,6 +117,22 @@ export type CreditCalculationInput = {
   autofixes?: number;
 };
 
+export type StudioCreditEstimateInput = {
+  kind: "image" | "video" | "audio" | "voice";
+  provider?: string;
+  model?: string;
+  width?: number;
+  height?: number;
+  imageCount?: number;
+  referenceImages?: number;
+  advancedSettings?: number;
+  durationSec?: number;
+  fps?: number;
+  aspectRatio?: string;
+  upscaling?: boolean;
+  audio?: boolean;
+};
+
 export type PlanLimitType =
   | "five_hour_credits"
   | "weekly_credits"
@@ -252,6 +268,56 @@ export async function seedDefaultModelUsageConfigs({ overwrite = false } = {}) {
   });
 }
 
+export async function seedDefaultStudioUsageConfigs({ overwrite = false } = {}) {
+  const configs = [
+    {
+      id: "model_usage_comfy_cloud_flux_schnell",
+      provider: "comfy_cloud",
+      model: "FLUX.1 Schnell",
+      inputCreditMultiplier: 1,
+      outputCreditMultiplier: 2,
+      reasoningCreditMultiplier: 0,
+      cachedCreditMultiplier: 0,
+      toolCallCreditCost: 3,
+      previewCreditCost: 1,
+      fileReadCreditCost: 2,
+      fileWriteCreditCost: 0,
+      memoryReadCreditCost: 1,
+      memoryWriteCreditCost: 0,
+      fallbackEstimateCredits: 12,
+      retryMultiplier: 1,
+      autofixMultiplier: 1,
+      estimatedCostPerCreditCents: 0,
+      isActive: true,
+    },
+    {
+      id: "model_usage_comfy_cloud_wan2",
+      provider: "comfy_cloud",
+      model: "Wan 2.x",
+      inputCreditMultiplier: 1,
+      outputCreditMultiplier: 4,
+      reasoningCreditMultiplier: 0,
+      cachedCreditMultiplier: 0,
+      toolCallCreditCost: 4,
+      previewCreditCost: 5,
+      fileReadCreditCost: 3,
+      fileWriteCreditCost: 0,
+      memoryReadCreditCost: 2,
+      memoryWriteCreditCost: 0,
+      fallbackEstimateCredits: 48,
+      retryMultiplier: 1,
+      autofixMultiplier: 1,
+      estimatedCostPerCreditCents: 0,
+      isActive: true,
+    },
+  ];
+  return Promise.all(configs.map((config) => prisma.modelUsageConfig.upsert({
+    where: { provider_model: { provider: config.provider, model: config.model } },
+    update: overwrite ? config : { isActive: true },
+    create: config,
+  })));
+}
+
 export async function seedDefaultFeatureFlags() {
   const plans = await listPlans();
   const flags = [];
@@ -300,6 +366,7 @@ export async function listPlanFeatures() {
 
 export async function listModelUsageConfigs() {
   await seedDefaultModelUsageConfigs();
+  await seedDefaultStudioUsageConfigs();
   return prisma.modelUsageConfig.findMany({ orderBy: [{ provider: "asc" }, { model: "asc" }] });
 }
 
@@ -340,6 +407,48 @@ export async function calculateCredits(input: CreditCalculationInput) {
       toolCredits,
       retryCredits,
       autofixCredits,
+      input,
+    },
+  };
+}
+
+function megapixels(width = 1024, height = 1024) {
+  return Math.max(0.25, (width * height) / 1_000_000);
+}
+
+export async function calculateStudioCredits(input: StudioCreditEstimateInput) {
+  await seedDefaultStudioUsageConfigs();
+  const model = input.model || (input.kind === "video" ? "Wan 2.x" : "FLUX.1 Schnell");
+  const provider = input.provider || "comfy_cloud";
+  const config = await getModelUsageConfig(provider, model);
+  const count = Math.max(1, input.imageCount || 1);
+  const resolutionUnits = megapixels(input.width, input.height);
+  const resolutionCredits = Math.ceil(resolutionUnits * config.outputCreditMultiplier * count);
+  const referenceCredits = Math.ceil((input.referenceImages || 0) * config.fileReadCreditCost);
+  const advancedCredits = Math.ceil((input.advancedSettings || 0) * config.memoryReadCreditCost);
+  const durationCredits = input.kind === "video" ? Math.ceil((input.durationSec || 5) * config.previewCreditCost) : 0;
+  const fpsCredits = input.kind === "video" ? Math.ceil(((input.fps || 24) / 24) * config.toolCallCreditCost) : 0;
+  const upscaleCredits = input.upscaling ? Math.ceil(config.autofixMultiplier * config.fallbackEstimateCredits) : 0;
+  const audioCredits = input.audio ? Math.ceil(config.retryMultiplier * config.toolCallCreditCost) : 0;
+  const raw = (config.fallbackEstimateCredits * count) + resolutionCredits + referenceCredits + advancedCredits + durationCredits + fpsCredits + upscaleCredits + audioCredits;
+  const queueSeconds = Math.max(10, Math.ceil((input.kind === "video" ? (input.durationSec || 5) * 18 : 25) / Math.max(1, config.retryMultiplier)));
+  const processingSeconds = input.kind === "video" ? Math.max(60, (input.durationSec || 5) * 24) : 35;
+  return {
+    credits: Math.max(1, Math.ceil(raw)),
+    provider,
+    model,
+    queueSeconds,
+    processingSeconds,
+    config,
+    breakdown: {
+      baseCredits: config.fallbackEstimateCredits * count,
+      resolutionCredits,
+      referenceCredits,
+      advancedCredits,
+      durationCredits,
+      fpsCredits,
+      upscaleCredits,
+      audioCredits,
       input,
     },
   };
@@ -443,6 +552,56 @@ export async function getUserPlanLimits(userId: string) {
     allowedModels: Array.isArray(plan.allowedModelsJson) ? plan.allowedModelsJson : [],
     features: Array.isArray(plan.featuresJson) ? plan.featuresJson : [],
   };
+}
+
+export async function getUserCreditBalance(userId: string) {
+  const summary = await getUserPlanLimits(userId);
+  const monthly = summary.windows.MONTHLY;
+  const monthlyRemaining = Math.max(0, monthly.creditsLimit - monthly.creditsUsed);
+  const transactions = await prisma.creditTransaction.findMany({
+    where: { userId },
+    select: { type: true, credits: true, metadataJson: true },
+  });
+  let purchasedIn = 0;
+  let purchasedUsed = 0;
+  for (const tx of transactions) {
+    const meta = (tx.metadataJson || {}) as Record<string, unknown>;
+    const bucket = String(meta.creditBucket || meta.bucket || "");
+    if ((tx.type === CreditTransactionType.GRANT || tx.type === CreditTransactionType.ADMIN_ADJUSTMENT || tx.type === CreditTransactionType.REFUND) && ["purchased", "bonus", "payg"].includes(bucket)) {
+      purchasedIn += tx.credits;
+    }
+    if (tx.type === CreditTransactionType.USAGE) {
+      purchasedUsed += Number(meta.purchasedCreditsUsed || 0);
+    }
+  }
+  const purchasedCredits = Math.max(0, purchasedIn - purchasedUsed);
+  return {
+    ...summary,
+    balance: {
+      monthlyCredits: monthly.creditsLimit,
+      usedCredits: monthly.creditsUsed,
+      monthlyRemaining,
+      purchasedCredits,
+      totalRemaining: monthlyRemaining + purchasedCredits,
+      estimatedRemainingGenerations: 0,
+    },
+  };
+}
+
+export async function precheckStudioCreditRequest(input: { userId: string; estimate: Awaited<ReturnType<typeof calculateStudioCredits>> }) {
+  const summary = await getUserCreditBalance(input.userId);
+  if (summary.balance.totalRemaining >= input.estimate.credits) {
+    return { ok: true as const, summary, estimate: input.estimate };
+  }
+  return planLimitError({
+    summary,
+    limitType: "monthly_credits",
+    message: "Not enough credits.",
+    currentUsage: input.estimate.credits,
+    limit: summary.balance.totalRemaining,
+    resetAt: summary.windows.MONTHLY.resetAt,
+    legacyCode: "INSUFFICIENT_CREDITS",
+  });
 }
 
 async function recommendPlan(currentPriority: number, limitType: PlanLimitType, needed?: number) {
@@ -800,6 +959,89 @@ export async function recordAiCreditUsage(input: {
   const updated = await prisma.usageWindow.findMany({ where: { userId: input.userId, id: { in: windows.map((window) => window.id) } } });
   await notifyUsageThresholds(input.userId, updated);
   return getUserPlanLimits(input.userId);
+}
+
+export async function recordStudioCreditUsage(input: {
+  userId: string;
+  credits: number;
+  provider: string;
+  model: string;
+  generationId?: string | null;
+  projectId?: string | null;
+  mediaType: "image" | "video" | "audio" | "voice";
+  prompt?: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const summary = await getUserCreditBalance(input.userId);
+  const monthlyCreditsUsed = Math.min(summary.balance.monthlyRemaining, input.credits);
+  const purchasedCreditsUsed = Math.max(0, input.credits - monthlyCreditsUsed);
+  const windows = Object.values(summary.windows);
+  await prisma.$transaction([
+    ...windows.map((window) => prisma.usageWindow.update({
+      where: { id: window.id },
+      data: { creditsUsed: { increment: input.credits }, creditsLimit: limitFor(summary.plan, window.windowType) },
+    })),
+    prisma.creditTransaction.create({
+      data: {
+        userId: input.userId,
+        planId: summary.plan.id,
+        type: CreditTransactionType.USAGE,
+        credits: input.credits,
+        reason: `AI Studio ${input.mediaType} generation`,
+        metadataJson: {
+          provider: input.provider,
+          model: input.model,
+          generationId: input.generationId,
+          projectId: input.projectId,
+          mediaType: input.mediaType,
+          prompt: input.prompt,
+          monthlyCreditsUsed,
+          purchasedCreditsUsed,
+          ...(input.metadata || {}),
+        } as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
+  const updated = await prisma.usageWindow.findMany({ where: { userId: input.userId, id: { in: windows.map((window) => window.id) } } });
+  await notifyUsageThresholds(input.userId, updated);
+  return getUserCreditBalance(input.userId);
+}
+
+export async function refundStudioCredits(input: {
+  userId: string;
+  credits: number;
+  provider?: string;
+  model?: string;
+  generationId?: string | null;
+  projectId?: string | null;
+  reason?: string;
+}) {
+  if (input.credits <= 0) return getUserCreditBalance(input.userId);
+  const summary = await getUserPlanLimits(input.userId);
+  const windows = Object.values(summary.windows);
+  await prisma.$transaction([
+    ...windows.map((window) => prisma.usageWindow.update({
+      where: { id: window.id },
+      data: { creditsUsed: { decrement: Math.min(window.creditsUsed, input.credits) } },
+    })),
+    prisma.creditTransaction.create({
+      data: {
+        userId: input.userId,
+        planId: summary.plan.id,
+        type: CreditTransactionType.REFUND,
+        credits: input.credits,
+        reason: input.reason || "AI Studio generation refund",
+        metadataJson: {
+          provider: input.provider,
+          model: input.model,
+          generationId: input.generationId,
+          projectId: input.projectId,
+          creditBucket: "purchased",
+        } as Prisma.InputJsonValue,
+      },
+    }),
+  ]);
+  return getUserCreditBalance(input.userId);
 }
 
 export async function assignUserPlan(input: { userId: string; planId: string; assignedByAdmin?: boolean; endsAt?: Date | null }) {

@@ -158,6 +158,23 @@ type ImageResult = {
   createdAt: string;
 };
 
+type StudioCreditEstimate = {
+  credits: number;
+  provider: string;
+  model: string;
+  queueSeconds: number;
+  processingSeconds: number;
+};
+
+type StudioCreditBalance = {
+  monthlyCredits: number;
+  usedCredits: number;
+  monthlyRemaining: number;
+  purchasedCredits: number;
+  totalRemaining: number;
+  estimatedRemainingGenerations: number;
+};
+
 const navItems = [
   { key: "studio", label: "AI Studio", icon: Sparkles },
   { key: "image", label: "Generate Image", icon: Frame },
@@ -181,6 +198,7 @@ const styles = ["Cinematic", "Realistic", "Anime", "3D Render", "Fantasy", "Vint
 const cameras = ["Dolly", "Drone", "Orbit", "Tracking", "Handheld", "Steadicam", "Zoom", "Tilt"];
 const ratios = ["16:9", "4:3", "1:1", "3:4", "9:16"];
 const fpsOptions = [24, 30, 48, 60];
+const durationOptions = [5, 8, 10, 15, 20, 30, 60];
 const imageModels = ["FLUX.1 Schnell", "FLUX Dev", "SDXL", "Stable Diffusion XL", "Future Models"];
 const imageScalePresets = [
   { label: "Square", value: "1:1", size: "1024 x 1024", width: 1024, height: 1024 },
@@ -251,6 +269,14 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function parseDurationFromPrompt(value: string) {
+  const lower = value.toLowerCase();
+  const minute = lower.match(/\b(1|one)\s*(minute|min)\b/);
+  if (minute) return 60;
+  const match = lower.match(/\b(5|8|10|15|20|30|60)\s*(seconds?|secs?|s)\b/);
+  return match ? Number(match[1]) : null;
+}
+
 function normalizeLocalImageSettings<T extends { imageModel: string; size: number; steps: number; mode: string; identityLock: boolean }>(settings: T): T {
   if (settings.imageModel === "SDXL Turbo") return { ...settings, imageModel: "SDXL" };
   if (!imageModels.includes(settings.imageModel)) return { ...settings, imageModel: "FLUX.1 Schnell" };
@@ -293,6 +319,11 @@ export default function StudioPage() {
   const [imageLoading, setImageLoading] = useState(false);
   const [imageEnhancing, setImageEnhancing] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [creditEstimate, setCreditEstimate] = useState<StudioCreditEstimate | null>(null);
+  const [creditBalance, setCreditBalance] = useState<StudioCreditBalance | null>(null);
+  const [creditBlocked, setCreditBlocked] = useState<{ message: string; recommendedPlan?: { name: string; slug: string } | null } | null>(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+  const [durationTouched, setDurationTouched] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<ImageResult | null>(null);
   const [imageReferences, setImageReferences] = useState<ImageReference[]>([]);
   const [imageResults, setImageResults] = useState<ImageResult[]>([]);
@@ -365,6 +396,54 @@ export default function StudioPage() {
     imagePromptRef.current.style.height = "auto";
     imagePromptRef.current.style.height = `${Math.max(156, imagePromptRef.current.scrollHeight)}px`;
   }, [imagePrompt]);
+
+  useEffect(() => {
+    if (durationTouched || activeNav !== "studio") return;
+    const detected = parseDurationFromPrompt(prompt);
+    if (detected && detected !== settings.durationSec) {
+      setSettings((current) => ({ ...current, durationSec: detected }));
+    }
+  }, [activeNav, durationTouched, prompt, settings.durationSec]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const controller = new AbortController();
+    const selected = activeNav === "image" ? selectedImageScale : null;
+    setCreditLoading(true);
+    fetch("/api/studio/credits/estimate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(activeNav === "image" ? {
+        kind: "image",
+        provider: "comfy_cloud",
+        model: imageSettings.imageModel,
+        width: selected?.width || 1024,
+        height: selected?.height || 1024,
+        imageCount: 1,
+        referenceImages: imageReferences.length,
+        aspectRatio: selected?.value || "1:1",
+      } : {
+        kind: "video",
+        provider: "comfy_cloud",
+        model: "Wan 2.x",
+        durationSec: settings.durationSec,
+        fps: settings.fps,
+        aspectRatio: settings.aspectRatio,
+        width: settings.resolution === "1080p" ? 1920 : 1280,
+        height: settings.resolution === "1080p" ? 1080 : 720,
+      }),
+      cache: "no-store",
+      signal: controller.signal,
+    }).then((response) => response.json()).then((data) => {
+      if (controller.signal.aborted) return;
+      if (data.estimate) setCreditEstimate(data.estimate);
+      if (data.balance) setCreditBalance(data.balance);
+      setCreditBlocked(data.blocked);
+    }).catch(() => undefined).finally(() => {
+      if (!controller.signal.aborted) setCreditLoading(false);
+    });
+    return () => controller.abort();
+  }, [activeNav, imageReferences.length, imageSettings.imageModel, selectedImageScale, settings.aspectRatio, settings.durationSec, settings.fps, settings.resolution, status]);
 
   useEffect(() => {
     if (status !== "authenticated") return;
@@ -652,7 +731,13 @@ export default function StudioPage() {
         }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Image generation failed");
+      if (!response.ok) {
+        if (response.status === 402) {
+          setCreditBlocked({ message: data.error || "Not enough credits.", recommendedPlan: data.recommendedPlan });
+          if (data.estimate) setCreditEstimate(data.estimate);
+        }
+        throw new Error(data.error || "Image generation failed");
+      }
       const outputs = Array.isArray(data.outputs) ? data.outputs : [];
       const mappedOutputs: ImageResult[] = outputs.length ? outputs.map((output: Partial<ImageResult>, index: number) => ({
         id: index === 0 ? data.generation.id : `${data.generation.id}-${index}`,
@@ -677,6 +762,7 @@ export default function StudioPage() {
       }];
       const nextResults = [...mappedOutputs, ...imageResults].slice(0, 12);
       setImageResults(nextResults);
+      if (data.usage) setCreditBalance((current) => ({ ...(current || data.usage), ...data.usage }));
       setMessage("Image generated");
       await saveImageState({ results: nextResults });
       await loadProject(project.id);
@@ -781,10 +867,15 @@ export default function StudioPage() {
     });
     const data = await response.json().catch(() => ({ error: "Render request failed" }));
     if (!response.ok) {
+      if (response.status === 402) {
+        setCreditBlocked({ message: data.error || "Not enough credits.", recommendedPlan: data.recommendedPlan });
+        if (data.estimate) setCreditEstimate(data.estimate);
+      }
       setMessage(data.error === "Provider Not Installed" ? `Provider Not Installed: ${(data.missingProviders || []).map((provider: ProviderStatus) => provider.name).join(", ")}` : data.error || "Render request failed");
       await loadProject(selectedProject.id);
       return;
     }
+    if (data.usage) setCreditBalance((current) => ({ ...(current || data.usage), ...data.usage }));
     setMessage(`${mode.replaceAll("_", " ")} queued`);
     await loadProject(selectedProject.id);
   }
@@ -794,6 +885,45 @@ export default function StudioPage() {
     setSettings(next);
     saveSettings(next).catch(() => undefined);
   }
+
+  const creditSummaryPanel = (
+    <div className={cn("rounded-2xl border p-3", creditBlocked ? "border-amber-300/70 bg-amber-50 text-amber-900 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-100" : studioTokens.soft)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] opacity-70">Estimated Cost</p>
+          <p className="mt-1 text-2xl font-semibold">{creditLoading ? "..." : (creditEstimate?.credits ?? 0).toLocaleString()} <span className="text-sm font-medium opacity-65">Credits</span></p>
+        </div>
+        <div className="text-right text-[11px] leading-5 opacity-70">
+          <p>{creditEstimate?.provider || "comfy_cloud"}</p>
+          <p>{creditEstimate?.model || (activeNav === "image" ? imageSettings.imageModel : "Wan 2.x")}</p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+        <div className={cn("rounded-xl border p-2", studioTokens.soft)}>
+          <p className="opacity-60">User Credits</p>
+          <p className="mt-1 font-semibold">{(creditBalance?.totalRemaining || 0).toLocaleString()}</p>
+        </div>
+        <div className={cn("rounded-xl border p-2", studioTokens.soft)}>
+          <p className="opacity-60">After</p>
+          <p className="mt-1 font-semibold">{Math.max(0, (creditBalance?.totalRemaining || 0) - (creditEstimate?.credits || 0)).toLocaleString()}</p>
+        </div>
+        <div className={cn("rounded-xl border p-2", studioTokens.soft)}>
+          <p className="opacity-60">Time</p>
+          <p className="mt-1 font-semibold">~{Math.ceil((creditEstimate?.processingSeconds || 0) / 60) || 1}m</p>
+        </div>
+      </div>
+      {creditBlocked && (
+        <div className="mt-3 rounded-xl border border-amber-300/60 bg-white/50 p-3 text-xs dark:border-amber-300/20 dark:bg-black/20">
+          <p className="font-semibold">Not enough credits.</p>
+          <p className="mt-1 opacity-75">{creditBlocked.message}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href="/billing" className="rounded-lg bg-violet-600 px-3 py-2 font-semibold text-white">Buy Credits</a>
+            <a href="/settings/billing" className={cn("rounded-lg border px-3 py-2 font-semibold", studioTokens.soft)}>Upgrade Plan</a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 
   const promptPanel = (
     <section className={cn("rounded-[22px] p-5", studioTokens.panel)}>
@@ -916,8 +1046,8 @@ export default function StudioPage() {
       </div>
       <div className="grid gap-2 sm:grid-cols-3">
         <button onClick={() => void requestRender("storyboard_images")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-semibold disabled:opacity-40", studioTokens.soft)}>Storyboard Images</button>
-        <button onClick={() => void requestRender("draft_preview")} disabled={!selectedProject || !latestGeneration} className={cn("h-11 rounded-xl border text-sm font-semibold disabled:opacity-40", studioTokens.soft)}>Instant Preview</button>
-        <button onClick={() => void requestRender("final_render")} disabled={!selectedProject || !latestGeneration} className="h-11 rounded-xl bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/25 disabled:opacity-40">Render Final</button>
+        <button onClick={() => void requestRender("draft_preview")} disabled={!selectedProject || !latestGeneration || Boolean(creditBlocked)} className={cn("h-11 rounded-xl border text-sm font-semibold disabled:opacity-40", studioTokens.soft)}>Instant Preview</button>
+        <button onClick={() => void requestRender("final_render")} disabled={!selectedProject || !latestGeneration || Boolean(creditBlocked)} className="h-11 rounded-xl bg-violet-600 text-sm font-semibold text-white shadow-lg shadow-violet-600/25 disabled:opacity-40">Render Final</button>
       </div>
     </section>
   );
@@ -954,10 +1084,24 @@ export default function StudioPage() {
             </select>
           </label>
         </div>
-        <label className={cn("block text-xs", studioTokens.muted)}>Duration (seconds) <span className="float-right font-medium">{settings.durationSec}s</span>
-          <input type="range" min={2} max={15} value={settings.durationSec} onChange={(event) => setSetting("durationSec", Number(event.target.value))} className="mt-3 w-full accent-violet-500" />
-          <div className={cn("mt-2 flex justify-between text-xs", studioTokens.muted)}><span>2s</span><span>5s</span><span>10s</span><span>15s</span></div>
-        </label>
+        <div>
+          <p className={cn("mb-2 text-xs", studioTokens.muted)}>Video Length <span className="float-right font-medium">{settings.durationSec}s</span></p>
+          <div className="grid grid-cols-4 gap-2">
+            {durationOptions.map((duration) => (
+              <button
+                key={duration}
+                onClick={() => {
+                  setDurationTouched(true);
+                  setSetting("durationSec", duration);
+                }}
+                className={cn("h-10 rounded-xl border text-xs font-semibold transition", settings.durationSec === duration ? "border-violet-500 bg-violet-600 text-white shadow-lg shadow-violet-600/20" : studioTokens.soft)}
+              >
+                {duration === 60 ? "1 min" : `${duration}s`}
+              </button>
+            ))}
+          </div>
+        </div>
+        {creditSummaryPanel}
         <div className="grid grid-cols-5 gap-2">
           {ratios.map((ratio) => (
             <button key={ratio} onClick={() => setSetting("aspectRatio", ratio)} className={cn("flex h-[70px] flex-col items-center justify-center gap-2 rounded-xl border text-xs transition", settings.aspectRatio === ratio ? "border-violet-500 bg-violet-600/12 text-violet-500 dark:text-violet-200" : `${studioTokens.soft} hover:border-violet-400/60`)}>
@@ -1208,6 +1352,10 @@ export default function StudioPage() {
             </label>
           </div>
 
+          <div className="mt-2">
+            {creditSummaryPanel}
+          </div>
+
           <div className="mt-2 shrink-0 space-y-1.5">
             <div className="grid gap-2">
               <button
@@ -1220,7 +1368,7 @@ export default function StudioPage() {
               </button>
               <button
                 onClick={runImageGeneration}
-                disabled={imageLoading || imageEnhancing || !imagePrompt.trim()}
+                disabled={imageLoading || imageEnhancing || !imagePrompt.trim() || Boolean(creditBlocked)}
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 via-fuchsia-600 to-purple-600 px-4 text-sm font-semibold text-white shadow-2xl shadow-violet-700/25 transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {imageLoading ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}

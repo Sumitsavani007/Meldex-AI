@@ -10,6 +10,7 @@ import {
   type StudioRenderMode,
 } from "@/lib/ai-studio-providers";
 import { runComfyCloudGeneration } from "@/lib/ai-studio-comfy-cloud";
+import { calculateStudioCredits, precheckStudioCreditRequest, recordStudioCreditUsage } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -55,6 +56,29 @@ export async function POST(request: Request) {
     const prompt = String(latest?.enhancedPrompt || latest?.sourcePrompt || project.description || project.name || "").trim();
     if (!prompt) {
       return NextResponse.json({ error: "No prompt is available for video generation. Generate a script or enter a prompt first." }, { status: 400 });
+    }
+    const creditEstimate = await calculateStudioCredits({
+      kind: "video",
+      provider: "comfy_cloud",
+      model: "Wan 2.x",
+      durationSec: project.durationSec,
+      fps: project.fps || 24,
+      aspectRatio: project.aspectRatio,
+      width: project.resolution === "1080p" ? 1920 : 1280,
+      height: project.resolution === "1080p" ? 1080 : 720,
+    });
+    const creditCheck = await precheckStudioCreditRequest({ userId: session.user.id, estimate: creditEstimate });
+    if (!creditCheck.ok) {
+      return NextResponse.json({
+        error: creditCheck.message,
+        code: creditCheck.legacyCode || creditCheck.code,
+        limitType: creditCheck.limitType,
+        currentUsage: creditCheck.currentUsage,
+        limit: creditCheck.limit,
+        resetAt: creditCheck.resetAt,
+        recommendedPlan: creditCheck.recommendedPlan,
+        estimate: { credits: creditEstimate.credits, provider: creditEstimate.provider, model: creditEstimate.model },
+      }, { status: 402, headers: { "Cache-Control": "no-store" } });
     }
     const startedAt = new Date();
     const job = await prisma.studioJob.create({
@@ -156,7 +180,26 @@ export async function POST(request: Request) {
         metadataJson: { mode, provider: "comfy_cloud", promptId: result.promptId, output } as Prisma.InputJsonValue,
       },
     }).catch(() => undefined);
-    return NextResponse.json({ job: completed, mode, provider: "comfy_cloud", outputs: result.outputs }, { status: 200, headers: { "Cache-Control": "no-store" } });
+    const usage = await recordStudioCreditUsage({
+      userId: session.user.id,
+      credits: creditEstimate.credits,
+      provider: "comfy_cloud",
+      model: "Wan 2.x",
+      generationId,
+      projectId: project.id,
+      mediaType: "video",
+      prompt,
+      metadata: {
+        mode,
+        durationSec: project.durationSec,
+        fps: project.fps || 24,
+        aspectRatio: project.aspectRatio,
+        resolution: project.resolution,
+        breakdown: creditEstimate.breakdown,
+        promptId: result.promptId,
+      },
+    });
+    return NextResponse.json({ job: completed, mode, provider: "comfy_cloud", outputs: result.outputs, creditsUsed: creditEstimate.credits, usage: usage.balance }, { status: 200, headers: { "Cache-Control": "no-store" } });
   }
 
   const missingProviders = await getMissingProvidersForRender(mode);

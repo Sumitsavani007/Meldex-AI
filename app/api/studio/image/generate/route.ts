@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { requireAuth } from "@/lib/role-guard";
 import { prisma } from "@/lib/prisma";
 import { generateImageWithProvider } from "@/lib/ai-studio-image-provider";
+import { calculateStudioCredits, precheckStudioCreditRequest, recordStudioCreditUsage } from "@/lib/plans-credits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,6 +54,31 @@ export async function POST(request: Request) {
     where: { id: parsed.data.projectId, userId: session.user.id },
   });
   if (!project) return NextResponse.json({ error: "Studio project not found" }, { status: 404 });
+
+  const creditEstimate = await calculateStudioCredits({
+    kind: "image",
+    provider: "comfy_cloud",
+    model: model.label,
+    width: dimensions.width,
+    height: dimensions.height,
+    imageCount: 1,
+    referenceImages: 0,
+    advancedSettings: 0,
+    aspectRatio: parsed.data.imageScale,
+  });
+  const creditCheck = await precheckStudioCreditRequest({ userId: session.user.id, estimate: creditEstimate });
+  if (!creditCheck.ok) {
+    return NextResponse.json({
+      error: creditCheck.message,
+      code: creditCheck.legacyCode || creditCheck.code,
+      limitType: creditCheck.limitType,
+      currentUsage: creditCheck.currentUsage,
+      limit: creditCheck.limit,
+      resetAt: creditCheck.resetAt,
+      recommendedPlan: creditCheck.recommendedPlan,
+      estimate: { credits: creditEstimate.credits, provider: creditEstimate.provider, model: creditEstimate.model },
+    }, { status: 402, headers: { "Cache-Control": "no-store" } });
+  }
 
   const startedAt = new Date();
   const result = await generateImageWithProvider({
@@ -179,6 +205,27 @@ export async function POST(request: Request) {
     },
   });
 
+  let usage = null;
+  if (generated) {
+    usage = await recordStudioCreditUsage({
+      userId: session.user.id,
+      credits: creditEstimate.credits,
+      provider: "comfy_cloud",
+      model: model.label,
+      generationId: generation.id,
+      projectId: project.id,
+      mediaType: "image",
+      prompt: parsed.data.prompt.trim(),
+      metadata: {
+        width: dimensions.width,
+        height: dimensions.height,
+        aspectRatio: parsed.data.imageScale,
+        durationMs: completedAt.getTime() - startedAt.getTime(),
+        breakdown: creditEstimate.breakdown,
+      },
+    });
+  }
+
   await prisma.studioProject.update({
     where: { id: project.id },
     data: {
@@ -220,5 +267,7 @@ export async function POST(request: Request) {
     providerMessage: "Image generated with Comfy Cloud.",
     selectedProvider: "comfy_cloud",
     model: model.label,
+    creditsUsed: creditEstimate.credits,
+    usage: usage?.balance,
   }, { headers: { "Cache-Control": "no-store" } });
 }
