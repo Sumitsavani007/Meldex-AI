@@ -27,6 +27,6 @@ jobs:
         with:
           context: infra/h3-worker
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/meldex-h3-worker:h3-${{ github.sha }}-ae7bee0
+          tags: ghcr.io/sumitsavani007/meldex-h3-worker:h3-${{ github.sha }}-ae7bee0
           build-args: |
             VLLM_OMNI_COMMIT=ae7bee0c43c780a8e21d0b5e4b92a7eaeaea8783
