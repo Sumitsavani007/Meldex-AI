@@ -8,11 +8,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git jq c
 RUN python3 -m pip install --break-system-packages --no-cache-dir uv==0.8.9 \
  && git clone https://github.com/vllm-project/vllm-omni.git /opt/vllm-omni \
  && git -C /opt/vllm-omni checkout "${VLLM_OMNI_COMMIT}" \
- && uv pip install --python "$(command -v python3)" --no-cache-dir -e /opt/vllm-omni
+ && uv venv /opt/meldex/venv --python python3 \
+ && uv pip install --python /opt/meldex/venv/bin/python --no-cache-dir -e /opt/vllm-omni
 
 COPY entrypoint.sh /opt/meldex/entrypoint.sh
 COPY healthcheck.py /opt/meldex/healthcheck.py
 COPY scripts/validate-model.py /opt/meldex/validate-model.py
 RUN chmod 0755 /opt/meldex/entrypoint.sh
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30m --retries=5 CMD ["python3", "/opt/meldex/healthcheck.py"]
+ENV PATH=/opt/meldex/venv/bin:$PATH
 ENTRYPOINT ["/opt/meldex/entrypoint.sh"]
