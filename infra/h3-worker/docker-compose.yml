@@ -1,0 +1,26 @@
+services:
+  h3-worker:
+    build:
+      context: .
+      args:
+        VLLM_OMNI_COMMIT: ae7bee0c43c780a8e21d0b5e4b92a7eaeaea8783
+    restart: unless-stopped
+    gpus: all
+    shm_size: 64gb
+    environment:
+      H3_MODEL_ROOT: /models/MiniMax-H3
+      H3_PARTITION: ${H3_PARTITION:-FL2VA}
+      H3_FL2VA_PORT: ${H3_FL2VA_PORT:-8091}
+      H3_REF2VA_PORT: ${H3_REF2VA_PORT:-8092}
+      H3_NUM_GPUS: ${H3_NUM_GPUS:-1}
+      H3_ENABLE_CPU_OFFLOAD: ${H3_ENABLE_CPU_OFFLOAD:-true}
+      H3_ENABLE_FP8: ${H3_ENABLE_FP8:-false}
+    volumes:
+      - ${H3_MODEL_HOST_ROOT:?Set H3_MODEL_HOST_ROOT}:/models/MiniMax-H3:ro
+      - h3-output:/var/tmp/vllm-omni-videos
+    ports:
+      - "127.0.0.1:${H3_FL2VA_PORT:-8091}:${H3_FL2VA_PORT:-8091}"
+      - "127.0.0.1:${H3_REF2VA_PORT:-8092}:${H3_REF2VA_PORT:-8092}"
+volumes:
+  h3-output:
+
