@@ -5,7 +5,7 @@ ARG VLLM_OMNI_COMMIT=ae7bee0c43c780a8e21d0b5e4b92a7eaeaea8783
 ENV PYTHONUNBUFFERED=1 H3_MODEL_ROOT=/models/MiniMax-H3 H3_PARTITION=FL2VA H3_FL2VA_PORT=8091 H3_REF2VA_PORT=8092 VLLM_OMNI_VIDEO_SYNC_TIMEOUT=1800 VLLM_WORKER_MULTIPROC_METHOD=spawn
 
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg git jq curl ca-certificates && rm -rf /var/lib/apt/lists/*
-RUN python3 -m pip install --no-cache-dir uv==0.8.9 \
+RUN python3 -m pip install --break-system-packages --no-cache-dir uv==0.8.9 \
  && git clone https://github.com/vllm-project/vllm-omni.git /opt/vllm-omni \
  && git -C /opt/vllm-omni checkout "${VLLM_OMNI_COMMIT}" \
  && uv pip install --python "$(command -v python3)" --no-cache-dir -e /opt/vllm-omni
